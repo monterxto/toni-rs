@@ -18,6 +18,64 @@ pub fn has_enhancer_attribute(attr: &Attribute) -> bool {
         .any(|segment| is_enhancer(&segment.ident))
 }
 
+/// Represents an enhancer that can be resolved from DI
+#[derive(Clone)]
+pub struct EnhancerInfo {
+    /// The type identifier of the enhancer
+    pub type_ident: Ident,
+    /// The token used for DI resolution
+    pub token_expr: TokenStream,
+}
+
+/// Create enhancer infos from attributes for DI resolution
+/// Returns a map of enhancer type -> list of EnhancerInfo
+pub fn create_enhancer_infos(
+    controller_enhancers_attr: HashMap<&Ident, &Attribute>,
+    method_enhancers_attr: HashMap<&Ident, &Attribute>,
+) -> Result<HashMap<String, Vec<EnhancerInfo>>> {
+    let mut enhancers: HashMap<String, Vec<EnhancerInfo>> = HashMap::new();
+
+    // Process controller-level enhancers FIRST
+    for (ident, attr) in controller_enhancers_attr {
+        let arg_idents = attr
+            .parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
+            .map_err(|_| Error::new(attr.span(), "Invalid attribute format"))?;
+
+        let key = ident.to_string().replace("toni_", "");
+
+        for arg_ident in arg_idents {
+            let token_expr = quote! { std::any::type_name::<#arg_ident>().to_string() };
+            let info = EnhancerInfo {
+                type_ident: arg_ident,
+                token_expr,
+            };
+
+            enhancers.entry(key.clone()).or_default().push(info);
+        }
+    }
+
+    // Then process method-level enhancers (ADDS to controller-level, doesn't replace)
+    for (ident, attr) in method_enhancers_attr {
+        let arg_idents = attr
+            .parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
+            .map_err(|_| Error::new(attr.span(), "Invalid attribute format"))?;
+
+        let key = ident.to_string().replace("toni_", "");
+
+        for arg_ident in arg_idents {
+            let token_expr = quote! { std::any::type_name::<#arg_ident>().to_string() };
+            let info = EnhancerInfo {
+                type_ident: arg_ident,
+                token_expr,
+            };
+
+            enhancers.entry(key.clone()).or_default().push(info);
+        }
+    }
+
+    Ok(enhancers)
+}
+
 pub fn create_enchancers_token_stream(
     enhancers_attr: HashMap<&Ident, &Attribute>,
 ) -> Result<HashMap<String, Vec<TokenStream>>> {

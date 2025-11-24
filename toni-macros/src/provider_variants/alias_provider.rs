@@ -83,6 +83,23 @@ pub fn handle_provider_alias(input: TokenStream) -> Result<TokenStream> {
                     // Delegate to the target provider
                     self.target_provider.execute(params, req).await
                 }
+
+                // Delegate enhancer methods to target provider
+                fn as_guard(&self) -> Option<std::sync::Arc<dyn toni::traits_helpers::Guard>> {
+                    self.target_provider.as_guard()
+                }
+
+                fn as_interceptor(&self) -> Option<std::sync::Arc<dyn toni::traits_helpers::Interceptor>> {
+                    self.target_provider.as_interceptor()
+                }
+
+                fn as_pipe(&self) -> Option<std::sync::Arc<dyn toni::traits_helpers::Pipe>> {
+                    self.target_provider.as_pipe()
+                }
+
+                fn as_middleware(&self) -> Option<std::sync::Arc<dyn toni::traits_helpers::middleware::Middleware>> {
+                    self.target_provider.as_middleware()
+                }
             }
 
             // Implement Provider trait for the manager (used by module system)

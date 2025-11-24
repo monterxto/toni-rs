@@ -16,9 +16,31 @@ pub trait ControllerTrait: Send + Sync {
     ) -> Box<dyn IntoResponse<Response = HttpResponse> + Send>;
     fn get_path(&self) -> String;
     fn get_method(&self) -> HttpMethod;
+
+    /// Get guard instances (deprecated - use get_guard_tokens instead)
     fn get_guards(&self) -> Vec<Arc<dyn Guard>>;
+
+    /// Get pipe instances (deprecated - use get_pipe_tokens instead)
     fn get_pipes(&self) -> Vec<Arc<dyn Pipe>>;
+
+    /// Get interceptor instances (deprecated - use get_interceptor_tokens instead)
     fn get_interceptors(&self) -> Vec<Arc<dyn Interceptor>>;
+
+    /// Get guard tokens for DI resolution
+    fn get_guard_tokens(&self) -> Vec<String> {
+        vec![]
+    }
+
+    /// Get interceptor tokens for DI resolution
+    fn get_interceptor_tokens(&self) -> Vec<String> {
+        vec![]
+    }
+
+    /// Get pipe tokens for DI resolution
+    fn get_pipe_tokens(&self) -> Vec<String> {
+        vec![]
+    }
+
     fn get_body_dto(&self, req: &HttpRequest) -> Option<Box<dyn Validatable>>;
 }
 #[async_trait]

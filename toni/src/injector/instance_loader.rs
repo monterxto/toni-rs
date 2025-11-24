@@ -183,12 +183,19 @@ impl ToniInstanceLoader {
         controllers_instances: FxHashMap<String, Arc<Box<dyn ControllerTrait>>>,
     ) -> Result<()> {
         let mut container_mut = self.container.borrow_mut();
+
+        // Get providers from the module to resolve enhancers
+        let providers = container_mut
+            .get_providers_instance(&module_token)?
+            .clone();
+
         for (_controller_instance_token, controller_instance) in controllers_instances {
-            let enhancer_metadata = EnhancerMetadata {
-                guards: controller_instance.get_guards(),
-                pipes: controller_instance.get_pipes(),
-                interceptors: controller_instance.get_interceptors(),
-            };
+            // Resolve enhancers from DI using tokens
+            let enhancer_metadata = self.resolve_enhancers_from_tokens(
+                &controller_instance,
+                &providers,
+            )?;
+
             container_mut.add_controller_instance(
                 &module_token,
                 controller_instance,
@@ -196,6 +203,87 @@ impl ToniInstanceLoader {
             )?;
         }
         Ok(())
+    }
+
+    /// Resolve enhancers from DI container using tokens
+    fn resolve_enhancers_from_tokens(
+        &self,
+        controller: &Arc<Box<dyn ControllerTrait>>,
+        providers: &FxHashMap<String, Arc<Box<dyn ProviderTrait>>>,
+    ) -> Result<EnhancerMetadata> {
+        let mut guards = Vec::new();
+        let mut interceptors = Vec::new();
+        let mut pipes = Vec::new();
+
+        // Resolve guards from tokens
+        for token in controller.get_guard_tokens() {
+            if let Some(provider_box) = providers.get(&token) {
+                // Call as_guard() on the provider - returns Some if it's actually a Guard
+                if let Some(guard) = provider_box.as_guard() {
+                    guards.push(guard);
+                } else {
+                    return Err(anyhow!(
+                        "Provider '{}' was expected to be a Guard but as_guard() returned None. \
+                         Ensure the provider implements the Guard trait.",
+                        token
+                    ));
+                }
+            } else {
+                return Err(anyhow!(
+                    "Guard provider '{}' not found in DI container. \
+                     Ensure it's registered in the module's providers.",
+                    token
+                ));
+            }
+        }
+
+        // Resolve interceptors from tokens
+        for token in controller.get_interceptor_tokens() {
+            if let Some(provider_box) = providers.get(&token) {
+                if let Some(interceptor) = provider_box.as_interceptor() {
+                    interceptors.push(interceptor);
+                } else {
+                    return Err(anyhow!(
+                        "Provider '{}' was expected to be an Interceptor but as_interceptor() returned None. \
+                         Ensure the provider implements the Interceptor trait.",
+                        token
+                    ));
+                }
+            } else {
+                return Err(anyhow!(
+                    "Interceptor provider '{}' not found in DI container. \
+                     Ensure it's registered in the module's providers.",
+                    token
+                ));
+            }
+        }
+
+        // Resolve pipes from tokens
+        for token in controller.get_pipe_tokens() {
+            if let Some(provider_box) = providers.get(&token) {
+                if let Some(pipe) = provider_box.as_pipe() {
+                    pipes.push(pipe);
+                } else {
+                    return Err(anyhow!(
+                        "Provider '{}' was expected to be a Pipe but as_pipe() returned None. \
+                         Ensure the provider implements the Pipe trait.",
+                        token
+                    ));
+                }
+            } else {
+                return Err(anyhow!(
+                    "Pipe provider '{}' not found in DI container. \
+                     Ensure it's registered in the module's providers.",
+                    token
+                ));
+            }
+        }
+
+        Ok(EnhancerMetadata {
+            guards,
+            interceptors,
+            pipes,
+        })
     }
 
     fn resolve_dependencies(

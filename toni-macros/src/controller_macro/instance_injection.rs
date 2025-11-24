@@ -61,7 +61,7 @@ use crate::{
         generate_extractor_static_method_call, get_extractor_params, has_self_receiver,
         ExtractorKind,
     },
-    enhancer::enhancer::create_enhancers_token_stream,
+    enhancer::enhancer::{create_enhancer_infos, EnhancerInfo},
     markers_params::{
         extracts_marker_params::{
             extract_body_from_param, extract_path_param_from_param, extract_query_from_param,
@@ -332,8 +332,9 @@ fn generate_controller_wrapper(
         (resolutions, names, instantiation)
     };
 
-    let enhancers =
-        create_enhancers_token_stream(controller_enhancers_attr, method_enhancers_attr)?;
+    // Get enhancer infos for DI resolution
+    let enhancer_infos =
+        create_enhancer_infos(controller_enhancers_attr, method_enhancers_attr)?;
 
     // Check if we're using extractors or marker params
     let extractor_params = get_extractor_params(method)?;
@@ -365,7 +366,7 @@ fn generate_controller_wrapper(
         &field_resolutions,
         &struct_instantiation,
         &method_call,
-        &enhancers,
+        &enhancer_infos,
         &marker_params_extraction,
         &body_dto_token_stream,
         scope,
@@ -499,7 +500,7 @@ fn generate_controller_wrapper_code(
     field_resolutions: &[TokenStream],
     struct_instantiation: &TokenStream,
     method_call: &TokenStream,
-    enhancers: &HashMap<String, Vec<TokenStream>>,
+    enhancer_infos: &HashMap<String, Vec<EnhancerInfo>>,
     marker_params_extraction: &[TokenStream],
     body_dto_token_stream: &Option<TokenStream>,
     scope: crate::shared::scope_parser::ControllerScope,
@@ -515,7 +516,7 @@ fn generate_controller_wrapper_code(
             full_route_path,
             http_method,
             method_call,
-            enhancers,
+            enhancer_infos,
             marker_params_extraction,
             body_dto_token_stream,
             struct_name, // Pass struct name for downcast
@@ -529,7 +530,7 @@ fn generate_controller_wrapper_code(
             field_resolutions,
             struct_instantiation,
             method_call,
-            enhancers,
+            enhancer_infos,
             marker_params_extraction,
             body_dto_token_stream,
             is_static_method,
@@ -544,16 +545,35 @@ fn generate_singleton_controller_wrapper(
     full_route_path: &str,
     http_method: &str,
     method_call: &TokenStream,
-    enhancers: &HashMap<String, Vec<TokenStream>>,
+    enhancer_infos: &HashMap<String, Vec<EnhancerInfo>>,
     marker_params_extraction: &[TokenStream],
     body_dto_token_stream: &Option<TokenStream>,
     struct_name: &Ident, // Need this for downcast type
     is_static_method: bool,
 ) -> TokenStream {
     let binding = Vec::new();
-    let use_guards = enhancers.get("guards").unwrap_or(&binding);
-    let interceptors = enhancers.get("interceptors").unwrap_or(&binding);
-    let pipes = enhancers.get("pipes").unwrap_or(&binding);
+
+    // Generate enhancer token expressions for DI resolution
+    let guard_tokens: Vec<_> = enhancer_infos
+        .get("guards")
+        .unwrap_or(&binding)
+        .iter()
+        .map(|info| &info.token_expr)
+        .collect();
+
+    let interceptor_tokens: Vec<_> = enhancer_infos
+        .get("interceptors")
+        .unwrap_or(&binding)
+        .iter()
+        .map(|info| &info.token_expr)
+        .collect();
+
+    let pipe_tokens: Vec<_> = enhancer_infos
+        .get("pipes")
+        .unwrap_or(&binding)
+        .iter()
+        .map(|info| &info.token_expr)
+        .collect();
 
     let body_dto_stream = if let Some(token_stream) = body_dto_token_stream {
         token_stream.clone()
@@ -622,15 +642,27 @@ fn generate_singleton_controller_wrapper(
             }
 
             fn get_guards(&self) -> Vec<::std::sync::Arc<dyn ::toni::traits_helpers::Guard>> {
-                vec![#(#use_guards),*]
+                vec![]  // Enhancers resolved from DI via tokens
             }
 
             fn get_interceptors(&self) -> Vec<::std::sync::Arc<dyn ::toni::traits_helpers::Interceptor>> {
-                vec![#(#interceptors),*]
+                vec![]  // Enhancers resolved from DI via tokens
             }
 
             fn get_pipes(&self) -> Vec<::std::sync::Arc<dyn ::toni::traits_helpers::Pipe>> {
-                vec![#(#pipes),*]
+                vec![]  // Enhancers resolved from DI via tokens
+            }
+
+            fn get_guard_tokens(&self) -> Vec<String> {
+                vec![#(#guard_tokens),*]
+            }
+
+            fn get_interceptor_tokens(&self) -> Vec<String> {
+                vec![#(#interceptor_tokens),*]
+            }
+
+            fn get_pipe_tokens(&self) -> Vec<String> {
+                vec![#(#pipe_tokens),*]
             }
 
             fn get_body_dto(&self, _req: &::toni::http_helpers::HttpRequest) -> Option<Box<dyn ::toni::traits_helpers::validate::Validatable>> {
@@ -649,15 +681,34 @@ fn generate_request_controller_wrapper(
     field_resolutions: &[TokenStream],
     struct_instantiation: &TokenStream,
     method_call: &TokenStream,
-    enhancers: &HashMap<String, Vec<TokenStream>>,
+    enhancer_infos: &HashMap<String, Vec<EnhancerInfo>>,
     marker_params_extraction: &[TokenStream],
     body_dto_token_stream: &Option<TokenStream>,
     is_static_method: bool,
 ) -> TokenStream {
     let binding = Vec::new();
-    let use_guards = enhancers.get("guards").unwrap_or(&binding);
-    let interceptors = enhancers.get("interceptors").unwrap_or(&binding);
-    let pipes = enhancers.get("pipes").unwrap_or(&binding);
+
+    // Generate enhancer token expressions for DI resolution
+    let guard_tokens: Vec<_> = enhancer_infos
+        .get("guards")
+        .unwrap_or(&binding)
+        .iter()
+        .map(|info| &info.token_expr)
+        .collect();
+
+    let interceptor_tokens: Vec<_> = enhancer_infos
+        .get("interceptors")
+        .unwrap_or(&binding)
+        .iter()
+        .map(|info| &info.token_expr)
+        .collect();
+
+    let pipe_tokens: Vec<_> = enhancer_infos
+        .get("pipes")
+        .unwrap_or(&binding)
+        .iter()
+        .map(|info| &info.token_expr)
+        .collect();
 
     let body_dto_stream = if let Some(token_stream) = body_dto_token_stream {
         token_stream.clone()
@@ -711,15 +762,27 @@ fn generate_request_controller_wrapper(
             }
 
             fn get_guards(&self) -> Vec<::std::sync::Arc<dyn ::toni::traits_helpers::Guard>> {
-                vec![#(#use_guards),*]
+                vec![]  // Enhancers resolved from DI via tokens
             }
 
             fn get_interceptors(&self) -> Vec<::std::sync::Arc<dyn ::toni::traits_helpers::Interceptor>> {
-                vec![#(#interceptors),*]
+                vec![]  // Enhancers resolved from DI via tokens
             }
 
             fn get_pipes(&self) -> Vec<::std::sync::Arc<dyn ::toni::traits_helpers::Pipe>> {
-                vec![#(#pipes),*]
+                vec![]  // Enhancers resolved from DI via tokens
+            }
+
+            fn get_guard_tokens(&self) -> Vec<String> {
+                vec![#(#guard_tokens),*]
+            }
+
+            fn get_interceptor_tokens(&self) -> Vec<String> {
+                vec![#(#interceptor_tokens),*]
+            }
+
+            fn get_pipe_tokens(&self) -> Vec<String> {
+                vec![#(#pipe_tokens),*]
             }
 
             fn get_body_dto(&self, _req: &::toni::http_helpers::HttpRequest) -> Option<Box<dyn ::toni::traits_helpers::validate::Validatable>> {

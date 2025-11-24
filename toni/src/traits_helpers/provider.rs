@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use rustc_hash::FxHashMap;
 
 use crate::{ProviderScope, http_helpers::HttpRequest};
+use super::{Guard, Interceptor, Pipe, middleware::Middleware};
 
 #[async_trait]
 pub trait ProviderTrait: Send + Sync {
@@ -16,6 +17,29 @@ pub trait ProviderTrait: Send + Sync {
     fn get_token_manager(&self) -> String;
     fn get_scope(&self) -> ProviderScope {
         ProviderScope::Singleton // Default to singleton
+    }
+
+    // Enhancer detection methods - return None by default
+    // These are overridden by the #[injectable] macro for actual enhancers
+
+    /// Returns this provider as a Guard if it implements the Guard trait
+    fn as_guard(&self) -> Option<Arc<dyn Guard>> {
+        None
+    }
+
+    /// Returns this provider as an Interceptor if it implements the Interceptor trait
+    fn as_interceptor(&self) -> Option<Arc<dyn Interceptor>> {
+        None
+    }
+
+    /// Returns this provider as a Pipe if it implements the Pipe trait
+    fn as_pipe(&self) -> Option<Arc<dyn Pipe>> {
+        None
+    }
+
+    /// Returns this provider as Middleware if it implements the Middleware trait
+    fn as_middleware(&self) -> Option<Arc<dyn Middleware>> {
+        None
     }
 }
 

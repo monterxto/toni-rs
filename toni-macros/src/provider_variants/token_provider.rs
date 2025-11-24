@@ -140,6 +140,23 @@ pub fn handle_provider_token(input: TokenStream) -> Result<TokenStream> {
                             // Delegate to the inner provider
                             self.inner_provider.execute(params, req).await
                         }
+
+                        // Delegate enhancer methods to inner provider
+                        fn as_guard(&self) -> Option<std::sync::Arc<dyn toni::traits_helpers::Guard>> {
+                            self.inner_provider.as_guard()
+                        }
+
+                        fn as_interceptor(&self) -> Option<std::sync::Arc<dyn toni::traits_helpers::Interceptor>> {
+                            self.inner_provider.as_interceptor()
+                        }
+
+                        fn as_pipe(&self) -> Option<std::sync::Arc<dyn toni::traits_helpers::Pipe>> {
+                            self.inner_provider.as_pipe()
+                        }
+
+                        fn as_middleware(&self) -> Option<std::sync::Arc<dyn toni::traits_helpers::middleware::Middleware>> {
+                            self.inner_provider.as_middleware()
+                        }
                     }
 
                     // Register under the custom token only

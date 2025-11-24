@@ -58,6 +58,39 @@ use syn::{Ident, ItemImpl, ItemStruct, Result};
 
 use crate::shared::{dependency_info::DependencyInfo, scope_parser::ProviderScope};
 
+/// Detected enhancer traits that a struct implements
+#[derive(Debug, Clone, Default)]
+pub struct EnhancerTraits {
+    pub is_guard: bool,
+    pub is_interceptor: bool,
+    pub is_pipe: bool,
+    pub is_middleware: bool,
+}
+
+/// Detect which enhancer traits are implemented by looking at the impl block
+fn detect_enhancer_traits(impl_block: &ItemImpl) -> EnhancerTraits {
+    let mut traits = EnhancerTraits::default();
+
+    // Check if this is a trait impl block
+    if let Some((_, path, _)) = &impl_block.trait_ {
+        let trait_name = path
+            .segments
+            .last()
+            .map(|seg| seg.ident.to_string())
+            .unwrap_or_default();
+
+        match trait_name.as_str() {
+            "Guard" => traits.is_guard = true,
+            "Interceptor" => traits.is_interceptor = true,
+            "Pipe" => traits.is_pipe = true,
+            "Middleware" => traits.is_middleware = true,
+            _ => {}
+        }
+    }
+
+    traits
+}
+
 pub fn generate_instance_provider_system(
     struct_attrs: &ItemStruct,
     impl_block: &ItemImpl,
@@ -70,7 +103,10 @@ pub fn generate_instance_provider_system(
 
     let impl_def = impl_block.clone();
 
-    let provider_wrapper = generate_provider_wrapper(struct_name, dependencies, scope);
+    // Detect which enhancer traits this struct implements
+    let enhancer_traits = detect_enhancer_traits(impl_block);
+
+    let provider_wrapper = generate_provider_wrapper(struct_name, dependencies, scope, &enhancer_traits);
 
     let manager = generate_manager(struct_name, dependencies, scope);
 
@@ -120,17 +156,65 @@ fn generate_provider_wrapper(
     struct_name: &Ident,
     dependencies: &DependencyInfo,
     scope: ProviderScope,
+    enhancer_traits: &EnhancerTraits,
 ) -> TokenStream {
     match scope {
-        ProviderScope::Singleton => generate_singleton_provider(struct_name),
-        ProviderScope::Request => generate_request_provider(struct_name, dependencies),
-        ProviderScope::Transient => generate_transient_provider(struct_name, dependencies),
+        ProviderScope::Singleton => generate_singleton_provider(struct_name, enhancer_traits),
+        ProviderScope::Request => generate_request_provider(struct_name, dependencies, enhancer_traits),
+        ProviderScope::Transient => generate_transient_provider(struct_name, dependencies, enhancer_traits),
     }
 }
 
-fn generate_singleton_provider(struct_name: &Ident) -> TokenStream {
+/// Generate enhancer method overrides for ProviderTrait implementation
+///
+/// For enhancers (Guards, Interceptors, Pipes, Middleware), this generates
+/// the method overrides to return Some(...) instead of the default None.
+/// For regular providers, returns an empty TokenStream (uses defaults).
+fn generate_enhancer_methods(traits: &EnhancerTraits) -> TokenStream {
+    let mut methods = Vec::new();
+
+    // Only override methods for actual enhancer traits
+    if traits.is_guard {
+        methods.push(quote! {
+            fn as_guard(&self) -> Option<::std::sync::Arc<dyn ::toni::traits_helpers::Guard>> {
+                Some(::std::sync::Arc::new((*self.instance).clone()))
+            }
+        });
+    }
+
+    if traits.is_interceptor {
+        methods.push(quote! {
+            fn as_interceptor(&self) -> Option<::std::sync::Arc<dyn ::toni::traits_helpers::Interceptor>> {
+                Some(::std::sync::Arc::new((*self.instance).clone()))
+            }
+        });
+    }
+
+    if traits.is_pipe {
+        methods.push(quote! {
+            fn as_pipe(&self) -> Option<::std::sync::Arc<dyn ::toni::traits_helpers::Pipe>> {
+                Some(::std::sync::Arc::new((*self.instance).clone()))
+            }
+        });
+    }
+
+    if traits.is_middleware {
+        methods.push(quote! {
+            fn as_middleware(&self) -> Option<::std::sync::Arc<dyn ::toni::traits_helpers::middleware::Middleware>> {
+                Some(::std::sync::Arc::new((*self.instance).clone()))
+            }
+        });
+    }
+
+    quote! {
+        #(#methods)*
+    }
+}
+
+fn generate_singleton_provider(struct_name: &Ident, enhancer_traits: &EnhancerTraits) -> TokenStream {
     let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
     let struct_token = struct_name.to_string();
+    let enhancer_methods = generate_enhancer_methods(enhancer_traits);
 
     quote! {
         struct #provider_name {
@@ -158,13 +242,16 @@ fn generate_singleton_provider(struct_name: &Ident) -> TokenStream {
             fn get_scope(&self) -> ::toni::ProviderScope {
                 ::toni::ProviderScope::Singleton
             }
+
+            #enhancer_methods
         }
     }
 }
 
-fn generate_request_provider(struct_name: &Ident, dependencies: &DependencyInfo) -> TokenStream {
+fn generate_request_provider(struct_name: &Ident, dependencies: &DependencyInfo, enhancer_traits: &EnhancerTraits) -> TokenStream {
     let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
     let struct_token = struct_name.to_string();
+    let enhancer_methods = generate_enhancer_methods(enhancer_traits);
 
     let (field_resolutions, field_names) = generate_field_resolutions(dependencies);
 
@@ -259,13 +346,16 @@ fn generate_request_provider(struct_name: &Ident, dependencies: &DependencyInfo)
             fn get_scope(&self) -> ::toni::ProviderScope {
                 ::toni::ProviderScope::Request
             }
+
+            #enhancer_methods
         }
     }
 }
 
-fn generate_transient_provider(struct_name: &Ident, dependencies: &DependencyInfo) -> TokenStream {
+fn generate_transient_provider(struct_name: &Ident, dependencies: &DependencyInfo, enhancer_traits: &EnhancerTraits) -> TokenStream {
     let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
     let struct_token = struct_name.to_string();
+    let enhancer_methods = generate_enhancer_methods(enhancer_traits);
 
     let (field_resolutions, field_names) = generate_field_resolutions(dependencies);
 
@@ -331,6 +421,8 @@ fn generate_transient_provider(struct_name: &Ident, dependencies: &DependencyInf
             fn get_scope(&self) -> ::toni::ProviderScope {
                 ::toni::ProviderScope::Transient
             }
+
+            #enhancer_methods
         }
     }
 }
