@@ -9,4 +9,5 @@ members = [
     "toni-async-graphql",
     "toni-juniper",
     "integration-tests",
+    "examples",
 ]

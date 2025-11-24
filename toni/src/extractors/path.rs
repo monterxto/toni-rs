@@ -1,6 +1,8 @@
 //! Path parameter extractor
 
 use std::str::FromStr;
+use serde::de::DeserializeOwned;
+use super::FromRequest;
 
 /// Extractor for path parameters
 ///
@@ -72,4 +74,21 @@ where
     value
         .parse::<T>()
         .map_err(|e| PathError::ParseError(format!("{}: {}", name, e)))
+}
+
+/// Implement FromRequest for Path<T> where T is deserializable
+/// This allows automatic extraction of path parameters from the request
+impl<T: DeserializeOwned> FromRequest for Path<T> {
+    type Error = PathError;
+
+    fn from_request(req: &crate::http_helpers::HttpRequest) -> Result<Self, Self::Error> {
+        // Convert path_params HashMap to a format serde can deserialize
+        let json_value = serde_json::to_value(&req.path_params)
+            .map_err(|e| PathError::ParseError(format!("Failed to serialize path params: {}", e)))?;
+
+        let deserialized: T = serde_json::from_value(json_value)
+            .map_err(|e| PathError::ParseError(format!("Failed to deserialize path params: {}", e)))?;
+
+        Ok(Path(deserialized))
+    }
 }

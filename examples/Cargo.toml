@@ -1,0 +1,22 @@
+[package]
+name = "toni-examples"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dev-dependencies]
+toni = { path = "../toni" }
+toni-macros = { path = "../toni-macros" }
+tokio = { version = "1.42", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+validator = { version = "0.20.0", features = ["derive"] }
+toni-axum = { path = "../toni-axum" }
+
+[[example]]
+name = "pipes_complete_guide"
+path = "pipes_complete_guide.rs"
+
+[[example]]
+name = "middleware_examples"
+path = "middleware_examples.rs"
