@@ -220,8 +220,8 @@ pub fn extract_type_token(ty: &Type) -> Result<TokenStream> {
                 }
             }
 
-            // No generics - return simple string literal
-            return Ok(quote! { #base_name.to_string() });
+            // No generics - use std::any::type_name for full path
+            return Ok(quote! { ::std::any::type_name::<#base_ident>().to_string() });
         }
     }
 

@@ -221,7 +221,6 @@ fn generate_singleton_provider(
     enhancer_traits: &EnhancerTraits,
 ) -> TokenStream {
     let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
-    let struct_token = struct_name.to_string();
     let enhancer_methods = generate_enhancer_methods(enhancer_traits);
 
     quote! {
@@ -240,11 +239,11 @@ fn generate_singleton_provider(
             }
 
             fn get_token(&self) -> String {
-                #struct_token.to_string()
+                ::std::any::type_name::<#struct_name>().to_string()
             }
 
             fn get_token_manager(&self) -> String {
-                #struct_token.to_string()
+                ::std::any::type_name::<#struct_name>().to_string()
             }
 
             fn get_scope(&self) -> ::toni::ProviderScope {
@@ -262,7 +261,6 @@ fn generate_request_provider(
     enhancer_traits: &EnhancerTraits,
 ) -> TokenStream {
     let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
-    let struct_token = struct_name.to_string();
     let enhancer_methods = generate_enhancer_methods(enhancer_traits);
 
     let (field_resolutions, field_names) = generate_field_resolutions(dependencies);
@@ -348,11 +346,11 @@ fn generate_request_provider(
             }
 
             fn get_token(&self) -> String {
-                #struct_token.to_string()
+                ::std::any::type_name::<#struct_name>().to_string()
             }
 
             fn get_token_manager(&self) -> String {
-                #struct_token.to_string()
+                ::std::any::type_name::<#struct_name>().to_string()
             }
 
             fn get_scope(&self) -> ::toni::ProviderScope {
@@ -370,7 +368,6 @@ fn generate_transient_provider(
     enhancer_traits: &EnhancerTraits,
 ) -> TokenStream {
     let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
-    let struct_token = struct_name.to_string();
     let enhancer_methods = generate_enhancer_methods(enhancer_traits);
 
     let (field_resolutions, field_names) = generate_field_resolutions(dependencies);
@@ -427,11 +424,11 @@ fn generate_transient_provider(
             }
 
             fn get_token(&self) -> String {
-                #struct_token.to_string()
+                ::std::any::type_name::<#struct_name>().to_string()
             }
 
             fn get_token_manager(&self) -> String {
-                #struct_token.to_string()
+                ::std::any::type_name::<#struct_name>().to_string()
             }
 
             fn get_scope(&self) -> ::toni::ProviderScope {
@@ -546,7 +543,6 @@ fn generate_manager(
 fn generate_singleton_manager(struct_name: &Ident, dependencies: &DependencyInfo) -> TokenStream {
     let manager_name = Ident::new(&format!("{}Manager", struct_name), struct_name.span());
     let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
-    let struct_token = struct_name.to_string();
 
     let (field_resolutions, field_names) = generate_manager_field_resolutions(dependencies);
 
@@ -645,10 +641,10 @@ fn generate_singleton_manager(struct_name: &Ident, dependencies: &DependencyInfo
                                      3. Pass request-specific data as method parameters instead of injecting\n\
                                      4. Extract data in controller (which has HttpRequest access) and pass it down\n\
                                      \n",
-                                    #struct_token,
+                                    ::std::any::type_name::<#struct_name>(),
                                     #dep_name,
                                     __lookup_token,
-                                    #struct_token,
+                                    ::std::any::type_name::<#struct_name>(),
                                     __lookup_token
                                 );
                             }
@@ -697,7 +693,7 @@ fn generate_singleton_manager(struct_name: &Ident, dependencies: &DependencyInfo
                 let provider_wrapper = #provider_name { instance };
 
                 providers.insert(
-                    #struct_token.to_string(),
+                    ::std::any::type_name::<#struct_name>().to_string(),
                     ::std::sync::Arc::new(Box::new(provider_wrapper) as Box<dyn ::toni::traits_helpers::ProviderTrait>)
                 );
 
@@ -705,11 +701,11 @@ fn generate_singleton_manager(struct_name: &Ident, dependencies: &DependencyInfo
             }
 
             fn get_name(&self) -> String {
-                #struct_token.to_string()
+                ::std::any::type_name::<#struct_name>().to_string()
             }
 
             fn get_token(&self) -> String {
-                #struct_token.to_string()
+                ::std::any::type_name::<#struct_name>().to_string()
             }
 
             fn get_dependencies(&self) -> Vec<String> {
@@ -722,7 +718,6 @@ fn generate_singleton_manager(struct_name: &Ident, dependencies: &DependencyInfo
 fn generate_request_manager(struct_name: &Ident, dependencies: &DependencyInfo) -> TokenStream {
     let manager_name = Ident::new(&format!("{}Manager", struct_name), struct_name.span());
     let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
-    let struct_token = struct_name.to_string();
 
     // Collect dependency tokens from both constructor params and #[inject] fields
     let dependency_tokens: Vec<_> = dependencies
@@ -763,7 +758,7 @@ fn generate_request_manager(struct_name: &Ident, dependencies: &DependencyInfo) 
                 };
 
                 providers.insert(
-                    #struct_token.to_string(),
+                    ::std::any::type_name::<#struct_name>().to_string(),
                     ::std::sync::Arc::new(Box::new(provider_wrapper) as Box<dyn ::toni::traits_helpers::ProviderTrait>)
                 );
 
@@ -771,11 +766,11 @@ fn generate_request_manager(struct_name: &Ident, dependencies: &DependencyInfo) 
             }
 
             fn get_name(&self) -> String {
-                #struct_token.to_string()
+                ::std::any::type_name::<#struct_name>().to_string()
             }
 
             fn get_token(&self) -> String {
-                #struct_token.to_string()
+                ::std::any::type_name::<#struct_name>().to_string()
             }
 
             fn get_dependencies(&self) -> Vec<String> {
@@ -788,7 +783,6 @@ fn generate_request_manager(struct_name: &Ident, dependencies: &DependencyInfo) 
 fn generate_transient_manager(struct_name: &Ident, dependencies: &DependencyInfo) -> TokenStream {
     let manager_name = Ident::new(&format!("{}Manager", struct_name), struct_name.span());
     let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
-    let struct_token = struct_name.to_string();
 
     // Collect dependency tokens from both constructor params and #[inject] fields
     let dependency_tokens: Vec<_> = dependencies
@@ -826,7 +820,7 @@ fn generate_transient_manager(struct_name: &Ident, dependencies: &DependencyInfo
                 };
 
                 providers.insert(
-                    #struct_token.to_string(),
+                    ::std::any::type_name::<#struct_name>().to_string(),
                     ::std::sync::Arc::new(Box::new(provider_wrapper) as Box<dyn ::toni::traits_helpers::ProviderTrait>)
                 );
 
@@ -834,11 +828,11 @@ fn generate_transient_manager(struct_name: &Ident, dependencies: &DependencyInfo
             }
 
             fn get_name(&self) -> String {
-                #struct_token.to_string()
+                ::std::any::type_name::<#struct_name>().to_string()
             }
 
             fn get_token(&self) -> String {
-                #struct_token.to_string()
+                ::std::any::type_name::<#struct_name>().to_string()
             }
 
             fn get_dependencies(&self) -> Vec<String> {
