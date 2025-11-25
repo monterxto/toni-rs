@@ -24,16 +24,18 @@ impl HttpRequest {
         &mut self.headers
     }
 
-    /// Get a specific header value by name (case-sensitive)
+    /// Get a specific header value by name (case-insensitive)
     pub fn header(&self, name: &str) -> Option<&str> {
+        let name_lower = name.to_lowercase();
         self.headers
             .iter()
-            .find(|(k, _)| k == name)
+            .find(|(k, _)| k.to_lowercase() == name_lower)
             .map(|(_, v)| v.as_str())
     }
 
-    /// Check if a header exists
+    /// Check if a header exists (case-insensitive)
     pub fn has_header(&self, name: &str) -> bool {
-        self.headers.iter().any(|(k, _)| k == name)
+        let name_lower = name.to_lowercase();
+        self.headers.iter().any(|(k, _)| k.to_lowercase() == name_lower)
     }
 }
