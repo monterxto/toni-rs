@@ -581,19 +581,49 @@ fn generate_singleton_manager(struct_name: &Ident, dependencies: &DependencyInfo
         }
     };
 
+    // Collect dependency tokens from both constructor params (if using constructor injection)
+    // and from #[inject] fields (if using field injection)
     let dependency_tokens: Vec<_> = dependencies
-        .fields
+        .constructor_params
         .iter()
-        .map(|(_, _full_type, lookup_token_expr)| lookup_token_expr)
+        .map(|(_, _, lookup_token_expr)| lookup_token_expr)
+        .chain(
+            dependencies
+                .fields
+                .iter()
+                .map(|(_, _, lookup_token_expr)| lookup_token_expr),
+        )
         .collect();
 
     // Generate scope validation code (Singleton cannot inject Request)
-    let scope_validation = if !dependencies.fields.is_empty() {
-        let dep_checks: Vec<_> = dependencies
-            .fields
-            .iter()
-            .map(|(field_name, _full_type, lookup_token_expr)| {
-                let field_str = field_name.to_string();
+    // Check both constructor params and #[inject] fields
+    let has_dependencies =
+        !dependencies.constructor_params.is_empty() || !dependencies.fields.is_empty();
+    let scope_validation = if has_dependencies {
+        // Combine constructor params and fields for validation
+        let constructor_dep_checks = dependencies.constructor_params.iter().map(
+            |(param_name, _param_type, lookup_token_expr)| {
+                let param_str = param_name.to_string();
+                (
+                    param_str,
+                    quote! { "constructor parameter" },
+                    lookup_token_expr,
+                )
+            },
+        );
+
+        let field_dep_checks =
+            dependencies
+                .fields
+                .iter()
+                .map(|(field_name, _full_type, lookup_token_expr)| {
+                    let field_str = field_name.to_string();
+                    (field_str, quote! { "field" }, lookup_token_expr)
+                });
+
+        let dep_checks: Vec<_> = constructor_dep_checks
+            .chain(field_dep_checks)
+            .map(|(dep_name, _dep_kind, lookup_token_expr)| {
                 quote! {
                     {
                         let __lookup_token = #lookup_token_expr;
@@ -604,7 +634,7 @@ fn generate_singleton_manager(struct_name: &Ident, dependencies: &DependencyInfo
                                     "\n❌ Scope validation error in provider '{}':\n\
                                      \n\
                                      Singleton-scoped providers cannot inject Request-scoped providers.\n\
-                                     Field '{}' depends on '{}' which has Request scope.\n\
+                                     Dependency '{}' depends on '{}' which has Request scope.\n\
                                      \n\
                                      This restriction prevents data leakage across requests. Singleton providers\n\
                                      live for the entire application lifetime and would capture stale request data.\n\
@@ -616,7 +646,7 @@ fn generate_singleton_manager(struct_name: &Ident, dependencies: &DependencyInfo
                                      4. Extract data in controller (which has HttpRequest access) and pass it down\n\
                                      \n",
                                     #struct_token,
-                                    #field_str,
+                                    #dep_name,
                                     __lookup_token,
                                     #struct_token,
                                     __lookup_token
@@ -694,10 +724,17 @@ fn generate_request_manager(struct_name: &Ident, dependencies: &DependencyInfo) 
     let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
     let struct_token = struct_name.to_string();
 
+    // Collect dependency tokens from both constructor params and #[inject] fields
     let dependency_tokens: Vec<_> = dependencies
-        .fields
+        .constructor_params
         .iter()
-        .map(|(_, _full_type, lookup_token_expr)| lookup_token_expr)
+        .map(|(_, _, lookup_token_expr)| lookup_token_expr)
+        .chain(
+            dependencies
+                .fields
+                .iter()
+                .map(|(_, _, lookup_token_expr)| lookup_token_expr),
+        )
         .collect();
 
     // No scope validation for Request providers - they can inject anything
@@ -753,10 +790,17 @@ fn generate_transient_manager(struct_name: &Ident, dependencies: &DependencyInfo
     let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
     let struct_token = struct_name.to_string();
 
+    // Collect dependency tokens from both constructor params and #[inject] fields
     let dependency_tokens: Vec<_> = dependencies
-        .fields
+        .constructor_params
         .iter()
-        .map(|(_, _full_type, lookup_token_expr)| lookup_token_expr)
+        .map(|(_, _, lookup_token_expr)| lookup_token_expr)
+        .chain(
+            dependencies
+                .fields
+                .iter()
+                .map(|(_, _, lookup_token_expr)| lookup_token_expr),
+        )
         .collect();
 
     quote! {

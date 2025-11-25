@@ -828,14 +828,22 @@ fn generate_singleton_manager(
     let manager_name = Ident::new(&format!("{}Manager", struct_name), struct_name.span());
     let struct_token = struct_name.to_string();
 
-    let dependency_token_exprs: Vec<&TokenStream> = dependencies
+    // Collect dependency tokens from both constructor params and #[inject] fields
+    let constructor_token_exprs: Vec<&TokenStream> = dependencies
+        .constructor_params
+        .iter()
+        .map(|(_, _, lookup_token_expr)| lookup_token_expr)
+        .collect();
+
+    let field_token_exprs: Vec<&TokenStream> = dependencies
         .fields
         .iter()
         .map(|(_, _full_type, lookup_token_expr)| lookup_token_expr)
         .collect();
 
-    let unique_tokens: Vec<_> = dependency_token_exprs
+    let unique_tokens: Vec<_> = constructor_token_exprs
         .iter()
+        .chain(field_token_exprs.iter())
         .map(|token_expr| token_expr)
         .collect();
 
@@ -1096,14 +1104,22 @@ fn generate_request_manager(
     let manager_name = Ident::new(&format!("{}Manager", struct_name), struct_name.span());
     let struct_token = struct_name.to_string();
 
-    let dependency_token_exprs: Vec<&TokenStream> = dependencies
+    // Collect dependency tokens from both constructor params and #[inject] fields
+    let constructor_token_exprs: Vec<&TokenStream> = dependencies
+        .constructor_params
+        .iter()
+        .map(|(_, _, lookup_token_expr)| lookup_token_expr)
+        .collect();
+
+    let field_token_exprs: Vec<&TokenStream> = dependencies
         .fields
         .iter()
         .map(|(_, _full_type, lookup_token_expr)| lookup_token_expr)
         .collect();
 
-    let unique_tokens: Vec<_> = dependency_token_exprs
+    let unique_tokens: Vec<_> = constructor_token_exprs
         .iter()
+        .chain(field_token_exprs.iter())
         .map(|token_expr| token_expr)
         .collect();
 
