@@ -68,19 +68,76 @@ pub fn delete(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
 }
 
+/// Attribute macro for applying guards to a route handler method or controller impl block
+///
+/// # Example - Method level
+/// ```rust
+/// #[use_guards(AuthGuard, RoleGuard)]
+/// #[get("/admin")]
+/// fn admin_panel(&self, req: HttpRequest) -> HttpResponse {
+///     // ...
+/// }
+/// ```
+///
+/// # Example - Controller level
+/// ```rust
+/// #[use_guards(AuthGuard)]  // Applies to ALL methods
+/// #[controller("/api")]
+/// impl MyController {
+///     // All methods get AuthGuard
+/// }
+/// ```
 #[proc_macro_attribute]
-pub fn use_guards(attr: TokenStream, item: TokenStream) -> TokenStream {
-    enhancer::use_guards::use_guards_impl(attr, item)
+pub fn use_guards(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
 }
 
+/// Attribute macro for applying interceptors to a route handler method or controller impl block
+///
+/// # Example - Method level
+/// ```rust
+/// #[use_interceptors(TimingInterceptor, LoggingInterceptor)]
+/// #[get("/users")]
+/// fn find_all(&self, req: HttpRequest) -> HttpResponse {
+///     // ...
+/// }
+/// ```
+///
+/// # Example - Controller level
+/// ```rust
+/// #[use_interceptors(LoggingInterceptor)]  // Applies to ALL methods
+/// #[controller("/api")]
+/// impl MyController {
+///     // All methods get LoggingInterceptor
+/// }
+/// ```
 #[proc_macro_attribute]
-pub fn use_interceptors(attr: TokenStream, item: TokenStream) -> TokenStream {
-    enhancer::use_interceptors::use_interceptors_impl(attr, item)
+pub fn use_interceptors(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
 }
 
+/// Attribute macro for applying pipes to a route handler method or controller impl block
+///
+/// # Example - Method level
+/// ```rust
+/// #[use_pipes(ValidationPipe, TransformPipe)]
+/// #[post("/users")]
+/// fn create_user(&self, req: HttpRequest) -> HttpResponse {
+///     // ...
+/// }
+/// ```
+///
+/// # Example - Controller level
+/// ```rust
+/// #[use_pipes(ValidationPipe)]  // Applies to ALL methods
+/// #[controller("/api")]
+/// impl MyController {
+///     // All methods get ValidationPipe
+/// }
+/// ```
 #[proc_macro_attribute]
-pub fn use_pipes(attr: TokenStream, item: TokenStream) -> TokenStream {
-    enhancer::use_pipes::use_pipes_impl(attr, item)
+pub fn use_pipes(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
 }
 
 // Helper derive to register #[inject] and #[default] as valid attributes
@@ -89,22 +146,6 @@ pub fn use_pipes(attr: TokenStream, item: TokenStream) -> TokenStream {
 pub fn derive_injectable(_input: TokenStream) -> TokenStream {
     // This derive does nothing - it just registers the attributes
     TokenStream::new()
-}
-
-// Register marker attributes used internally by enhancer macros
-#[proc_macro_attribute]
-pub fn toni_guards(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    item
-}
-
-#[proc_macro_attribute]
-pub fn toni_interceptors(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    item
-}
-
-#[proc_macro_attribute]
-pub fn toni_pipes(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    item
 }
 
 #[proc_macro_derive(Config, attributes(env, default, nested))]
