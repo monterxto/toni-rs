@@ -7,7 +7,8 @@ use syn::{Attribute, Error, Ident, Result, Token, punctuated::Punctuated, spanne
 fn is_enhancer(segment: &Ident) -> bool {
     matches!(
         segment.to_string().as_str(),
-        "toni_guards" | "toni_interceptors" | "toni_pipes"
+        "toni_guards" | "toni_interceptors" | "toni_pipes" |
+        "use_guards" | "use_interceptors" | "use_pipes"
     )
 }
 
@@ -41,7 +42,10 @@ pub fn create_enhancer_infos(
             .parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
             .map_err(|_| Error::new(attr.span(), "Invalid attribute format"))?;
 
-        let key = ident.to_string().replace("toni_", "");
+        // Normalize attribute names: strip "toni_" prefix and "use_" prefix
+        let key = ident.to_string()
+            .replace("toni_", "")
+            .replace("use_", "");
 
         for arg_ident in arg_idents {
             let token_expr = quote! { std::any::type_name::<#arg_ident>().to_string() };
@@ -60,7 +64,10 @@ pub fn create_enhancer_infos(
             .parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated)
             .map_err(|_| Error::new(attr.span(), "Invalid attribute format"))?;
 
-        let key = ident.to_string().replace("toni_", "");
+        // Normalize attribute names: strip "toni_" prefix and "use_" prefix
+        let key = ident.to_string()
+            .replace("toni_", "")
+            .replace("use_", "");
 
         for arg_ident in arg_idents {
             let token_expr = quote! { std::any::type_name::<#arg_ident>().to_string() };
