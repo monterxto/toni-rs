@@ -59,12 +59,15 @@ impl DependencyGraph {
 
         self.temp_mark.insert(token.clone(), true);
 
-        for dep_token in dependencies {
-            if let Some((dep_token, dependencies)) = providers
+        for dep_token in &dependencies {
+            // Find the provider that matches this dependency token
+            // The dep_token is the full type name (e.g., "module_or_crate::TypeName")
+            // and we need to find the provider whose token matches it
+            if let Some((provider_token, provider_deps)) = providers
                 .iter()
-                .find(|(token, _dependencies)| dep_token.contains(token))
+                .find(|(token, _)| token.as_str() == dep_token.as_str())
             {
-                self.visit_node(dep_token.clone(), dependencies.clone(), providers)?;
+                self.visit_node(provider_token.clone(), provider_deps.clone(), providers)?;
             }
         }
 
