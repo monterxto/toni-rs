@@ -44,6 +44,18 @@ impl Context {
         // }
     }
 
+    pub fn get_response_ref(&self) -> Option<&(dyn IntoResponse<Response = HttpResponse> + Send)> {
+        self.response.as_deref()
+    }
+
+    pub fn get_response_mut(&mut self) -> &mut (dyn IntoResponse<Response = HttpResponse> + Send) {
+        if let Some(response_box) = self.response.as_mut() {
+            return response_box.as_mut();
+        }
+
+        panic!("Response not set in context");
+    }
+
     pub fn abort(&mut self) {
         self.should_abort = true;
     }

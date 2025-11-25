@@ -136,6 +136,13 @@ impl InstanceWrapper {
         // Execute guards
         for guard in &guards {
             if !guard.can_activate(&context) {
+                // If guard rejects but hasn't set a response, return default 403 Forbidden
+                if context.get_response_ref().is_none() {
+                    let mut forbidden = HttpResponse::new();
+                    forbidden.status = 403;
+                    forbidden.body = Some(crate::Body::Text("Forbidden".to_string()));
+                    return forbidden;
+                }
                 return context.get_response().to_response();
             }
         }
