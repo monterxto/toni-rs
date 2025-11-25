@@ -108,6 +108,7 @@ impl<T: ModuleMetadata> ModuleMetadata for GlobalModuleWrapper<T> {
 pub struct MiddlewareConsumer {
     configurations: Vec<MiddlewareConfiguration>,
     current_middleware: Vec<Arc<dyn Middleware>>,
+    current_middleware_tokens: Vec<String>,
     current_includes: Vec<RoutePattern>,
     current_excludes: Vec<RoutePattern>,
 }
@@ -117,6 +118,7 @@ impl MiddlewareConsumer {
         Self {
             configurations: Vec::new(),
             current_middleware: Vec::new(),
+            current_middleware_tokens: Vec::new(),
             current_includes: Vec::new(),
             current_excludes: Vec::new(),
         }
@@ -147,11 +149,39 @@ impl MiddlewareConsumer {
         MiddlewareConfigProxy { consumer: self }
     }
 
+    /// Apply middleware using token-based DI resolution
+    ///
+    /// This allows middleware to be resolved from the DI container, enabling
+    /// middleware to have constructor dependencies injected.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Middleware with DI dependencies
+    /// consumer
+    ///     .apply_token::<RequestTrackingMiddleware>()
+    ///     .for_routes(vec!["/api/*"]);
+    ///
+    /// // Multiple DI middleware on same routes
+    /// consumer
+    ///     .apply_token::<LoggerMiddleware>()
+    ///     .apply_token_also::<AuthMiddleware>()
+    ///     .for_routes(vec!["/api/*"]);
+    /// ```
+    pub fn apply_token<M>(&mut self) -> MiddlewareConfigProxy<'_>
+    where
+        M: 'static,
+    {
+        let token = std::any::type_name::<M>().to_string();
+        self.current_middleware_tokens.push(token);
+        MiddlewareConfigProxy { consumer: self }
+    }
+
     /// Finalize current middleware configuration
     fn finalize_current(&mut self) {
-        if !self.current_middleware.is_empty() {
+        if !self.current_middleware.is_empty() || !self.current_middleware_tokens.is_empty() {
             let config = MiddlewareConfiguration {
                 middleware: std::mem::take(&mut self.current_middleware),
+                middleware_tokens: std::mem::take(&mut self.current_middleware_tokens),
                 include_patterns: std::mem::take(&mut self.current_includes),
                 exclude_patterns: std::mem::take(&mut self.current_excludes),
             };
@@ -207,6 +237,25 @@ impl<'a> MiddlewareConfigProxy<'a> {
         M: Middleware + 'static,
     {
         self.consumer.current_middleware.push(Arc::new(middleware));
+        self
+    }
+
+    /// Add another middleware via token-based DI resolution
+    ///
+    /// # Example
+    /// ```ignore
+    /// consumer
+    ///     .apply_token::<LoggerMiddleware>()
+    ///     .apply_token_also::<AuthMiddleware>()
+    ///     .apply_token_also::<CorsMiddleware>()
+    ///     .for_routes(vec!["/api/*"]);
+    /// ```
+    pub fn apply_token_also<M>(self) -> Self
+    where
+        M: 'static,
+    {
+        let token = std::any::type_name::<M>().to_string();
+        self.consumer.current_middleware_tokens.push(token);
         self
     }
 

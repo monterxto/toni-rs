@@ -1,7 +1,9 @@
+use anyhow::{Result, anyhow};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
 use crate::traits_helpers::middleware::{Middleware, MiddlewareConfiguration};
+use crate::traits_helpers::ProviderTrait;
 
 /// Middleware manager for organizing middleware by module
 ///
@@ -89,6 +91,53 @@ impl MiddlewareManager {
     /// Get reference to module middleware map
     pub fn get_module_middleware(&self) -> &FxHashMap<String, Vec<MiddlewareConfiguration>> {
         &self.module_middleware
+    }
+
+    /// Resolve middleware tokens to actual instances from DI container
+    ///
+    /// This is called after the DI container is built, allowing middleware
+    /// to have constructor dependencies injected.
+    ///
+    /// # Arguments
+    /// * `module_token` - The token of the module
+    /// * `providers` - Map of all provider instances in the module's DI container
+    ///
+    /// # Returns
+    /// Result indicating success or error with details about which middleware failed
+    pub fn resolve_middleware_tokens(
+        &mut self,
+        module_token: &str,
+        providers: &FxHashMap<String, Arc<Box<dyn ProviderTrait>>>,
+    ) -> Result<()> {
+        if let Some(configs) = self.module_middleware.get_mut(module_token) {
+            for config in configs {
+                // Resolve each token to a middleware instance
+                for token in &config.middleware_tokens {
+                    if let Some(provider_box) = providers.get(token) {
+                        // Call as_middleware() to get Arc<dyn Middleware>
+                        if let Some(middleware) = provider_box.as_middleware() {
+                            config.middleware.push(middleware);
+                        } else {
+                            return Err(anyhow!(
+                                "Provider '{}' was expected to be Middleware but as_middleware() returned None. \
+                                 Ensure the provider implements the Middleware trait.",
+                                token
+                            ));
+                        }
+                    } else {
+                        return Err(anyhow!(
+                            "Middleware provider '{}' not found in DI container for module '{}'. \
+                             Ensure it's registered in the module's providers.",
+                            token,
+                            module_token
+                        ));
+                    }
+                }
+                // Clear tokens after resolution
+                config.middleware_tokens.clear();
+            }
+        }
+        Ok(())
     }
 }
 

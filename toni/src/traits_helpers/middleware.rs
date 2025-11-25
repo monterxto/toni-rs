@@ -51,7 +51,10 @@ impl Middleware for FunctionalMiddleware {
 /// Middleware configuration for a module
 #[derive(Default)]
 pub struct MiddlewareConfiguration {
+    /// Direct middleware instances (backwards compatible)
     pub middleware: Vec<Arc<dyn Middleware>>,
+    /// Middleware tokens for DI resolution (resolved after DI container is built)
+    pub middleware_tokens: Vec<String>,
     pub include_patterns: Vec<RoutePattern>,
     pub exclude_patterns: Vec<RoutePattern>,
 }
