@@ -3,8 +3,8 @@ use std::{any::Any, sync::Arc};
 use async_trait::async_trait;
 use rustc_hash::FxHashMap;
 
-use crate::{ProviderScope, http_helpers::HttpRequest};
 use super::{Guard, Interceptor, Pipe, middleware::Middleware};
+use crate::{ProviderScope, http_helpers::HttpRequest};
 
 #[async_trait]
 pub trait ProviderTrait: Send + Sync {

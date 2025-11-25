@@ -185,16 +185,12 @@ impl ToniInstanceLoader {
         let mut container_mut = self.container.borrow_mut();
 
         // Get providers from the module to resolve enhancers
-        let providers = container_mut
-            .get_providers_instance(&module_token)?
-            .clone();
+        let providers = container_mut.get_providers_instance(&module_token)?.clone();
 
         for (_controller_instance_token, controller_instance) in controllers_instances {
             // Resolve enhancers from DI using tokens
-            let enhancer_metadata = self.resolve_enhancers_from_tokens(
-                &controller_instance,
-                &providers,
-            )?;
+            let enhancer_metadata =
+                self.resolve_enhancers_from_tokens(&controller_instance, &providers)?;
 
             container_mut.add_controller_instance(
                 &module_token,

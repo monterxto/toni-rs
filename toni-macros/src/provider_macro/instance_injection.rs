@@ -106,7 +106,8 @@ pub fn generate_instance_provider_system(
     // Detect which enhancer traits this struct implements
     let enhancer_traits = detect_enhancer_traits(impl_block);
 
-    let provider_wrapper = generate_provider_wrapper(struct_name, dependencies, scope, &enhancer_traits);
+    let provider_wrapper =
+        generate_provider_wrapper(struct_name, dependencies, scope, &enhancer_traits);
 
     let manager = generate_manager(struct_name, dependencies, scope);
 
@@ -160,8 +161,12 @@ fn generate_provider_wrapper(
 ) -> TokenStream {
     match scope {
         ProviderScope::Singleton => generate_singleton_provider(struct_name, enhancer_traits),
-        ProviderScope::Request => generate_request_provider(struct_name, dependencies, enhancer_traits),
-        ProviderScope::Transient => generate_transient_provider(struct_name, dependencies, enhancer_traits),
+        ProviderScope::Request => {
+            generate_request_provider(struct_name, dependencies, enhancer_traits)
+        }
+        ProviderScope::Transient => {
+            generate_transient_provider(struct_name, dependencies, enhancer_traits)
+        }
     }
 }
 
@@ -211,7 +216,10 @@ fn generate_enhancer_methods(traits: &EnhancerTraits) -> TokenStream {
     }
 }
 
-fn generate_singleton_provider(struct_name: &Ident, enhancer_traits: &EnhancerTraits) -> TokenStream {
+fn generate_singleton_provider(
+    struct_name: &Ident,
+    enhancer_traits: &EnhancerTraits,
+) -> TokenStream {
     let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
     let struct_token = struct_name.to_string();
     let enhancer_methods = generate_enhancer_methods(enhancer_traits);
@@ -248,7 +256,11 @@ fn generate_singleton_provider(struct_name: &Ident, enhancer_traits: &EnhancerTr
     }
 }
 
-fn generate_request_provider(struct_name: &Ident, dependencies: &DependencyInfo, enhancer_traits: &EnhancerTraits) -> TokenStream {
+fn generate_request_provider(
+    struct_name: &Ident,
+    dependencies: &DependencyInfo,
+    enhancer_traits: &EnhancerTraits,
+) -> TokenStream {
     let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
     let struct_token = struct_name.to_string();
     let enhancer_methods = generate_enhancer_methods(enhancer_traits);
@@ -352,7 +364,11 @@ fn generate_request_provider(struct_name: &Ident, dependencies: &DependencyInfo,
     }
 }
 
-fn generate_transient_provider(struct_name: &Ident, dependencies: &DependencyInfo, enhancer_traits: &EnhancerTraits) -> TokenStream {
+fn generate_transient_provider(
+    struct_name: &Ident,
+    dependencies: &DependencyInfo,
+    enhancer_traits: &EnhancerTraits,
+) -> TokenStream {
     let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
     let struct_token = struct_name.to_string();
     let enhancer_methods = generate_enhancer_methods(enhancer_traits);

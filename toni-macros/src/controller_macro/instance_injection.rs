@@ -57,11 +57,10 @@ use syn::{
 
 use crate::{
     controller_macro::extractor_params::{
-        generate_extractor_extractions, generate_extractor_method_call,
+        ExtractorKind, generate_extractor_extractions, generate_extractor_method_call,
         generate_extractor_static_method_call, get_extractor_params, has_self_receiver,
-        ExtractorKind,
     },
-    enhancer::enhancer::{create_enhancer_infos, EnhancerInfo},
+    enhancer::enhancer::{EnhancerInfo, create_enhancer_infos},
     markers_params::{
         extracts_marker_params::{
             extract_body_from_param, extract_path_param_from_param, extract_query_from_param,
@@ -333,8 +332,7 @@ fn generate_controller_wrapper(
     };
 
     // Get enhancer infos for DI resolution
-    let enhancer_infos =
-        create_enhancer_infos(controller_enhancers_attr, method_enhancers_attr)?;
+    let enhancer_infos = create_enhancer_infos(controller_enhancers_attr, method_enhancers_attr)?;
 
     // Check if we're using extractors or marker params
     let extractor_params = get_extractor_params(method)?;
@@ -353,7 +351,8 @@ fn generate_controller_wrapper(
         (method_call, extractions, None)
     } else {
         // Use legacy marker-based approach
-        let method_call = generate_method_call(method, &marker_params, struct_name, is_static_method)?;
+        let method_call =
+            generate_method_call(method, &marker_params, struct_name, is_static_method)?;
         let (extractions, body_dto) = generate_marker_params_extraction(&marker_params)?;
         (method_call, extractions, body_dto)
     };

@@ -214,7 +214,10 @@ struct ValidatedUserDto {
 impl ValidatedController {
     #[post("/users")]
     fn create_user(&self, Validated(Json(dto)): Validated<Json<ValidatedUserDto>>) -> ToniBody {
-        ToniBody::Text(format!("Created validated user: {} <{}>", dto.name, dto.email))
+        ToniBody::Text(format!(
+            "Created validated user: {} <{}>",
+            dto.name, dto.email
+        ))
     }
 }
 

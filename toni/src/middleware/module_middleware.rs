@@ -2,8 +2,8 @@ use anyhow::{Result, anyhow};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
-use crate::traits_helpers::middleware::{Middleware, MiddlewareConfiguration};
 use crate::traits_helpers::ProviderTrait;
+use crate::traits_helpers::middleware::{Middleware, MiddlewareConfiguration};
 
 /// Middleware manager for organizing middleware by module
 ///
