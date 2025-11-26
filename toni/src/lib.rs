@@ -27,6 +27,9 @@ pub use injector::InstanceWrapper;
 // Re-export built-in providers
 pub use request::{Request, RequestManager};
 
+// Re-export ModuleRef for dynamic DI resolution
+pub use injector::{ModuleRef, IntoToken};
+
 // Re-export dependencies used in macro-generated code
 // This allows users to only depend on `toni` without needing to add these explicitly
 pub use async_trait::async_trait;

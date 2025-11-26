@@ -13,3 +13,9 @@ pub use self::instance_wrapper::InstanceWrapper;
 
 mod context;
 pub use self::context::Context;
+
+pub mod token;
+pub use self::token::IntoToken;
+
+mod module_ref;
+pub use self::module_ref::ModuleRef;
