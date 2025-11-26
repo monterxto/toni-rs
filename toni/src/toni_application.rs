@@ -21,6 +21,90 @@ impl<H: HttpAdapter> ToniApplication<H> {
         self.routes_resolver.resolve(&mut self.http_adapter)?;
         Ok(())
     }
+
+    /// Get a provider instance from the DI container by its type (searches all modules)
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Get by type
+    /// let my_service = app.get::<MyService>().await?;
+    ///
+    /// // Get with strict mode (only search specific module)
+    /// let my_service = app.get_from::<MyService>("ModuleName").await?;
+    /// ```
+    pub async fn get<T: 'static>(&self) -> Result<T> {
+        let provider_token = std::any::type_name::<T>().to_string();
+
+        // Search all modules for the provider
+        let provider_instance = {
+            let container = self.routes_resolver.container.borrow();
+            let modules = container.get_modules_token();
+
+            let mut found_instance = None;
+            for module_token in modules {
+                if let Ok(Some(instance)) =
+                    container.get_provider_instance_by_token(&module_token, &provider_token)
+                {
+                    found_instance = Some(instance.clone());
+                    break;
+                }
+            }
+
+            found_instance.ok_or_else(|| {
+                anyhow::anyhow!("Provider '{}' not found in any module", provider_token)
+            })?
+        };
+
+        // Execute the provider to get the instance
+        let instance_any = provider_instance.execute(vec![], None).await;
+
+        // Downcast to the requested type
+        instance_any
+            .downcast::<T>()
+            .map(|boxed| *boxed)
+            .map_err(|_| {
+                anyhow::anyhow!(
+                    "Failed to downcast provider '{}' to requested type",
+                    provider_token
+                )
+            })
+    }
+
+    /// Get a provider instance from a specific module
+    ///
+    /// # Example
+    /// ```ignore
+    /// let my_service = app.get_from::<MyService>("ModuleName").await?;
+    /// ```
+    pub async fn get_from<T: 'static>(&self, module_token: &str) -> Result<T> {
+        let container = self.routes_resolver.container.borrow();
+        let provider_token = std::any::type_name::<T>().to_string();
+
+        let provider_instance = container
+            .get_provider_instance_by_token(&module_token.to_string(), &provider_token)?
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "Provider '{}' not found in module '{}'",
+                    provider_token,
+                    module_token,
+                )
+            })?;
+
+        // Execute the provider to get the instance
+        let instance_any = provider_instance.execute(vec![], None).await;
+
+        // Downcast to the requested type
+        instance_any
+            .downcast::<T>()
+            .map(|boxed| *boxed)
+            .map_err(|_| {
+                anyhow::anyhow!(
+                    "Failed to downcast provider '{}' to requested type",
+                    provider_token
+                )
+            })
+    }
+
     pub async fn listen(self, port: u16, hostname: &str) {
         if let Err(e) = self.http_adapter.listen(port, hostname).await {
             eprintln!("🚨 Failed to start server: {}", e);

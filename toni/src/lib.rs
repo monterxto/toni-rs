@@ -41,6 +41,11 @@ pub use extractors::FromRequest;
 // Re-export macros
 pub use toni_macros::*;
 
+// Re-export enhancer marker macros with better namespacing to avoid conflicts
+pub mod enhancer {
+    pub use toni_macros::{guard, interceptor, middleware, pipe};
+}
+
 pub use toni_factory::ToniFactory;
 
 #[cfg(test)]

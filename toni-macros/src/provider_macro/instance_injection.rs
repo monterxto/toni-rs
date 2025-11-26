@@ -56,7 +56,9 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Ident, ItemImpl, ItemStruct, Result};
 
-use crate::shared::{dependency_info::DependencyInfo, scope_parser::ProviderScope};
+use crate::shared::{
+    dependency_info::DependencyInfo, enhancer_markers::EnhancerMarkers, scope_parser::ProviderScope,
+};
 
 /// Detected enhancer traits that a struct implements
 #[derive(Debug, Clone, Default)]
@@ -67,11 +69,56 @@ pub struct EnhancerTraits {
     pub is_middleware: bool,
 }
 
-/// Detect which enhancer traits are implemented by looking at the impl block
-fn detect_enhancer_traits(impl_block: &ItemImpl) -> EnhancerTraits {
+/// Detect which enhancer traits are implemented
+///
+/// Supports three patterns:
+///
+/// 1. New syntax with marker on struct (field injection, no new() needed):
+///    #[injectable] #[guard] pub struct AdminGuard { #[inject] auth: AuthService }
+///
+/// 2. Old syntax with marker on impl (constructor injection with new()):
+///    #[middleware] #[injectable(pub struct Foo { ... })] impl Foo { fn new() }
+///
+/// 3. Trait impl detection (when injectable is on trait impl):
+///    #[injectable] impl Guard for AdminGuard { fn can_activate() }
+fn detect_enhancer_traits(struct_attrs: &ItemStruct, impl_block: &ItemImpl) -> EnhancerTraits {
     let mut traits = EnhancerTraits::default();
 
-    // Check if this is a trait impl block
+    // Check for marker attributes on the struct
+    let markers = EnhancerMarkers::detect(struct_attrs);
+    traits.is_guard = traits.is_guard || markers.is_guard;
+    traits.is_interceptor = traits.is_interceptor || markers.is_interceptor;
+    traits.is_middleware = traits.is_middleware || markers.is_middleware;
+    traits.is_pipe = traits.is_pipe || markers.is_pipe;
+
+    // Also check for marker attributes on the impl block
+    // This handles the pattern: #[middleware] #[injectable(pub struct Foo { ... })] impl Foo { ... }
+    for attr in &impl_block.attrs {
+        if let Some(ident) = attr.path().get_ident() {
+            let attr_name = ident.to_string();
+            match attr_name.as_str() {
+                "guard" => {
+                    eprintln!("    -> Detected GUARD marker!");
+                    traits.is_guard = true;
+                }
+                "interceptor" => {
+                    eprintln!("    -> Detected INTERCEPTOR marker!");
+                    traits.is_interceptor = true;
+                }
+                "middleware" => {
+                    eprintln!("    -> Detected MIDDLEWARE marker!");
+                    traits.is_middleware = true;
+                }
+                "pipe" => {
+                    eprintln!("    -> Detected PIPE marker!");
+                    traits.is_pipe = true;
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Also check if this is a trait impl block (backwards compatibility)
     if let Some((_, path, _)) = &impl_block.trait_ {
         let trait_name = path
             .segments
@@ -104,7 +151,8 @@ pub fn generate_instance_provider_system(
     let impl_def = impl_block.clone();
 
     // Detect which enhancer traits this struct implements
-    let enhancer_traits = detect_enhancer_traits(impl_block);
+    // Checks both marker attributes (#[guard], etc.) and trait impl blocks
+    let enhancer_traits = detect_enhancer_traits(struct_attrs, impl_block);
 
     let provider_wrapper =
         generate_provider_wrapper(struct_name, dependencies, scope, &enhancer_traits);

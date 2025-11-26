@@ -4,7 +4,7 @@ use std::{cell::RefCell, rc::Rc};
 use crate::{http_adapter::HttpAdapter, injector::ToniContainer};
 
 pub struct RoutesResolver {
-    container: Rc<RefCell<ToniContainer>>,
+    pub(crate) container: Rc<RefCell<ToniContainer>>,
 }
 
 impl RoutesResolver {
