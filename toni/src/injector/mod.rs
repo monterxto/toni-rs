@@ -19,3 +19,6 @@ pub use self::token::IntoToken;
 
 mod module_ref;
 pub use self::module_ref::ModuleRef;
+
+mod module_ref_provider;
+pub use self::module_ref_provider::ModuleRefProvider;

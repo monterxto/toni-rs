@@ -22,6 +22,9 @@ impl ToniInstanceLoader {
     }
 
     pub async fn create_instances_of_dependencies(&self) -> Result<()> {
+        // Set the container context for ModuleRef to access
+        super::module_ref_provider::set_container_context(self.container.clone());
+
         let modules_order = self.container.borrow().get_ordered_modules_token();
 
         // Track which modules are pending (deferred due to unready global providers)

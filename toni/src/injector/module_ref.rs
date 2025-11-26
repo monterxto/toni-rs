@@ -1,7 +1,6 @@
 use anyhow::Result;
-use std::{cell::RefCell, rc::Rc};
 
-use super::{token::IntoToken, ToniContainer};
+use super::token::IntoToken;
 
 /// Provides runtime dependency resolution within a module context
 ///
@@ -26,17 +25,14 @@ use super::{token::IntoToken, ToniContainer};
 ///     }
 /// }
 /// ```
+#[derive(Clone)]
 pub struct ModuleRef {
-    container: Rc<RefCell<ToniContainer>>,
     module_token: String,
 }
 
 impl ModuleRef {
-    pub(crate) fn new(container: Rc<RefCell<ToniContainer>>, module_token: String) -> Self {
-        Self {
-            container,
-            module_token,
-        }
+    pub(crate) fn new(module_token: String) -> Self {
+        Self { module_token }
     }
 
     /// Get a provider instance by its type
@@ -114,12 +110,14 @@ impl<'a, T: 'static> ModuleRefQuery<'a, T> {
 
     /// Execute the query and return the provider instance
     pub async fn execute(self) -> Result<T> {
-        let provider_instance = {
-            let container = self.module_ref.container.borrow();
+        use super::module_ref_provider::with_container;
 
-            if self.strict {
+        let provider_instance = with_container(|container| {
+            let container_ref = container.borrow();
+
+            let provider_instance = if self.strict {
                 // Strict mode: only search current module
-                container
+                container_ref
                     .get_provider_instance_by_token(&self.module_ref.module_token, &self.token)?
                     .cloned()
                     .ok_or_else(|| {
@@ -132,18 +130,18 @@ impl<'a, T: 'static> ModuleRefQuery<'a, T> {
             } else {
                 // Non-strict mode: search current module first, then global
                 // Try current module first
-                if let Ok(Some(instance)) =
-                    container.get_provider_instance_by_token(&self.module_ref.module_token, &self.token)
+                if let Ok(Some(instance)) = container_ref
+                    .get_provider_instance_by_token(&self.module_ref.module_token, &self.token)
                 {
                     instance.clone()
                 } else {
                     // Fallback to global search
-                    let modules = container.get_modules_token();
+                    let modules = container_ref.get_modules_token();
                     let mut found_instance = None;
 
                     for module_token in modules {
                         if let Ok(Some(instance)) =
-                            container.get_provider_instance_by_token(&module_token, &self.token)
+                            container_ref.get_provider_instance_by_token(&module_token, &self.token)
                         {
                             found_instance = Some(instance.clone());
                             break;
@@ -154,13 +152,15 @@ impl<'a, T: 'static> ModuleRefQuery<'a, T> {
                         anyhow::anyhow!("Provider '{}' not found in any module", self.token)
                     })?
                 }
-            }
-        };
+            };
 
-        // Execute the provider (respects scope: singleton cached, request/transient creates new)
-        let instance_any = provider_instance.execute(vec![], None).await;
+            Ok(provider_instance)
+        })?;
 
-        instance_any
+        // Execute the provider to get the instance
+        provider_instance
+            .execute(vec![], None)
+            .await
             .downcast::<T>()
             .map(|boxed| *boxed)
             .map_err(|_| {

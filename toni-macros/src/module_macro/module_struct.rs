@@ -198,8 +198,65 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
     // Debug: uncomment to see what was extracted
     // eprintln!("configure_middleware_impl (len={}): {}", configure_middleware_impl.to_string().len(), configure_middleware_impl);
 
+    // Generate a unique ModuleRefManager for this module
+    let module_ref_manager_name = Ident::new(
+        &format!("__ToniModuleRefManager_{}", input_name),
+        Span::call_site()
+    );
+
     let generated = quote! {
         pub struct #input_ident;
+
+        // Generate unique ModuleRefManager for this module
+        pub struct #module_ref_manager_name {
+            module_token: String,
+        }
+
+        impl #module_ref_manager_name {
+            fn new() -> Self {
+                Self {
+                    module_token: #input_name.to_string(),
+                }
+            }
+        }
+
+        #[::toni::async_trait]
+        impl ::toni::traits_helpers::Provider for #module_ref_manager_name {
+            async fn get_all_providers(
+                &self,
+                _dependencies: &::toni::FxHashMap<
+                    String,
+                    ::std::sync::Arc<Box<dyn ::toni::traits_helpers::ProviderTrait>>
+                >,
+            ) -> ::toni::FxHashMap<
+                String,
+                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::ProviderTrait>>
+            > {
+                // Return the pre-configured ModuleRefManager
+                let mut providers = ::toni::FxHashMap::default();
+               // NOTE: The container is accessed via thread-local storage when ModuleRef methods are called
+               // The module token is used to scope provider resolution to this module
+                providers.insert(
+                    ::std::any::type_name::<::toni::ModuleRef>().to_string(),
+                    ::std::sync::Arc::new(Box::new(
+                        ::toni::injector::ModuleRefProvider::new(self.module_token.clone())
+                    ) as Box<dyn ::toni::traits_helpers::ProviderTrait>)
+                );
+                providers
+            }
+
+            fn get_name(&self) -> String {
+                ::std::any::type_name::<::toni::ModuleRef>().to_string()
+            }
+
+            fn get_token(&self) -> String {
+                ::std::any::type_name::<::toni::ModuleRef>().to_string()
+            }
+
+            fn get_dependencies(&self) -> Vec<String> {
+                vec![]
+            }
+        }
 
         impl #input_ident {
             pub fn module_definition() -> ::toni::module_helpers::module_enum::ModuleDefinition {
@@ -228,9 +285,12 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
                 Some(vec![#(Box::new(#controllers)),*])
             }
             fn providers(&self) -> Option<Vec<Box<dyn ::toni::traits_helpers::Provider>>> {
-                Some(vec![
+                let mut providers_vec: Vec<Box<dyn ::toni::traits_helpers::Provider>> = vec![
                     #(Box::new(#providers)),*
-                ])
+                ];
+                // Auto-inject ModuleRefManager for this module
+                providers_vec.push(Box::new(#module_ref_manager_name::new()));
+                Some(providers_vec)
             }
             fn exports(&self) -> Option<Vec<String>> {
                 Some(vec![#(#exports_string.to_string()),*])
