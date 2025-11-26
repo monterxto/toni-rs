@@ -1,11 +1,6 @@
 use std::{any::Any, cell::RefCell, rc::Rc};
 
-use crate::{
-    async_trait,
-    http_helpers::HttpRequest,
-    traits_helpers::ProviderTrait,
-    ProviderScope,
-};
+use crate::{ProviderScope, async_trait, http_helpers::HttpRequest, traits_helpers::ProviderTrait};
 
 use super::{ModuleRef, ToniContainer};
 
@@ -29,9 +24,9 @@ where
 {
     CONTAINER_CONTEXT.with(|ctx| {
         let container_opt = ctx.borrow();
-        let container = container_opt
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("Container context not set - this is a framework bug"))?;
+        let container = container_opt.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("Container context not set - this is a framework bug")
+        })?;
         f(container)
     })
 }

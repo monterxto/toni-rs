@@ -201,7 +201,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
     // Generate a unique ModuleRefManager for this module
     let module_ref_manager_name = Ident::new(
         &format!("__ToniModuleRefManager_{}", input_name),
-        Span::call_site()
+        Span::call_site(),
     );
 
     let generated = quote! {

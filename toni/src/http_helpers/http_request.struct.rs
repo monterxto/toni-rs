@@ -36,6 +36,8 @@ impl HttpRequest {
     /// Check if a header exists (case-insensitive)
     pub fn has_header(&self, name: &str) -> bool {
         let name_lower = name.to_lowercase();
-        self.headers.iter().any(|(k, _)| k.to_lowercase() == name_lower)
+        self.headers
+            .iter()
+            .any(|(k, _)| k.to_lowercase() == name_lower)
     }
 }

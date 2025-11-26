@@ -28,7 +28,7 @@ pub use injector::InstanceWrapper;
 pub use request::{Request, RequestManager};
 
 // Re-export ModuleRef for dynamic DI resolution
-pub use injector::{ModuleRef, IntoToken};
+pub use injector::{IntoToken, ModuleRef};
 
 // Re-export dependencies used in macro-generated code
 // This allows users to only depend on `toni` without needing to add these explicitly
