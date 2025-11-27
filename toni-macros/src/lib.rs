@@ -68,73 +68,171 @@ pub fn delete(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
 }
 
-/// Attribute macro for applying guards to a route handler method or controller impl block
+/// Applies guards to route handlers or controllers for request authorization.
 ///
-/// # Example - Method level
-/// ```rust
-/// #[use_guards(AuthGuard, RoleGuard)]
+/// Guards execute before the route handler and can block requests based on custom logic.
+/// Multiple guards can be specified and execute in the order listed.
+///
+/// # Syntax
+///
+/// - **Type name only** - Requires the guard to be registered in DI container:
+///   ```rust,ignore
+///   #[use_guards(AuthGuard)]
+///   ```
+///
+/// - **Struct literal** - Directly instantiates the guard:
+///   ```rust,ignore
+///   #[use_guards(SimpleGuard{})]
+///   #[use_guards(AdminGuard { role: "admin" })]
+///   ```
+///
+/// - **Constructor call** - Directly calls the constructor:
+///   ```rust,ignore
+///   #[use_guards(RoleGuard::new("admin"))]
+///   ```
+///
+/// # Examples
+///
+/// **Method-level guards:**
+/// ```rust,ignore
+/// #[use_guards(AuthGuard{}, RoleGuard::new("admin"))]
 /// #[get("/admin")]
 /// fn admin_panel(&self, req: HttpRequest) -> HttpResponse {
-///     // ...
+///     // Only accessible to authenticated admin users
 /// }
 /// ```
 ///
-/// # Example - Controller level
-/// ```rust
-/// #[use_guards(AuthGuard)]  // Applies to ALL methods
+/// **Controller-level guards (applies to all methods):**
+/// ```rust,ignore
+/// #[use_guards(AuthGuard{})]
 /// #[controller("/api")]
 /// impl MyController {
-///     // All methods get AuthGuard
+///     // All methods require authentication
 /// }
 /// ```
+///
+/// # Execution Order
+///
+/// Guards execute in hierarchical order:
+/// 1. Global guards (registered via `ToniFactory`)
+/// 2. Controller-level guards
+/// 3. Method-level guards
+///
+/// Within each level, guards execute in the order specified.
 #[proc_macro_attribute]
 pub fn use_guards(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
 }
 
-/// Attribute macro for applying interceptors to a route handler method or controller impl block
+/// Applies interceptors to route handlers or controllers for cross-cutting concerns.
 ///
-/// # Example - Method level
-/// ```rust
-/// #[use_interceptors(TimingInterceptor, LoggingInterceptor)]
+/// Interceptors wrap request/response handling, allowing you to execute logic before and after
+/// the route handler. Common uses include logging, timing, transformation, and caching.
+///
+/// # Syntax
+///
+/// - **Type name only** - Requires the interceptor to be registered in DI container:
+///   ```rust,ignore
+///   #[use_interceptors(LoggingInterceptor)]
+///   ```
+///
+/// - **Struct literal** - Directly instantiates the interceptor:
+///   ```rust,ignore
+///   #[use_interceptors(TimingInterceptor{})]
+///   #[use_interceptors(CacheInterceptor { ttl: Duration::from_secs(60) })]
+///   ```
+///
+/// - **Constructor call** - Directly calls the constructor:
+///   ```rust,ignore
+///   #[use_interceptors(CacheInterceptor::new(Duration::from_secs(60)))]
+///   ```
+///
+/// # Examples
+///
+/// **Method-level interceptors:**
+/// ```rust,ignore
+/// #[use_interceptors(TimingInterceptor{}, LoggingInterceptor{})]
 /// #[get("/users")]
 /// fn find_all(&self, req: HttpRequest) -> HttpResponse {
-///     // ...
+///     // Request is logged and timed
 /// }
 /// ```
 ///
-/// # Example - Controller level
-/// ```rust
-/// #[use_interceptors(LoggingInterceptor)]  // Applies to ALL methods
+/// **Controller-level interceptors (applies to all methods):**
+/// ```rust,ignore
+/// #[use_interceptors(LoggingInterceptor{})]
 /// #[controller("/api")]
 /// impl MyController {
-///     // All methods get LoggingInterceptor
+///     // All methods are logged
 /// }
 /// ```
+///
+/// # Execution Order
+///
+/// Interceptors execute in hierarchical order with nested "before" and "after" phases:
+/// 1. Global interceptors (registered via `ToniFactory`)
+/// 2. Controller-level interceptors
+/// 3. Method-level interceptors
+/// 4. Route handler executes
+/// 5. Method-level interceptors (after phase, reverse order)
+/// 6. Controller-level interceptors (after phase, reverse order)
+/// 7. Global interceptors (after phase, reverse order)
 #[proc_macro_attribute]
 pub fn use_interceptors(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
 }
 
-/// Attribute macro for applying pipes to a route handler method or controller impl block
+/// Applies pipes to route handlers or controllers for data transformation and validation.
 ///
-/// # Example - Method level
-/// ```rust
-/// #[use_pipes(ValidationPipe, TransformPipe)]
+/// Pipes process request data before it reaches the route handler. Common uses include
+/// validation, transformation, sanitization, and parsing.
+///
+/// # Syntax
+///
+/// - **Type name only** - Requires the pipe to be registered in DI container:
+///   ```rust,ignore
+///   #[use_pipes(ValidationPipe)]
+///   ```
+///
+/// - **Struct literal** - Directly instantiates the pipe:
+///   ```rust,ignore
+///   #[use_pipes(TransformPipe{})]
+///   #[use_pipes(ValidationPipe { strict: true })]
+///   ```
+///
+/// - **Constructor call** - Directly calls the constructor:
+///   ```rust,ignore
+///   #[use_pipes(ValidationPipe::new(strict_mode))]
+///   ```
+///
+/// # Examples
+///
+/// **Method-level pipes:**
+/// ```rust,ignore
+/// #[use_pipes(ValidationPipe{}, TransformPipe{})]
 /// #[post("/users")]
 /// fn create_user(&self, req: HttpRequest) -> HttpResponse {
-///     // ...
+///     // Request data is validated and transformed
 /// }
 /// ```
 ///
-/// # Example - Controller level
-/// ```rust
-/// #[use_pipes(ValidationPipe)]  // Applies to ALL methods
+/// **Controller-level pipes (applies to all methods):**
+/// ```rust,ignore
+/// #[use_pipes(ValidationPipe{})]
 /// #[controller("/api")]
 /// impl MyController {
-///     // All methods get ValidationPipe
+///     // All methods validate request data
 /// }
 /// ```
+///
+/// # Execution Order
+///
+/// Pipes execute in hierarchical order:
+/// 1. Global pipes (registered via `ToniFactory`)
+/// 2. Controller-level pipes
+/// 3. Method-level pipes
+///
+/// Within each level, pipes execute in the order specified.
 #[proc_macro_attribute]
 pub fn use_pipes(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item

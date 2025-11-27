@@ -191,7 +191,8 @@ impl ToniInstanceLoader {
         let providers = container_mut.get_providers_instance(&module_token)?.clone();
 
         for (_controller_instance_token, controller_instance) in controllers_instances {
-            // Resolve enhancers from DI using tokens
+            // Resolve enhancers from DI using tokens (supports DI)
+            // Falls back to direct instantiation for enhancers not in DI (no DI)
             let enhancer_metadata =
                 self.resolve_enhancers_from_tokens(&controller_instance, &providers)?;
 
@@ -204,20 +205,31 @@ impl ToniInstanceLoader {
         Ok(())
     }
 
-    /// Resolve enhancers from DI container using tokens
+    /// Resolve enhancers from both DI container and direct instantiation
+    ///
+    /// Enhancers can be provided in two ways:
+    /// 1. **DI-based** (`#[use_guards(AuthGuard)]`):
+    ///    - Generates token → looked up in DI container
+    ///    - Must be registered in module providers
+    ///    - Supports dependency injection
+    ///
+    /// 2. **Direct instantiation** (`#[use_guards(MyGuard{})]` or `#[use_guards(MyGuard::new())]`):
+    ///    - Generates instance expression → directly instantiated
+    ///    - No DI lookup performed
+    ///    - No dependency injection support
+    ///
+    /// Both types are collected and combined in order:
+    /// - First: DI-resolved enhancers (from tokens)
+    /// - Then: Directly instantiated enhancers (from instances)
     fn resolve_enhancers_from_tokens(
         &self,
         controller: &Arc<Box<dyn ControllerTrait>>,
         providers: &FxHashMap<String, Arc<Box<dyn ProviderTrait>>>,
     ) -> Result<EnhancerMetadata> {
+        // Resolve guards from DI (type name syntax: AuthGuard)
         let mut guards = Vec::new();
-        let mut interceptors = Vec::new();
-        let mut pipes = Vec::new();
-
-        // Resolve guards from tokens
         for token in controller.get_guard_tokens() {
             if let Some(provider_box) = providers.get(&token) {
-                // Call as_guard() on the provider - returns Some if it's actually a Guard
                 if let Some(guard) = provider_box.as_guard() {
                     guards.push(guard);
                 } else {
@@ -230,13 +242,17 @@ impl ToniInstanceLoader {
             } else {
                 return Err(anyhow!(
                     "Guard provider '{}' not found in DI container. \
-                     Ensure it's registered in the module's providers.",
+                     Did you forget to add it to the module's providers? \
+                     Or use direct instantiation with '{{}}' or '::new()' instead.",
                     token
                 ));
             }
         }
+        // Add directly instantiated guards (struct literal or constructor syntax: MyGuard{} or MyGuard::new())
+        guards.extend(controller.get_guards());
 
-        // Resolve interceptors from tokens
+        // Resolve interceptors from DI (type name syntax: LoggingInterceptor)
+        let mut interceptors = Vec::new();
         for token in controller.get_interceptor_tokens() {
             if let Some(provider_box) = providers.get(&token) {
                 if let Some(interceptor) = provider_box.as_interceptor() {
@@ -251,13 +267,17 @@ impl ToniInstanceLoader {
             } else {
                 return Err(anyhow!(
                     "Interceptor provider '{}' not found in DI container. \
-                     Ensure it's registered in the module's providers.",
+                     Did you forget to add it to the module's providers? \
+                     Or use direct instantiation with '{{}}' or '::new()' instead.",
                     token
                 ));
             }
         }
+        // Add directly instantiated interceptors (struct literal or constructor syntax)
+        interceptors.extend(controller.get_interceptors());
 
-        // Resolve pipes from tokens
+        // Resolve pipes from DI (type name syntax: ValidationPipe)
+        let mut pipes = Vec::new();
         for token in controller.get_pipe_tokens() {
             if let Some(provider_box) = providers.get(&token) {
                 if let Some(pipe) = provider_box.as_pipe() {
@@ -272,11 +292,14 @@ impl ToniInstanceLoader {
             } else {
                 return Err(anyhow!(
                     "Pipe provider '{}' not found in DI container. \
-                     Ensure it's registered in the module's providers.",
+                     Did you forget to add it to the module's providers? \
+                     Or use direct instantiation with '{{}}' or '::new()' instead.",
                     token
                 ));
             }
         }
+        // Add directly instantiated pipes (struct literal or constructor syntax)
+        pipes.extend(controller.get_pipes());
 
         Ok(EnhancerMetadata {
             guards,

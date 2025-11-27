@@ -553,10 +553,12 @@ fn generate_singleton_controller_wrapper(
     let binding = Vec::new();
 
     // Generate enhancer token expressions for DI resolution
+    // Filter out empty tokens (from direct instantiation syntax)
     let guard_tokens: Vec<_> = enhancer_infos
         .get("guards")
         .unwrap_or(&binding)
         .iter()
+        .filter(|info| !info.token_expr.is_empty())
         .map(|info| &info.token_expr)
         .collect();
 
@@ -564,6 +566,7 @@ fn generate_singleton_controller_wrapper(
         .get("interceptors")
         .unwrap_or(&binding)
         .iter()
+        .filter(|info| !info.token_expr.is_empty())
         .map(|info| &info.token_expr)
         .collect();
 
@@ -571,7 +574,34 @@ fn generate_singleton_controller_wrapper(
         .get("pipes")
         .unwrap_or(&binding)
         .iter()
+        .filter(|info| !info.token_expr.is_empty())
         .map(|info| &info.token_expr)
+        .collect();
+
+    // Generate direct instantiation expressions for fallback (when not in DI)
+    // Only include enhancers with explicit constructor calls (instance_expr is non-empty)
+    let guard_instances: Vec<_> = enhancer_infos
+        .get("guards")
+        .unwrap_or(&binding)
+        .iter()
+        .filter(|info| !info.instance_expr.is_empty())
+        .map(|info| &info.instance_expr)
+        .collect();
+
+    let interceptor_instances: Vec<_> = enhancer_infos
+        .get("interceptors")
+        .unwrap_or(&binding)
+        .iter()
+        .filter(|info| !info.instance_expr.is_empty())
+        .map(|info| &info.instance_expr)
+        .collect();
+
+    let pipe_instances: Vec<_> = enhancer_infos
+        .get("pipes")
+        .unwrap_or(&binding)
+        .iter()
+        .filter(|info| !info.instance_expr.is_empty())
+        .map(|info| &info.instance_expr)
         .collect();
 
     let body_dto_stream = if let Some(token_stream) = body_dto_token_stream {
@@ -641,15 +671,18 @@ fn generate_singleton_controller_wrapper(
             }
 
             fn get_guards(&self) -> Vec<::std::sync::Arc<dyn ::toni::traits_helpers::Guard>> {
-                vec![]  // Enhancers resolved from DI via tokens
+                // Direct instantiation fallback for enhancers not in DI
+                vec![#(::std::sync::Arc::new(#guard_instances)),*]
             }
 
             fn get_interceptors(&self) -> Vec<::std::sync::Arc<dyn ::toni::traits_helpers::Interceptor>> {
-                vec![]  // Enhancers resolved from DI via tokens
+                // Direct instantiation fallback for enhancers not in DI
+                vec![#(::std::sync::Arc::new(#interceptor_instances)),*]
             }
 
             fn get_pipes(&self) -> Vec<::std::sync::Arc<dyn ::toni::traits_helpers::Pipe>> {
-                vec![]  // Enhancers resolved from DI via tokens
+                // Direct instantiation fallback for enhancers not in DI
+                vec![#(::std::sync::Arc::new(#pipe_instances)),*]
             }
 
             fn get_guard_tokens(&self) -> Vec<String> {
@@ -688,10 +721,12 @@ fn generate_request_controller_wrapper(
     let binding = Vec::new();
 
     // Generate enhancer token expressions for DI resolution
+    // Filter out empty tokens (from direct instantiation syntax)
     let guard_tokens: Vec<_> = enhancer_infos
         .get("guards")
         .unwrap_or(&binding)
         .iter()
+        .filter(|info| !info.token_expr.is_empty())
         .map(|info| &info.token_expr)
         .collect();
 
@@ -699,6 +734,7 @@ fn generate_request_controller_wrapper(
         .get("interceptors")
         .unwrap_or(&binding)
         .iter()
+        .filter(|info| !info.token_expr.is_empty())
         .map(|info| &info.token_expr)
         .collect();
 
@@ -706,7 +742,34 @@ fn generate_request_controller_wrapper(
         .get("pipes")
         .unwrap_or(&binding)
         .iter()
+        .filter(|info| !info.token_expr.is_empty())
         .map(|info| &info.token_expr)
+        .collect();
+
+    // Generate direct instantiation expressions for fallback (when not in DI)
+    // Only include enhancers with explicit constructor calls (instance_expr is non-empty)
+    let guard_instances: Vec<_> = enhancer_infos
+        .get("guards")
+        .unwrap_or(&binding)
+        .iter()
+        .filter(|info| !info.instance_expr.is_empty())
+        .map(|info| &info.instance_expr)
+        .collect();
+
+    let interceptor_instances: Vec<_> = enhancer_infos
+        .get("interceptors")
+        .unwrap_or(&binding)
+        .iter()
+        .filter(|info| !info.instance_expr.is_empty())
+        .map(|info| &info.instance_expr)
+        .collect();
+
+    let pipe_instances: Vec<_> = enhancer_infos
+        .get("pipes")
+        .unwrap_or(&binding)
+        .iter()
+        .filter(|info| !info.instance_expr.is_empty())
+        .map(|info| &info.instance_expr)
         .collect();
 
     let body_dto_stream = if let Some(token_stream) = body_dto_token_stream {
@@ -761,15 +824,18 @@ fn generate_request_controller_wrapper(
             }
 
             fn get_guards(&self) -> Vec<::std::sync::Arc<dyn ::toni::traits_helpers::Guard>> {
-                vec![]  // Enhancers resolved from DI via tokens
+                // Direct instantiation fallback for enhancers not in DI
+                vec![#(::std::sync::Arc::new(#guard_instances)),*]
             }
 
             fn get_interceptors(&self) -> Vec<::std::sync::Arc<dyn ::toni::traits_helpers::Interceptor>> {
-                vec![]  // Enhancers resolved from DI via tokens
+                // Direct instantiation fallback for enhancers not in DI
+                vec![#(::std::sync::Arc::new(#interceptor_instances)),*]
             }
 
             fn get_pipes(&self) -> Vec<::std::sync::Arc<dyn ::toni::traits_helpers::Pipe>> {
-                vec![]  // Enhancers resolved from DI via tokens
+                // Direct instantiation fallback for enhancers not in DI
+                vec![#(::std::sync::Arc::new(#pipe_instances)),*]
             }
 
             fn get_guard_tokens(&self) -> Vec<String> {
