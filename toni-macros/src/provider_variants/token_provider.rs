@@ -185,8 +185,9 @@ pub fn handle_provider_token(input: TokenStream) -> Result<TokenStream> {
                 }
 
                 fn get_dependencies(&self) -> Vec<String> {
-                    // No dependencies - we create the provider directly
-                    Vec::new()
+                    // Delegate to the type's manager to get its dependencies
+                    let type_manager = #manager_path {};
+                    type_manager.get_dependencies()
                 }
             }
 
