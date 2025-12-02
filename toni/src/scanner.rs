@@ -111,6 +111,30 @@ impl ToniDependenciesScanner {
 
         if let Some(providers) = providers {
             for provider in providers {
+                let provider_token = provider.get_token();
+
+                // Detect APP_* token providers and register them separately
+                match provider_token.as_str() {
+                    "__TONI_APP_GUARD__" => {
+                        let provider_type_token = provider.get_name();
+                        container
+                            .register_app_guard_provider(module_token.clone(), provider_type_token);
+                    }
+                    "__TONI_APP_INTERCEPTOR__" => {
+                        let provider_type_token = provider.get_name();
+                        container.register_app_interceptor_provider(
+                            module_token.clone(),
+                            provider_type_token,
+                        );
+                    }
+                    "__TONI_APP_PIPE__" => {
+                        let provider_type_token = provider.get_name();
+                        container
+                            .register_app_pipe_provider(module_token.clone(), provider_type_token);
+                    }
+                    _ => {}
+                }
+
                 container.add_provider(&module_token, provider)?;
             }
         };

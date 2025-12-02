@@ -27,8 +27,9 @@ impl ToniInstanceLoader {
 
         let modules_order = self.container.borrow().get_ordered_modules_token();
 
+        // PHASE 1: Create provider instances for all modules (with deferred retry logic)
         // Track which modules are pending (deferred due to unready global providers)
-        let mut pending_modules: Vec<String> = modules_order;
+        let mut pending_modules: Vec<String> = modules_order.clone();
         let total_modules = pending_modules.len();
         let mut max_iterations = total_modules * 2; // Prevent infinite loops
 
@@ -38,9 +39,12 @@ impl ToniInstanceLoader {
             let mut deferred_modules = Vec::new();
 
             for module_token in &pending_modules {
-                match self.create_module_instances(module_token.clone()).await {
+                match self
+                    .create_instances_of_providers(module_token.clone())
+                    .await
+                {
                     Ok(_) => {
-                        // Module created successfully - register its global providers
+                        // Module providers created successfully - register its global providers
                         self.container
                             .borrow_mut()
                             .register_global_providers(module_token)?;
@@ -78,14 +82,132 @@ impl ToniInstanceLoader {
             ));
         }
 
+        // PHASE 2: Resolve APP_* token providers to global enhancers
+        // This happens AFTER all provider instances are created but BEFORE controllers are instantiated
+        // This allows APP_* enhancers to have injected dependencies AND be available when controllers are created
+        self.resolve_app_token_enhancers()?;
+
+        // PHASE 3: Resolve middleware tokens from DI container
+        // This happens AFTER DI container is built, allowing middleware to have injected dependencies
+        self.resolve_middleware_tokens(&modules_order)?;
+
+        // PHASE 4: Create controller instances now that global enhancers are registered
+        for module_token in &modules_order {
+            self.create_instances_of_controllers(module_token.clone())
+                .await?;
+        }
+
         Ok(())
     }
 
-    async fn create_module_instances(&self, module_token: String) -> Result<()> {
-        self.create_instances_of_providers(module_token.clone())
-            .await?;
-        self.create_instances_of_controllers(module_token.clone())
-            .await?;
+    /// Resolve APP_* token providers to global enhancers
+    fn resolve_app_token_enhancers(&self) -> Result<()> {
+        let container = self.container.borrow();
+
+        // Get APP_GUARD providers
+        let app_guard_providers = container.get_app_guard_providers().to_vec();
+        drop(container);
+
+        for (module_token, provider_token) in app_guard_providers {
+            let guard = {
+                let container_ref = self.container.borrow();
+                let provider = container_ref
+                    .get_provider_instance_by_token(&module_token, &provider_token)?
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "APP_GUARD provider '{}' not found in module '{}'",
+                            provider_token,
+                            module_token
+                        )
+                    })?;
+
+                provider.as_guard().ok_or_else(|| {
+                    anyhow!(
+                        "Provider '{}' with APP_GUARD token does not implement Guard trait",
+                        provider_token
+                    )
+                })?
+            };
+            self.container.borrow_mut().add_global_guard(guard);
+        }
+
+        // Get APP_INTERCEPTOR providers
+        let container = self.container.borrow();
+        let app_interceptor_providers = container.get_app_interceptor_providers().to_vec();
+        drop(container);
+
+        for (module_token, provider_token) in app_interceptor_providers {
+            let interceptor = {
+                let container_ref = self.container.borrow();
+                let provider = container_ref
+                    .get_provider_instance_by_token(&module_token, &provider_token)?
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "APP_INTERCEPTOR provider '{}' not found in module '{}'",
+                            provider_token,
+                            module_token
+                        )
+                    })?;
+
+                provider.as_interceptor().ok_or_else(|| {
+                    anyhow!(
+                        "Provider '{}' with APP_INTERCEPTOR token does not implement Interceptor trait",
+                        provider_token
+                    )
+                })?
+            };
+            self.container
+                .borrow_mut()
+                .add_global_interceptor(interceptor);
+        }
+
+        // Get APP_PIPE providers
+        let container = self.container.borrow();
+        let app_pipe_providers = container.get_app_pipe_providers().to_vec();
+        drop(container);
+
+        for (module_token, provider_token) in app_pipe_providers {
+            let pipe = {
+                let container_ref = self.container.borrow();
+                let provider = container_ref
+                    .get_provider_instance_by_token(&module_token, &provider_token)?
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "APP_PIPE provider '{}' not found in module '{}'",
+                            provider_token,
+                            module_token
+                        )
+                    })?;
+
+                provider.as_pipe().ok_or_else(|| {
+                    anyhow!(
+                        "Provider '{}' with APP_PIPE token does not implement Pipe trait",
+                        provider_token
+                    )
+                })?
+            };
+            self.container.borrow_mut().add_global_pipe(pipe);
+        }
+
+        Ok(())
+    }
+
+    /// Resolve middleware tokens from DI container
+    fn resolve_middleware_tokens(&self, modules_order: &[String]) -> Result<()> {
+        for module_token in modules_order {
+            // Get providers for this module
+            let providers = self
+                .container
+                .borrow()
+                .get_providers_instance(module_token)?
+                .clone();
+
+            // Resolve middleware tokens to instances
+            let mut container_mut = self.container.borrow_mut();
+            if let Some(middleware_manager) = container_mut.get_middleware_manager_mut() {
+                middleware_manager.resolve_middleware_tokens(module_token, &providers)?;
+            }
+        }
         Ok(())
     }
 

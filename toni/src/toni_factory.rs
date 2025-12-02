@@ -119,28 +119,10 @@ impl ToniFactory {
 
         scanner.scan_middleware()?;
 
+        // Create instances of all dependencies (providers, controllers)
         ToniInstanceLoader::new(container.clone())
             .create_instances_of_dependencies()
             .await?;
-
-        // Resolve middleware tokens from DI container
-        // This happens AFTER DI container is built, allowing middleware to have injected dependencies
-        {
-            let modules_order = container.borrow().get_ordered_modules_token();
-            for module_token in &modules_order {
-                // Get providers for this module
-                let providers = container
-                    .borrow()
-                    .get_providers_instance(module_token)?
-                    .clone();
-
-                // Resolve middleware tokens to instances
-                let mut container_mut = container.borrow_mut();
-                if let Some(middleware_manager) = container_mut.get_middleware_manager_mut() {
-                    middleware_manager.resolve_middleware_tokens(module_token, &providers)?;
-                }
-            }
-        }
 
         Ok(())
     }

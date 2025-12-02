@@ -25,6 +25,11 @@ pub struct ToniContainer {
     global_guards: Vec<Arc<dyn Guard>>,
     global_interceptors: Vec<Arc<dyn Interceptor>>,
     global_pipes: Vec<Arc<dyn Pipe>>,
+    /// APP_* token providers - providers registered with special tokens (module_token, provider_token)
+    /// These will be resolved to global enhancers after DI container is built
+    app_guard_providers: Vec<(String, String)>,
+    app_interceptor_providers: Vec<(String, String)>,
+    app_pipe_providers: Vec<(String, String)>,
 }
 
 impl Default for ToniContainer {
@@ -43,6 +48,9 @@ impl ToniContainer {
             global_guards: Vec::new(),
             global_interceptors: Vec::new(),
             global_pipes: Vec::new(),
+            app_guard_providers: Vec::new(),
+            app_interceptor_providers: Vec::new(),
+            app_pipe_providers: Vec::new(),
         }
     }
 
@@ -367,5 +375,41 @@ impl ToniContainer {
 
     pub fn get_middleware_manager_mut(&mut self) -> Option<&mut MiddlewareManager> {
         self.middleware_manager.as_mut()
+    }
+
+    /// Register a provider with APP_GUARD token (during scan phase)
+    pub fn register_app_guard_provider(&mut self, module_token: String, provider_token: String) {
+        self.app_guard_providers
+            .push((module_token, provider_token));
+    }
+
+    /// Register a provider with APP_INTERCEPTOR token (during scan phase)
+    pub fn register_app_interceptor_provider(
+        &mut self,
+        module_token: String,
+        provider_token: String,
+    ) {
+        self.app_interceptor_providers
+            .push((module_token, provider_token));
+    }
+
+    /// Register a provider with APP_PIPE token (during scan phase)
+    pub fn register_app_pipe_provider(&mut self, module_token: String, provider_token: String) {
+        self.app_pipe_providers.push((module_token, provider_token));
+    }
+
+    /// Get all APP_GUARD providers (after instances are created)
+    pub fn get_app_guard_providers(&self) -> &[(String, String)] {
+        &self.app_guard_providers
+    }
+
+    /// Get all APP_INTERCEPTOR providers (after instances are created)
+    pub fn get_app_interceptor_providers(&self) -> &[(String, String)] {
+        &self.app_interceptor_providers
+    }
+
+    /// Get all APP_PIPE providers (after instances are created)
+    pub fn get_app_pipe_providers(&self) -> &[(String, String)] {
+        &self.app_pipe_providers
     }
 }
