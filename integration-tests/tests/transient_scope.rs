@@ -173,7 +173,7 @@ async fn test_transient_provider_execute_creates_new_instance() {
 
     let providers = manager.get_all_providers(&empty_deps).await;
     let helper_provider = providers
-        .get("TransientHelper")
+        .get(std::any::type_name::<TransientHelper>())
         .expect("TransientHelper provider not found");
 
     // Call execute() multiple times

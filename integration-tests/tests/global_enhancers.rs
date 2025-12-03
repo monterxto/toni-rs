@@ -222,18 +222,18 @@ impl Pipe for MethodPipe {
 #[controller_struct(
     pub struct TestController {}
 )]
-#[use_guards(ControllerGuard)]
-#[use_interceptors(ControllerInterceptor)]
-#[use_pipes(ControllerPipe)]
+#[use_guards(ControllerGuard{})]
+#[use_interceptors(ControllerInterceptor{})]
+#[use_pipes(ControllerPipe{})]
 #[controller("/api")]
 impl TestController {
     /// Endpoint with all three levels:
     /// - Global (from ToniFactory)
     /// - Controller (from impl block)
     /// - Method (from this method)
-    #[use_guards(MethodGuard)]
-    #[use_interceptors(MethodInterceptor)]
-    #[use_pipes(MethodPipe)]
+    #[use_guards(MethodGuard{})]
+    #[use_interceptors(MethodInterceptor{})]
+    #[use_pipes(MethodPipe{})]
     #[get("/three-level")]
     fn three_level_endpoint(&self, _req: HttpRequest) -> ToniBody {
         get_tracker().track("controller:three_level");
@@ -248,7 +248,7 @@ impl TestController {
     }
 
     /// Endpoint with duplicated guard at all three levels
-    #[use_guards(GlobalGuard)]
+    #[use_guards(GlobalGuard{})]
     #[get("/duplicate")]
     fn duplicate_endpoint(&self, _req: HttpRequest) -> ToniBody {
         get_tracker().track("controller:duplicate");

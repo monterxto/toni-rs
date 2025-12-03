@@ -301,13 +301,13 @@ impl TestService {
         service: TestService,
     }
 )]
-#[use_interceptors(LoggingInterceptor)] // Controller-level: applies to ALL methods
+#[use_interceptors(LoggingInterceptor::new("controller", get_global_tracker()))] // Controller-level: applies to ALL methods
 #[controller("/api")]
 impl EnhancerController {
     /// Endpoint with all enhancers: guard + interceptor + pipe
-    #[use_guards(AdminGuard)]
-    #[use_interceptors(LoggingInterceptor)]
-    #[use_pipes(ValidationPipe)]
+    #[use_guards(AdminGuard::new(get_global_tracker()))]
+    #[use_interceptors(LoggingInterceptor::new("method", get_global_tracker()))]
+    #[use_pipes(ValidationPipe::new(get_global_tracker()))]
     #[get("/protected")]
     fn protected_endpoint(&self, _req: HttpRequest) -> ToniBody {
         let tracker = get_global_tracker();
@@ -316,7 +316,7 @@ impl EnhancerController {
     }
 
     /// Endpoint with only guards
-    #[use_guards(AuthGuard)]
+    #[use_guards(AuthGuard::new(get_global_tracker()))]
     #[get("/auth-only")]
     fn auth_only_endpoint(&self, _req: HttpRequest) -> ToniBody {
         let tracker = get_global_tracker();
@@ -325,8 +325,8 @@ impl EnhancerController {
     }
 
     /// Endpoint with interceptors and pipes but no guards
-    #[use_interceptors(LoggingInterceptor)]
-    #[use_pipes(ValidationPipe, TransformPipe)]
+    #[use_interceptors(LoggingInterceptor::new("validate", get_global_tracker()))]
+    #[use_pipes(ValidationPipe::new(get_global_tracker()), TransformPipe::new(get_global_tracker()))]
     #[post("/validate")]
     fn validate_endpoint(&self, _req: HttpRequest) -> ToniBody {
         let tracker = get_global_tracker();
