@@ -326,7 +326,10 @@ impl EnhancerController {
 
     /// Endpoint with interceptors and pipes but no guards
     #[use_interceptors(LoggingInterceptor::new("validate", get_global_tracker()))]
-    #[use_pipes(ValidationPipe::new(get_global_tracker()), TransformPipe::new(get_global_tracker()))]
+    #[use_pipes(
+        ValidationPipe::new(get_global_tracker()),
+        TransformPipe::new(get_global_tracker())
+    )]
     #[post("/validate")]
     fn validate_endpoint(&self, _req: HttpRequest) -> ToniBody {
         let tracker = get_global_tracker();
