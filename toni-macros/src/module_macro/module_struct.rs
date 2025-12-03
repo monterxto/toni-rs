@@ -189,7 +189,6 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
     let controllers = config.controllers;
     let providers = &config.providers;
     let exports = &config.exports;
-    let exports_string: Vec<String> = exports.iter().map(|e| e.to_string()).collect();
     let is_global = config.global;
 
     // Extract configure_middleware method from impl block if present
@@ -293,7 +292,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
                 Some(providers_vec)
             }
             fn exports(&self) -> Option<Vec<String>> {
-                Some(vec![#(#exports_string.to_string()),*])
+                Some(vec![#(::std::any::type_name::<#exports>().to_string()),*])
             }
 
             // Include user-defined configure_middleware if present

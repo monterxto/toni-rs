@@ -39,7 +39,9 @@ impl ModuleMetadata for BuiltinModule {
     }
 
     fn exports(&self) -> Option<Vec<String>> {
-        Some(vec!["Request".to_string()])
+        Some(vec![
+            std::any::type_name::<crate::request::Request>().to_string(),
+        ])
     }
 }
 

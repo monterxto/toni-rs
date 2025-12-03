@@ -147,7 +147,7 @@ pub struct Request {
 #[async_trait]
 impl ProviderTrait for Request {
     fn get_token(&self) -> String {
-        "Request".to_string()
+        std::any::type_name::<Request>().to_string()
     }
 
     async fn execute(
@@ -160,7 +160,7 @@ impl ProviderTrait for Request {
     }
 
     fn get_token_manager(&self) -> String {
-        "Request".to_string()
+        std::any::type_name::<Request>().to_string()
     }
 
     fn get_scope(&self) -> ProviderScope {
@@ -475,7 +475,7 @@ impl Provider for RequestManager {
         };
 
         providers.insert(
-            "Request".to_string(),
+            std::any::type_name::<Request>().to_string(),
             Arc::new(Box::new(provider_wrapper) as Box<dyn ProviderTrait>),
         );
 
@@ -483,11 +483,11 @@ impl Provider for RequestManager {
     }
 
     fn get_name(&self) -> String {
-        "Request".to_string()
+        std::any::type_name::<Request>().to_string()
     }
 
     fn get_token(&self) -> String {
-        "Request".to_string()
+        std::any::type_name::<Request>().to_string()
     }
 
     fn get_dependencies(&self) -> Vec<String> {
