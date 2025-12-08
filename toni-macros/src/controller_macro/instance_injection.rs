@@ -268,7 +268,7 @@ fn generate_controller_wrapper(
         .map_err(|_| Error::new(http_method_attr.span(), "Invalid attribute format"))?
         .value();
 
-    let full_route_path = format!("{}{}", route_prefix, route_path);
+    let full_route_path = join_paths(route_prefix, &route_path);
 
     let method_name = &method.sig.ident;
     // Include struct name to avoid collisions between controllers with same method names
@@ -1272,4 +1272,24 @@ fn capitalize_first(s: String) -> String {
             }
         })
         .collect()
+}
+
+/// Smart path joining that normalizes slashes
+/// Examples:
+/// - "/" + "/test" = "/test"
+/// - "" + "/test" = "/test"
+/// - "/api" + "/users" = "/api/users"
+/// - "/api/" + "/users" = "/api/users"
+/// - "/api" + "users" = "/api/users"
+fn join_paths(prefix: &str, path: &str) -> String {
+    let prefix = prefix.trim_end_matches('/');
+    let path = path.trim_start_matches('/');
+
+    if prefix.is_empty() {
+        format!("/{}", path)
+    } else if path.is_empty() {
+        prefix.to_string()
+    } else {
+        format!("{}/{}", prefix, path)
+    }
 }
