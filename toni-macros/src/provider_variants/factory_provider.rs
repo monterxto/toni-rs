@@ -18,6 +18,7 @@ pub enum EnhancerType {
 /// Parse provider_factory! macro input
 /// Syntax: provider_factory!("TOKEN", factory_fn) or provider_factory!(TOKEN, factory_fn)
 /// Optional enhancers: provider_factory!(TOKEN, factory_fn, guard)
+/// Optional type hint for string/const tokens with enhancers: provider_factory!("TOKEN", factory_fn, Type, guard)
 /// where factory_fn can be:
 /// - || { value } - sync factory with no deps
 /// - |dep1: Type1, dep2: Type2| { value } - sync factory with deps
@@ -26,6 +27,7 @@ pub enum EnhancerType {
 pub struct ProviderFactoryInput {
     pub token: TokenType,
     pub factory_expr: Expr,
+    pub type_hint: Option<syn::Path>,
     pub enhancers: Vec<EnhancerType>,
 }
 
@@ -35,31 +37,61 @@ impl Parse for ProviderFactoryInput {
         let _: Token![,] = input.parse()?;
         let factory_expr: Expr = input.parse()?;
 
-        // Parse optional enhancer flags
+        // Parse optional type hint and enhancer flags
+        let mut type_hint = None;
         let mut enhancers = Vec::new();
+
         while input.peek(Token![,]) {
             let _: Token![,] = input.parse()?;
             if input.is_empty() {
                 break;
             }
-            let ident: Ident = input.parse()?;
-            let enhancer_str = ident.to_string();
-            match enhancer_str.as_str() {
-                "guard" => enhancers.push(EnhancerType::Guard),
-                "interceptor" => enhancers.push(EnhancerType::Interceptor),
-                "pipe" => enhancers.push(EnhancerType::Pipe),
-                _ => {
-                    return Err(syn::Error::new_spanned(
-                        ident,
-                        "Expected 'guard', 'interceptor', or 'pipe'",
-                    ));
+
+            // Peek to determine if this is an enhancer keyword or type hint
+            let lookahead = input.lookahead1();
+            if lookahead.peek(Ident) {
+                let ident: Ident = input.parse()?;
+                let ident_str = ident.to_string();
+
+                match ident_str.as_str() {
+                    "guard" => enhancers.push(EnhancerType::Guard),
+                    "interceptor" => enhancers.push(EnhancerType::Interceptor),
+                    "pipe" => enhancers.push(EnhancerType::Pipe),
+                    _ => {
+                        // Not an enhancer keyword - could be start of a type hint
+                        if type_hint.is_none() && enhancers.is_empty() {
+                            // Parse as path (might be multi-segment like my_mod::Type)
+                            let mut path_segments = syn::punctuated::Punctuated::new();
+                            path_segments.push(syn::PathSegment::from(ident));
+
+                            // Check for additional path segments (::Type)
+                            while input.peek(Token![::]) {
+                                input.parse::<Token![::]>()?;
+                                let segment: Ident = input.parse()?;
+                                path_segments.push(syn::PathSegment::from(segment));
+                            }
+
+                            type_hint = Some(syn::Path {
+                                leading_colon: None,
+                                segments: path_segments,
+                            });
+                        } else {
+                            return Err(syn::Error::new_spanned(
+                                ident,
+                                "Type hint must come before enhancer flags, or expected 'guard', 'interceptor', or 'pipe'",
+                            ));
+                        }
+                    }
                 }
+            } else {
+                return Err(lookahead.error());
             }
         }
 
         Ok(ProviderFactoryInput {
             token,
             factory_expr,
+            type_hint,
             enhancers,
         })
     }
@@ -96,6 +128,7 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
     let ProviderFactoryInput {
         token,
         factory_expr,
+        type_hint,
         enhancers,
     } = syn::parse2(input)?;
 
@@ -190,6 +223,7 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
     let (factory_struct_fields, factory_struct_init, factory_instance_field, enhancer_methods) =
         generate_factory_enhancer_support(
             &token,
+            &type_hint,
             &enhancers,
             &factory_expr,
             &dep_resolutions,
@@ -332,29 +366,30 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
 /// Generate enhancer support for factory providers
 fn generate_factory_enhancer_support(
     token: &TokenType,
+    type_hint: &Option<syn::Path>,
     enhancers: &[EnhancerType],
     factory_expr: &Expr,
     dep_resolutions: &[TokenStream],
     param_names: &[&syn::Ident],
 ) -> Result<(TokenStream, TokenStream, TokenStream, TokenStream)> {
-    // Only Type tokens can have enhancer support
-    let path = match token {
-        TokenType::Type(p) => p,
-        TokenType::String(_) | TokenType::Const(_) => {
-            if !enhancers.is_empty() {
-                return Err(syn::Error::new(
-                    proc_macro2::Span::call_site(),
-                    "Enhancer support (guard/interceptor/pipe) is only available for Type tokens, not String or Const tokens",
-                ));
-            }
-            return Ok((quote! {}, quote! {}, quote! {}, quote! {}));
-        }
-    };
-
     if enhancers.is_empty() {
         // No enhancers - return empty tokens
         return Ok((quote! {}, quote! {}, quote! {}, quote! {}));
     }
+
+    // Determine the type path to use
+    let path = match token {
+        TokenType::Type(p) => p.clone(),
+        TokenType::String(_) | TokenType::Const(_) => {
+            if type_hint.is_none() {
+                return Err(syn::Error::new(
+                    proc_macro2::Span::call_site(),
+                    "Enhancer support (guard/interceptor/pipe) for String or Const tokens requires a type hint. Use: provider_factory!(\"TOKEN\", factory_fn, Type, guard)",
+                ));
+            }
+            type_hint.clone().unwrap()
+        }
+    };
 
     // Generate struct field for instance storage
     let struct_field = quote! {

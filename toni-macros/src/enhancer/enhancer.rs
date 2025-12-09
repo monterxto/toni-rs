@@ -52,15 +52,23 @@ pub fn create_enhancer_infos(
             // Extract the type identifier and optionally the instance expression
             let (type_ident, instance_expr_opt) = extract_enhancer_info(&arg_expr)?;
 
-            // Generate token ONLY for type-name syntax (no instance expression)
-            // For direct instantiation (MyGuard{} or MyGuard::new()), don't generate token
-            let token_expr = if instance_expr_opt.is_none() {
-                quote! { std::any::type_name::<#type_ident>().to_string() }
+            // Generate token based on the type of enhancer
+            let (token_expr, instance_expr) = if let Some(expr) = instance_expr_opt {
+                // Check if this is a string token (dummy ident __StringToken)
+                if type_ident == "__StringToken" {
+                    // String literal: use the expression as token
+                    (expr, quote! {})
+                } else {
+                    // Direct instantiation: no token, use expression for instance
+                    (quote! {}, expr)
+                }
             } else {
-                quote! {} // Empty - no token for direct instantiation
+                // Type-name syntax: generate type token
+                (
+                    quote! { std::any::type_name::<#type_ident>().to_string() },
+                    quote! {},
+                )
             };
-
-            let instance_expr = instance_expr_opt.unwrap_or_else(|| quote! {});
 
             let info = EnhancerInfo {
                 type_ident,
@@ -86,15 +94,23 @@ pub fn create_enhancer_infos(
             // Extract the type identifier and optionally the instance expression
             let (type_ident, instance_expr_opt) = extract_enhancer_info(&arg_expr)?;
 
-            // Generate token ONLY for type-name syntax (no instance expression)
-            // For direct instantiation (MyGuard{} or MyGuard::new()), don't generate token
-            let token_expr = if instance_expr_opt.is_none() {
-                quote! { std::any::type_name::<#type_ident>().to_string() }
+            // Generate token based on the type of enhancer
+            let (token_expr, instance_expr) = if let Some(expr) = instance_expr_opt {
+                // Check if this is a string token (dummy ident __StringToken)
+                if type_ident == "__StringToken" {
+                    // String literal: use the expression as token
+                    (expr, quote! {})
+                } else {
+                    // Direct instantiation: no token, use expression for instance
+                    (quote! {}, expr)
+                }
             } else {
-                quote! {} // Empty - no token for direct instantiation
+                // Type-name syntax: generate type token
+                (
+                    quote! { std::any::type_name::<#type_ident>().to_string() },
+                    quote! {},
+                )
             };
-
-            let instance_expr = instance_expr_opt.unwrap_or_else(|| quote! {});
 
             let info = EnhancerInfo {
                 type_ident,
@@ -113,13 +129,29 @@ pub fn create_enhancer_infos(
 /// Returns: (type_ident, optional_instance_expr)
 ///
 /// Supports:
-/// - `MyGuard` → (`MyGuard`, None) - DI resolution only (generates token)
+/// - `MyGuard` → (`MyGuard`, None) - DI resolution only (generates type token)
+/// - `"AUTH_GUARD"` → (`__StringToken`, None) - DI resolution with string token
+/// - `APP_GUARD` → (`__ConstToken`, None) - DI resolution with const token
 /// - `MyGuard{}` → (`MyGuard`, Some(`MyGuard`)) - Direct instantiation (generates instance)
 /// - `MyGuard::new()` → (`MyGuard`, Some(`MyGuard::new()`)) - Direct instantiation via constructor (generates instance)
 /// - `MyGuard::new("admin")` → (`MyGuard`, Some(`MyGuard::new("admin")`)) - Direct instantiation with args (generates instance)
 fn extract_enhancer_info(expr: &syn::Expr) -> Result<(Ident, Option<TokenStream>)> {
     match expr {
-        // Simple path (just type name): MyGuard
+        // String literal: "AUTH_GUARD"
+        // Generates: token from string → DI resolution
+        syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Str(lit_str),
+            ..
+        }) => {
+            let token_string = lit_str.clone();
+            // Create a dummy ident for tracking
+            let type_ident = Ident::new("__StringToken", lit_str.span());
+            // Generate token expression that returns the string
+            let token_expr = quote! { #token_string.to_string() };
+            // Return as "instance_expr" to override token generation
+            Ok((type_ident, Some(token_expr)))
+        }
+        // Simple path (just type name): MyGuard or APP_GUARD (const)
         // Generates: token only → DI resolution required
         syn::Expr::Path(expr_path) if expr_path.path.segments.len() == 1 => {
             let type_ident = expr_path.path.segments[0].ident.clone();
@@ -156,7 +188,7 @@ fn extract_enhancer_info(expr: &syn::Expr) -> Result<(Ident, Option<TokenStream>
         }
         _ => Err(Error::new(
             expr.span(),
-            "Expected type identifier (MyGuard), struct literal (MyGuard{}), or constructor call (MyGuard::new())",
+            "Expected type identifier (MyGuard), string literal (\"AUTH_GUARD\"), struct literal (MyGuard{}), or constructor call (MyGuard::new())",
         )),
     }
 }

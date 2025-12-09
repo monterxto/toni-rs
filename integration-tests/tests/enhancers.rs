@@ -335,7 +335,7 @@ async fn guard_authorization() {
     })]
     #[controller("/api")]
     impl TestController {
-        #[use_guards(AuthGuard)]
+        #[use_guards("AUTH_GUARD")]
         #[get("/auth-only")]
         fn auth_only(&self, _req: HttpRequest) -> ToniBody {
             self.tracker.track("controller:auth_only");
@@ -347,7 +347,7 @@ async fn guard_authorization() {
         controllers: [TestController],
         providers: [
             provider_value!(ExecutionOrder, get_tracker()),
-            provider_factory!(AuthGuard, |tracker: ExecutionOrder| AuthGuard::new(tracker), guard),
+            provider_factory!("AUTH_GUARD", |tracker: ExecutionOrder| AuthGuard::new(tracker), AuthGuard, guard),
         ],
     )]
     impl TestModule {}
