@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use serial_test::serial;
 use std::sync::atomic::{AtomicU32, Ordering};
 use toni::{
-    controller, controller_struct, get, injectable, module, post, Body as ToniBody, HttpAdapter,
-    HttpRequest,
+    controller, controller_struct, extractors::Json, get, injectable, module, post,
+    Body as ToniBody, HttpAdapter, HttpRequest, Request,
 };
 use toni_config::{Config, ConfigModule, ConfigService};
 
@@ -35,7 +35,7 @@ async fn async_controller_methods_with_http_server() {
     #[controller("/api")]
     impl TestController {
         #[get("/async")]
-        async fn async_endpoint(&self, _req: HttpRequest) -> ToniBody {
+        async fn async_endpoint(&self) -> ToniBody {
             let result = self.service.process().await;
             ToniBody::Text(result)
         }
@@ -68,7 +68,7 @@ async fn config_service_injection_in_controllers() {
     #[controller("/api")]
     impl TestController {
         #[get("/env")]
-        fn get_env(&self, _req: HttpRequest) -> ToniBody {
+        fn get_env(&self) -> ToniBody {
             ToniBody::Text(self.config.get_ref().env.clone())
         }
     }
@@ -106,7 +106,7 @@ async fn singleton_controllers_share_state() {
         }
 
         #[get("/id")]
-        fn get_id(&self, _req: HttpRequest) -> ToniBody {
+        fn get_id(&self) -> ToniBody {
             ToniBody::Text(format!("{}", self.instance_id))
         }
     }
@@ -145,7 +145,7 @@ async fn request_scoped_controllers_create_per_request() {
         }
 
         #[get("/id")]
-        fn get_id(&self, _req: HttpRequest) -> ToniBody {
+        fn get_id(&self) -> ToniBody {
             ToniBody::Text(format!("{}", self.request_id))
         }
     }
@@ -177,15 +177,13 @@ async fn request_scoped_controllers_create_per_request() {
 
 #[serial]
 #[tokio_localset_test::localset_test]
-async fn built_in_request_provider_injection() {
-    use toni::Request;
-
+async fn optional_request_extractor() {
     #[controller_struct(pub struct TestController {})]
     #[controller("/api")]
     impl TestController {
         #[get("/headers")]
-        fn get_headers(&self, req: HttpRequest) -> ToniBody {
-            let has_header = req.has_header("X-Test-Header");
+        fn get_headers(&self, req: Request) -> ToniBody {
+            let has_header = req.header("X-Test-Header").is_some();
             ToniBody::Text(format!("{}", has_header))
         }
     }
@@ -207,7 +205,7 @@ async fn built_in_request_provider_injection() {
 
 #[serial]
 #[tokio_localset_test::localset_test]
-async fn json_body_extraction() {
+async fn json_body_and_request_extraction() {
     #[derive(Serialize, Deserialize)]
     struct CreateUser {
         name: String,
@@ -218,8 +216,9 @@ async fn json_body_extraction() {
     #[controller("/api")]
     impl TestController {
         #[post("/users")]
-        fn create_user(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text("created".to_string())
+        fn create_user(&self, Json(user): Json<CreateUser>, req: Request) -> ToniBody {
+            let content_type = req.header("content-type").unwrap_or("unknown");
+            ToniBody::Text(format!("created {} ({})", user.name, content_type))
         }
     }
 
@@ -241,6 +240,9 @@ async fn json_body_extraction() {
         .unwrap();
 
     assert_eq!(resp.status(), 200);
+    let body = resp.text().await.unwrap();
+    assert!(body.contains("created John"));
+    assert!(body.contains("application/json"));
 }
 
 #[serial]
@@ -267,7 +269,7 @@ async fn request_extensions_pattern() {
     #[controller("/api")]
     impl TestController {
         #[get("/user")]
-        fn get_user(&self, req: HttpRequest) -> ToniBody {
+        fn get_user(&self, req: Request) -> ToniBody {
             let user_id = req.extensions().get::<UserId>();
             match user_id {
                 Some(id) => ToniBody::Text(id.0.clone()),
