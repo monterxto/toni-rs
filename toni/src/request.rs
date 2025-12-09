@@ -120,6 +120,7 @@ use std::sync::Arc;
 
 use crate::FxHashMap;
 use crate::async_trait;
+use crate::extractors::FromRequest;
 use crate::http_helpers::{Body, Extensions, HttpRequest};
 use crate::provider_scope::ProviderScope;
 use crate::traits_helpers::{Provider, ProviderTrait};
@@ -440,6 +441,15 @@ impl Request {
     /// ```
     pub fn inner(&self) -> &HttpRequest {
         &self.inner
+    }
+}
+
+/// Implement FromRequest trait to allow Request to be used as an extractor
+impl FromRequest for Request {
+    type Error = std::convert::Infallible;
+
+    fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
+        Ok(Request::from_request(req))
     }
 }
 

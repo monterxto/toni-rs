@@ -42,6 +42,8 @@ pub enum ExtractorKind {
     Validated,
     /// HttpRequest (not an extractor, just passed through)
     HttpRequest,
+    /// Request extractor (optional parameter)
+    Request,
     /// Unknown type - will be passed as-is
     Unknown,
 }
@@ -107,6 +109,7 @@ fn detect_extractor_kind(ty: &Type) -> ExtractorKind {
                 "Body" => ExtractorKind::Body,
                 "Validated" => ExtractorKind::Validated,
                 "HttpRequest" => ExtractorKind::HttpRequest,
+                "Request" => ExtractorKind::Request,
                 _ => ExtractorKind::Unknown,
             };
         }
@@ -134,7 +137,8 @@ pub fn generate_extractor_extractions(
             | ExtractorKind::Query
             | ExtractorKind::Json
             | ExtractorKind::Body
-            | ExtractorKind::Validated => {
+            | ExtractorKind::Validated
+            | ExtractorKind::Request => {
                 // Generate extraction code
                 let extraction = quote! {
                     let #param_name = match <#param_type as ::toni::FromRequest>::from_request(&req) {

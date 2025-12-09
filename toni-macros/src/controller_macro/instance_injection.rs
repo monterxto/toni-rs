@@ -340,7 +340,12 @@ fn generate_controller_wrapper(
         .iter()
         .any(|p| p.kind != ExtractorKind::HttpRequest && p.kind != ExtractorKind::Unknown);
 
-    let (method_call, marker_params_extraction, body_dto_token_stream) = if has_extractors {
+    // Use extractor-based approach if:
+    // 1. There are any actual extractors (Path, Query, Json, Body, Validated, Request), OR
+    // 2. There are NO marker params (meaning user is not using legacy #param, #body, #query)
+    let use_extractors = has_extractors || marker_params.is_empty();
+
+    let (method_call, marker_params_extraction, body_dto_token_stream) = if use_extractors {
         // Use extractor-based approach
         let (extractions, call_args) = generate_extractor_extractions(&extractor_params)?;
         let method_call = if is_static_method {
