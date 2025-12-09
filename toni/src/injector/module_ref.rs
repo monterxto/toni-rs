@@ -109,7 +109,10 @@ impl<'a, T: 'static> ModuleRefQuery<'a, T> {
     }
 
     /// Execute the query and return the provider instance
-    pub async fn execute(self) -> Result<T> {
+    pub async fn execute(self) -> Result<T>
+    where
+        T: Send,
+    {
         use super::module_ref_provider::with_container;
 
         let provider_instance = with_container(|container| {
@@ -173,9 +176,10 @@ impl<'a, T: 'static> ModuleRefQuery<'a, T> {
 }
 
 // Implement IntoFuture for ergonomic .await syntax
-impl<'a, T: 'static> std::future::IntoFuture for ModuleRefQuery<'a, T> {
+impl<'a, T: 'static + Send> std::future::IntoFuture for ModuleRefQuery<'a, T> {
     type Output = Result<T>;
-    type IntoFuture = std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + 'a>>;
+    type IntoFuture =
+        std::pin::Pin<Box<dyn std::future::Future<Output = Self::Output> + Send + 'a>>;
 
     fn into_future(self) -> Self::IntoFuture {
         Box::pin(self.execute())

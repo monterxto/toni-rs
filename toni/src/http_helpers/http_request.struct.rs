@@ -40,4 +40,12 @@ impl HttpRequest {
             .iter()
             .any(|(k, _)| k.to_lowercase() == name_lower)
     }
+
+    pub fn extensions(&self) -> &Extensions {
+        &self.extensions
+    }
+
+    pub fn extensions_mut(&mut self) -> &mut Extensions {
+        &mut self.extensions
+    }
 }
