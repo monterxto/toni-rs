@@ -72,6 +72,7 @@ impl Middleware for HeaderCheckMiddleware {
     }
 }
 
+#[derive(Clone)]
 pub struct AdminGuard {
     tracker: ExecutionOrder,
 }
@@ -92,6 +93,7 @@ impl Guard for AdminGuard {
     }
 }
 
+#[derive(Clone)]
 pub struct AuthGuard {
     tracker: ExecutionOrder,
 }
@@ -492,4 +494,95 @@ async fn app_token_global_enhancers() {
     // Verify the global guard was executed
     tracker.assert_contains("global_guard");
     tracker.assert_contains("controller:test");
+}
+
+#[serial]
+#[tokio_localset_test::localset_test]
+async fn provider_macro_scope_support() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    static SINGLETON_COUNTER: AtomicU32 = AtomicU32::new(0);
+    static REQUEST_COUNTER: AtomicU32 = AtomicU32::new(0);
+    static TRANSIENT_COUNTER: AtomicU32 = AtomicU32::new(0);
+
+    #[derive(Clone)]
+    struct Counter {
+        id: u32,
+    }
+
+    impl Counter {
+        fn new_singleton() -> Self {
+            let id = SINGLETON_COUNTER.fetch_add(1, Ordering::SeqCst);
+            Self { id }
+        }
+
+        fn new_request() -> Self {
+            let id = REQUEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+            Self { id }
+        }
+
+        fn new_transient() -> Self {
+            let id = TRANSIENT_COUNTER.fetch_add(1, Ordering::SeqCst);
+            Self { id }
+        }
+    }
+
+    #[controller_struct(scope = "request", pub struct TestController {
+        #[inject("SINGLETON")]
+        singleton1: Counter,
+        #[inject("SINGLETON")]
+        singleton2: Counter,
+        #[inject("REQUEST")]
+        request1: Counter,
+        #[inject("REQUEST")]
+        request2: Counter,
+        #[inject("TRANSIENT")]
+        transient1: Counter,
+        #[inject("TRANSIENT")]
+        transient2: Counter,
+    })]
+    #[controller("/test")]
+    impl TestController {
+        #[get("/get")]
+        fn get_value(&self, _req: HttpRequest) -> ToniBody {
+            ToniBody::Text(format!(
+                "s:{},{};r:{},{};t:{},{}",
+                self.singleton1.id,
+                self.singleton2.id,
+                self.request1.id,
+                self.request2.id,
+                self.transient1.id,
+                self.transient2.id
+            ))
+        }
+    }
+
+    #[module(
+        controllers: [TestController],
+        providers: [
+            provider_factory!("SINGLETON", || Counter::new_singleton(), Counter, scope = "singleton"),
+            provider_factory!("REQUEST", || Counter::new_request(), scope = "request"),
+            provider_factory!("TRANSIENT", || Counter::new_transient(), scope = "transient"),
+        ],
+    )]
+    impl TestModule {}
+
+    SINGLETON_COUNTER.store(0, Ordering::SeqCst);
+    REQUEST_COUNTER.store(0, Ordering::SeqCst);
+    TRANSIENT_COUNTER.store(0, Ordering::SeqCst);
+
+    let server = TestServer::start(TestModule::module_definition()).await;
+
+    let resp = server
+        .client()
+        .get(server.url("/test/get"))
+        .send()
+        .await
+        .unwrap();
+    let body = resp.text().await.unwrap();
+
+    // Singleton: same instance for both injection points (s:0,0)
+    // Transient: different instance per injection point (t:0,1)
+    assert!(body.starts_with("s:0,0;"), "Singleton: {}", body);
+    assert!(body.contains(";t:0,1"), "Transient: {}", body);
 }

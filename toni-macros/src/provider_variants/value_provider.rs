@@ -19,6 +19,7 @@ pub enum EnhancerType {
 /// Syntax: provider_value!("TOKEN", value) or provider_value!(TOKEN, value)
 /// Optional enhancers: provider_value!(TOKEN, value, guard) or provider_value!(TOKEN, value, guard, interceptor)
 /// Optional type hint for string/const tokens with enhancers: provider_value!("TOKEN", value, Type, guard)
+/// Note: Scope is NOT supported (values are always singleton)
 pub struct ProviderValueInput {
     pub token: TokenType,
     pub value_expr: Expr,

@@ -17,6 +17,7 @@ pub enum EnhancerType {
 
 /// Parse provider_factory! macro input
 /// Syntax: provider_factory!("TOKEN", factory_fn) or provider_factory!(TOKEN, factory_fn)
+/// Optional scope: provider_factory!("TOKEN", factory_fn, scope = "transient")
 /// Optional enhancers: provider_factory!(TOKEN, factory_fn, guard)
 /// Optional type hint for string/const tokens with enhancers: provider_factory!("TOKEN", factory_fn, Type, guard)
 /// where factory_fn can be:
@@ -28,6 +29,7 @@ pub struct ProviderFactoryInput {
     pub token: TokenType,
     pub factory_expr: Expr,
     pub type_hint: Option<syn::Path>,
+    pub scope: Option<String>,
     pub enhancers: Vec<EnhancerType>,
 }
 
@@ -37,8 +39,9 @@ impl Parse for ProviderFactoryInput {
         let _: Token![,] = input.parse()?;
         let factory_expr: Expr = input.parse()?;
 
-        // Parse optional type hint and enhancer flags
+        // Parse optional type hint, scope, and enhancer flags
         let mut type_hint = None;
+        let mut scope = None;
         let mut enhancers = Vec::new();
 
         while input.peek(Token![,]) {
@@ -47,7 +50,7 @@ impl Parse for ProviderFactoryInput {
                 break;
             }
 
-            // Peek to determine if this is an enhancer keyword or type hint
+            // Peek to determine if this is an enhancer keyword, scope, or type hint
             let lookahead = input.lookahead1();
             if lookahead.peek(Ident) {
                 let ident: Ident = input.parse()?;
@@ -57,9 +60,15 @@ impl Parse for ProviderFactoryInput {
                     "guard" => enhancers.push(EnhancerType::Guard),
                     "interceptor" => enhancers.push(EnhancerType::Interceptor),
                     "pipe" => enhancers.push(EnhancerType::Pipe),
+                    "scope" => {
+                        // Parse: scope = "transient" or scope = "singleton" or scope = "request"
+                        input.parse::<Token![=]>()?;
+                        let scope_lit: syn::LitStr = input.parse()?;
+                        scope = Some(scope_lit.value());
+                    }
                     _ => {
                         // Not an enhancer keyword - could be start of a type hint
-                        if type_hint.is_none() && enhancers.is_empty() {
+                        if type_hint.is_none() && enhancers.is_empty() && scope.is_none() {
                             // Parse as path (might be multi-segment like my_mod::Type)
                             let mut path_segments = syn::punctuated::Punctuated::new();
                             path_segments.push(syn::PathSegment::from(ident));
@@ -78,7 +87,7 @@ impl Parse for ProviderFactoryInput {
                         } else {
                             return Err(syn::Error::new_spanned(
                                 ident,
-                                "Type hint must come before enhancer flags, or expected 'guard', 'interceptor', or 'pipe'",
+                                "Type hint must come before scope and enhancer flags, or expected 'guard', 'interceptor', 'pipe', or 'scope'",
                             ));
                         }
                     }
@@ -92,6 +101,7 @@ impl Parse for ProviderFactoryInput {
             token,
             factory_expr,
             type_hint,
+            scope,
             enhancers,
         })
     }
@@ -129,8 +139,26 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
         token,
         factory_expr,
         type_hint,
+        scope,
         enhancers,
     } = syn::parse2(input)?;
+
+    // Parse scope or default to Singleton
+    let scope_expr = match scope.as_deref() {
+        Some("request") => quote! { toni::ProviderScope::Request },
+        Some("singleton") => quote! { toni::ProviderScope::Singleton },
+        Some("transient") => quote! { toni::ProviderScope::Transient },
+        None => quote! { toni::ProviderScope::Singleton }, // Default
+        Some(other) => {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                format!(
+                    "Invalid scope '{}'. Expected 'singleton', 'request', or 'transient'",
+                    other
+                ),
+            ));
+        }
+    };
 
     // Generate token expression for runtime
     let token_expr = token.to_token_expr();
@@ -219,16 +247,26 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
     let provider_name = format_ident!("__ToniFactoryProvider_{}", sanitized_name);
     let manager_name = format_ident!("__ToniFactoryProviderManager_{}", sanitized_name);
 
-    // Generate enhancer support for Type tokens with enhancers
-    let (factory_struct_fields, factory_struct_init, factory_instance_field, enhancer_methods) =
-        generate_factory_enhancer_support(
-            &token,
-            &type_hint,
-            &enhancers,
-            &factory_expr,
-            &dep_resolutions,
-            &param_names,
-        )?;
+    // Determine if we need to cache the instance (singleton scope or enhancers)
+    let needs_caching = scope.as_deref() == Some("singleton") || !enhancers.is_empty();
+
+    // Generate enhancer support for Type tokens with enhancers or singleton scope
+    let (
+        factory_struct_fields,
+        factory_struct_init,
+        factory_instance_field,
+        enhancer_methods,
+        execute_body,
+    ) = generate_factory_enhancer_support(
+        &token,
+        &type_hint,
+        &enhancers,
+        &factory_expr,
+        &dep_resolutions,
+        &param_names,
+        needs_caching,
+        &factory_invocation,
+    )?;
 
     // Generate the provider struct and implementation
     let expanded = quote! {
@@ -252,8 +290,7 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
                 }
 
                 fn get_scope(&self) -> toni::ProviderScope {
-                    // Factories are transient by default (create new instance each time)
-                    toni::ProviderScope::Transient
+                    #scope_expr
                 }
 
                 async fn execute(
@@ -303,7 +340,7 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
                         }
 
                         fn get_scope(&self) -> toni::ProviderScope {
-                            toni::ProviderScope::Transient
+                            #scope_expr
                         }
 
                         async fn execute(
@@ -311,11 +348,7 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
                             _params: Vec<Box<dyn std::any::Any + Send>>,
                             _req: Option<&toni::HttpRequest>,
                         ) -> Box<dyn std::any::Any + Send> {
-                            // Use captured dependencies
-                            let _dependencies = &self.deps;
-                            // Call the factory function with resolved dependencies
-                            let factory = #factory_expr;
-                            #factory_invocation
+                            #execute_body
                         }
 
                         #enhancer_methods
@@ -371,10 +404,23 @@ fn generate_factory_enhancer_support(
     factory_expr: &Expr,
     dep_resolutions: &[TokenStream],
     param_names: &[&syn::Ident],
-) -> Result<(TokenStream, TokenStream, TokenStream, TokenStream)> {
-    if enhancers.is_empty() {
-        // No enhancers - return empty tokens
-        return Ok((quote! {}, quote! {}, quote! {}, quote! {}));
+    needs_caching: bool,
+    factory_invocation: &TokenStream,
+) -> Result<(
+    TokenStream,
+    TokenStream,
+    TokenStream,
+    TokenStream,
+    TokenStream,
+)> {
+    if !needs_caching {
+        // No caching needed - execute calls factory directly
+        let execute_body = quote! {
+            let _dependencies = &self.deps;
+            let factory = #factory_expr;
+            #factory_invocation
+        };
+        return Ok((quote! {}, quote! {}, quote! {}, quote! {}, execute_body));
     }
 
     // Determine the type path to use
@@ -384,7 +430,7 @@ fn generate_factory_enhancer_support(
             if type_hint.is_none() {
                 return Err(syn::Error::new(
                     proc_macro2::Span::call_site(),
-                    "Enhancer support (guard/interceptor/pipe) for String or Const tokens requires a type hint. Use: provider_factory!(\"TOKEN\", factory_fn, Type, guard)",
+                    "provider_factory! with singleton scope or enhancers (guard/interceptor/pipe) for String or Const tokens requires a type hint. Use: provider_factory!(\"TOKEN\", factory_fn, Type, guard) or provider_factory!(\"TOKEN\", factory_fn, Type, scope = \"singleton\")",
                 ));
             }
             type_hint.clone().unwrap()
@@ -397,15 +443,27 @@ fn generate_factory_enhancer_support(
     };
 
     // Generate initialization code for the instance
-    let struct_init = quote! {
-        // Create instance for enhancer support
-        let factory = #factory_expr;
-        let instance_result = async {
-            let _req = None;
-            #(#dep_resolutions)*
-            factory(#(#param_names),*)
-        }.await;
-        let instance = std::sync::Arc::new(instance_result);
+    // For sync factories with no deps, call directly to avoid type inference issues
+    let is_async = is_async_expr(factory_expr);
+    let has_deps = !dep_resolutions.is_empty();
+
+    let struct_init = if is_async || has_deps {
+        quote! {
+            // Create instance (async or with dependencies)
+            let factory = #factory_expr;
+            let instance_result = async {
+                let _req = None;
+                #(#dep_resolutions)*
+                factory(#(#param_names),*)
+            }.await;
+            let instance = std::sync::Arc::new(instance_result);
+        }
+    } else {
+        quote! {
+            // Create instance (sync, no dependencies)
+            let factory = #factory_expr;
+            let instance = std::sync::Arc::new(factory());
+        }
     };
 
     // Field initialization in struct literal
@@ -443,5 +501,18 @@ fn generate_factory_enhancer_support(
         #(#methods)*
     };
 
-    Ok((struct_field, struct_init, instance_field, enhancer_methods))
+    // Generate execute body that uses cached instance
+    let execute_body = quote! {
+        // Clone the inner value (requires T: Clone)
+        // This is consistent with provider_value! behavior
+        Box::new((*self.instance).clone())
+    };
+
+    Ok((
+        struct_field,
+        struct_init,
+        instance_field,
+        enhancer_methods,
+        execute_body,
+    ))
 }

@@ -13,6 +13,8 @@ use crate::shared::TokenType;
 ///
 /// This creates an alias that points to an existing provider,
 /// similar to NestJS's useExisting pattern.
+/// Note: Scope cannot be overridden on aliases.
+/// The alias inherits the scope from the target provider.
 pub struct ProviderAliasInput {
     pub alias_token: TokenType,
     pub existing_token: TokenType,

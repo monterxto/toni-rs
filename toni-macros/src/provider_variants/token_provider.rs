@@ -20,6 +20,8 @@ use crate::shared::TokenType;
 /// ```
 /// The type is registered ONLY under the custom token, NOT under its type name.
 /// This is different from provider_alias! which requires the type to be pre-registered.
+/// Note: Scope is inherited from the type's #[injectable(scope = "...")] attribute.
+/// Scope override is NOT supported.
 pub struct ProviderTokenInput {
     pub token: TokenType,
     pub provider_type: Type,
