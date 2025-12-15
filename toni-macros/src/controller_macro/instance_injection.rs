@@ -68,7 +68,7 @@ use crate::{
         get_marker_params::MarkerParam,
     },
     shared::{dependency_info::DependencyInfo, metadata_info::MetadataInfo},
-    utils::controller_utils::{attr_to_string, create_extract_body_dto_token_stream},
+    utils::controller_utils::attr_to_string,
 };
 
 pub fn generate_instance_controller_system(
@@ -83,7 +83,16 @@ pub fn generate_instance_controller_system(
 
     // Add Clone derive to struct (required for creating instances)
     let struct_with_clone = add_clone_derive(struct_attrs);
-    let impl_def = impl_block.clone();
+
+    // Clone impl block and remove marker attributes from all methods
+    let mut impl_def = impl_block.clone();
+    for item in impl_def.items.iter_mut() {
+        if let syn::ImplItem::Fn(method) = item {
+            crate::markers_params::remove_marker_controller_fn::remove_marker_in_controller_fn_args(
+                method,
+            );
+        }
+    }
 
     // OPTIMIZATION: Conditionally generate wrappers based on scope and dependencies
     // Goal: Only generate wrappers that could actually be used
@@ -450,11 +459,36 @@ fn generate_method_call(
     let method_name = &method.sig.ident;
     let is_async = method.sig.asyncness.is_some();
 
-    let mut call_args = vec![quote! { req }];
+    // Check if method has any non-marker parameters (like HttpRequest)
+    let mut call_args = Vec::new();
 
-    for marker_param in marker_params {
-        let param_name = &marker_param.param_name;
-        call_args.push(quote! { #param_name });
+    // Iterate through the method signature to build call args in order
+    for input in method.sig.inputs.iter() {
+        if let syn::FnArg::Typed(pat_type) = input {
+            if let syn::Pat::Ident(pat_ident) = &*pat_type.pat {
+                let param_name = &pat_ident.ident;
+
+                // Check if this is a marker param
+                let is_marker = marker_params.iter().any(|mp| mp.param_name == *param_name);
+
+                if is_marker {
+                    // Use the extracted marker param value
+                    call_args.push(quote! { #param_name });
+                } else {
+                    // Check if it's HttpRequest type
+                    if let syn::Type::Path(type_path) = &*pat_type.ty {
+                        if let Some(segment) = type_path.path.segments.last() {
+                            if segment.ident == "HttpRequest" {
+                                call_args.push(quote! { req });
+                            } else {
+                                // Unknown non-marker parameter
+                                call_args.push(quote! { #param_name });
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     let call = if is_static {
@@ -474,13 +508,12 @@ fn generate_marker_params_extraction(
     marker_params: &[MarkerParam],
 ) -> Result<(Vec<TokenStream>, Option<TokenStream>)> {
     let mut extractions = Vec::new();
-    let mut body_dto_token_stream = None;
+    let body_dto_token_stream = None;
 
     for marker_param in marker_params {
         match marker_param.marker_name.as_str() {
             "body" => {
-                let dto_type_ident = &marker_param.type_ident;
-                body_dto_token_stream = Some(create_extract_body_dto_token_stream(dto_type_ident)?);
+                // New extractor-based approach handles this internally
                 extractions.push(extract_body_from_param(marker_param)?);
             }
             "query" => {

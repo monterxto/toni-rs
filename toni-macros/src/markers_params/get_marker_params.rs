@@ -2,10 +2,9 @@ use syn::{ImplItemFn, LitStr, Pat, Result, Type};
 
 use crate::markers_params::remove_marker_controller_fn::is_marker;
 
-#[derive(Debug)]
 pub struct MarkerParam {
     pub param_name: syn::Ident,
-    pub type_ident: syn::Ident,
+    pub param_type: Type,
     pub marker_name: String,
     pub marker_arg: Option<String>,
 }
@@ -24,16 +23,12 @@ pub fn get_marker_params(method: &ImplItemFn) -> Result<Vec<MarkerParam>> {
                             marker_arg = Some(pat_type.attrs[0].parse_args::<LitStr>()?.value());
                         }
                         if let Pat::Ident(pat_ident) = &*pat_type.pat {
-                            if let Type::Path(type_path) = &*pat_type.ty {
-                                if let Some(last_segment) = type_path.path.segments.last() {
-                                    marked_params.push(MarkerParam {
-                                        param_name: pat_ident.ident.clone(),
-                                        type_ident: last_segment.ident.clone(),
-                                        marker_name: marker_ident.to_string(),
-                                        marker_arg,
-                                    });
-                                }
-                            }
+                            marked_params.push(MarkerParam {
+                                param_name: pat_ident.ident.clone(),
+                                param_type: (*pat_type.ty).clone(),
+                                marker_name: marker_ident.to_string(),
+                                marker_arg,
+                            });
                         }
                     }
                 }
