@@ -51,6 +51,26 @@ impl AttributeController {
         ToniBody::Text(format!("User ID: {}", user_id))
     }
 
+    /// Extract ALL query params as struct using #[query] without argument
+    #[get("/advanced-search")]
+    fn advanced_search(&self, #[query] params: SearchParams) -> ToniBody {
+        let limit = params.limit.unwrap_or(10);
+        ToniBody::Text(format!(
+            "Advanced search: '{}' (limit: {})",
+            params.q, limit
+        ))
+    }
+
+    /// Test default values for query parameters
+    #[get("/products")]
+    fn list_products(
+        &self,
+        #[query("page", default = "1")] page: usize,
+        #[query("pageSize", default = "20")] page_size: usize,
+    ) -> ToniBody {
+        ToniBody::Text(format!("Products page {} (size: {})", page, page_size))
+    }
+
     /// Mix multiple attribute extractors: #[param] + #[body] + HttpRequest
     #[post("/users/{id}")]
     fn update_user(
@@ -127,6 +147,65 @@ async fn test_param_attribute() {
     assert_eq!(resp.status(), 200);
     let body = resp.text().await.unwrap();
     assert_eq!(body, "User ID: 42");
+}
+
+#[serial]
+#[tokio_localset_test::localset_test]
+async fn test_query_struct_attribute() {
+    let server = TestServer::start(AttributeModule::module_definition()).await;
+
+    let resp = server
+        .client()
+        .get(server.url("/api/advanced-search?q=typescript&limit=50"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body = resp.text().await.unwrap();
+    assert_eq!(body, "Advanced search: 'typescript' (limit: 50)");
+}
+
+#[serial]
+#[tokio_localset_test::localset_test]
+async fn test_default_values() {
+    let server = TestServer::start(AttributeModule::module_definition()).await;
+
+    // Test with no query params - should use defaults
+    let resp = server
+        .client()
+        .get(server.url("/api/products"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body = resp.text().await.unwrap();
+    assert_eq!(body, "Products page 1 (size: 20)");
+
+    // Test with partial params - should use default for missing one
+    let resp2 = server
+        .client()
+        .get(server.url("/api/products?page=3"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp2.status(), 200);
+    let body2 = resp2.text().await.unwrap();
+    assert_eq!(body2, "Products page 3 (size: 20)");
+
+    // Test with all params provided
+    let resp3 = server
+        .client()
+        .get(server.url("/api/products?page=5&pageSize=50"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp3.status(), 200);
+    let body3 = resp3.text().await.unwrap();
+    assert_eq!(body3, "Products page 5 (size: 50)");
 }
 
 #[serial]
