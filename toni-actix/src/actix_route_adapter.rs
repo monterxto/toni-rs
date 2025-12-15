@@ -10,15 +10,29 @@ pub struct ActixRouteAdapter;
 
 impl ActixRouteAdapter {
     async fn adapt_actix_request(req: ActixHttpRequest, body: Bytes) -> Result<HttpRequest> {
-        // Parse body
-        let body = if let Ok(body_str) = String::from_utf8(body.to_vec()) {
+        // Check content-type to determine how to parse body
+        let content_type = req
+            .headers()
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_lowercase();
+
+        // Parse body based on content-type
+        let body = if content_type.contains("application/octet-stream") {
+            // Binary data - keep as bytes
+            Body::Binary(body.to_vec())
+        } else if let Ok(body_str) = String::from_utf8(body.to_vec()) {
+            // Try parsing as UTF-8 first
             if let Ok(json) = serde_json::from_str::<Value>(&body_str) {
                 Body::Json(json)
             } else {
                 Body::Text(body_str)
             }
         } else {
-            Body::Text(String::from_utf8_lossy(&body).to_string())
+            // Not valid UTF-8 and no explicit binary content-type
+            // This is likely binary data without proper content-type header
+            Body::Binary(body.to_vec())
         };
 
         // Extract path parameters
@@ -78,6 +92,9 @@ impl ActixRouteAdapter {
                     .content_type("application/json")
                     .body(json_str)
             }
+            Some(Body::Binary(bytes)) => actix_response
+                .content_type("application/octet-stream")
+                .body(bytes),
             None => actix_response.finish(),
         };
 

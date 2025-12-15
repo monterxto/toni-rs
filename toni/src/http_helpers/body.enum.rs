@@ -4,5 +4,5 @@ use serde_json::Value;
 pub enum Body {
     Text(String),
     Json(Value),
-    // Binary(Vec<u8>),
+    Binary(Vec<u8>),
 }

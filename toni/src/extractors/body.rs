@@ -11,6 +11,8 @@ use crate::http_helpers::{Body as HttpBody, HttpRequest};
 /// - `application/json` - parses as JSON
 /// - `application/x-www-form-urlencoded` - parses as form data
 ///
+/// For raw binary data (`application/octet-stream`), use the `Bytes` extractor instead.
+///
 /// # Example
 ///
 /// ```rust,ignore
@@ -100,6 +102,9 @@ impl<T: DeserializeOwned> FromRequest for Body<T> {
                         .map_err(|e| BodyError::DeserializeError(e.to_string()))?;
                     Ok(Body(parsed))
                 }
+                HttpBody::Binary(_) => Err(BodyError::DeserializeError(
+                    "Expected JSON but got binary data".to_string(),
+                )),
             }
         } else if content_type.contains("application/x-www-form-urlencoded") {
             // Parse as form data
@@ -111,6 +116,9 @@ impl<T: DeserializeOwned> FromRequest for Body<T> {
                 }
                 HttpBody::Json(_) => Err(BodyError::DeserializeError(
                     "Expected form data but got JSON".to_string(),
+                )),
+                HttpBody::Binary(_) => Err(BodyError::DeserializeError(
+                    "Expected form data but got binary data".to_string(),
                 )),
             }
         } else if content_type.is_empty() {
@@ -131,6 +139,10 @@ impl<T: DeserializeOwned> FromRequest for Body<T> {
                         .map_err(|e| BodyError::DeserializeError(e.to_string()))?;
                     Ok(Body(parsed))
                 }
+                HttpBody::Binary(_) => Err(BodyError::DeserializeError(
+                    "Cannot deserialize binary data. Use Bytes extractor for raw binary data"
+                        .to_string(),
+                )),
             }
         } else {
             Err(BodyError::UnsupportedContentType(content_type))

@@ -38,7 +38,7 @@ impl TestController {
         let message = match req.body {
             ToniBody::Text(text) => text,
             ToniBody::Json(json) => json.to_string(),
-            //_ => "".to_string(),
+            ToniBody::Binary(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
         };
         let response: String = self.test_service.echo(message);
         ToniBody::Text(response)

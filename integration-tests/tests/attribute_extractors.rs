@@ -3,7 +3,9 @@ mod common;
 use common::TestServer;
 use serde::{Deserialize, Serialize};
 use serial_test::serial;
-use toni::{controller, controller_struct, get, post, Body as ToniBody, HttpRequest};
+use toni::{
+    controller, controller_struct, extractors::Bytes, get, post, Body as ToniBody, HttpRequest,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct CreateUserDto {
@@ -83,6 +85,12 @@ impl AttributeController {
             "Updated user {}: {} <{}>",
             user_id, dto.name, dto.email
         ))
+    }
+
+    /// Extract binary data using Bytes extractor
+    #[post("/upload")]
+    fn upload_file(&self, data: Bytes) -> ToniBody {
+        ToniBody::Text(format!("Uploaded {} bytes", data.len()))
     }
 }
 
@@ -229,4 +237,26 @@ async fn test_mixed_attributes() {
     assert_eq!(resp.status(), 200);
     let body = resp.text().await.unwrap();
     assert_eq!(body, "Updated user 99: Bob <bob@example.com>");
+}
+
+#[serial]
+#[tokio_localset_test::localset_test]
+async fn test_binary_upload() {
+    let server = TestServer::start(AttributeModule::module_definition()).await;
+
+    // Create some binary data
+    let binary_data = vec![0u8, 1, 2, 3, 4, 5, 255, 128, 64];
+
+    let resp = server
+        .client()
+        .post(server.url("/api/upload"))
+        .header("Content-Type", "application/octet-stream")
+        .body(binary_data.clone())
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    let body = resp.text().await.unwrap();
+    assert_eq!(body, format!("Uploaded {} bytes", binary_data.len()));
 }

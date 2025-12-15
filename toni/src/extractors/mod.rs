@@ -20,12 +20,14 @@
 //! ```
 
 mod body;
+mod bytes;
 mod json;
 mod path;
 mod query;
 mod validated;
 
 pub use body::Body;
+pub use bytes::Bytes;
 pub use json::Json;
 pub use path::Path;
 pub use query::Query;

@@ -23,14 +23,28 @@ impl RouteAdapter for AxumRouteAdapter {
         let body_bytes = to_bytes(body, usize::MAX).await?;
         let bytes = body_bytes.to_vec();
 
-        let body = if let Ok(body_str) = String::from_utf8(bytes) {
+        // Check content-type to determine how to parse body
+        let content_type = parts
+            .headers
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("")
+            .to_lowercase();
+
+        let body = if content_type.contains("application/octet-stream") {
+            // Binary data - keep as bytes
+            Body::Binary(bytes)
+        } else if let Ok(body_str) = String::from_utf8(bytes) {
+            // Try parsing as UTF-8 first
             if let Ok(json) = serde_json::from_str::<Value>(&body_str) {
                 Body::Json(json)
             } else {
                 Body::Text(body_str)
             }
         } else {
-            Body::Text(String::from_utf8_lossy(&body_bytes).to_string())
+            // Not valid UTF-8 and no explicit binary content-type
+            // This is likely binary data without proper content-type header
+            Body::Binary(body_bytes.to_vec())
         };
 
         let Path(path_params) = parts
@@ -68,26 +82,26 @@ impl RouteAdapter for AxumRouteAdapter {
         let status =
             StatusCode::from_u16(response.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
-        let mut body_is_json = false;
+        let mut body_content_type = "text/plain";
 
         let body = match response.body {
             Some(Body::Text(text)) => axum::body::Body::from(text),
             Some(Body::Json(json)) => {
-                body_is_json = true;
+                body_content_type = "application/json";
                 let vec = serde_json::to_vec(&json)
                     .map_err(|e| anyhow::anyhow!("Failed to serialize JSON: {}", e))?;
                 axum::body::Body::from(vec)
+            }
+            Some(Body::Binary(bytes)) => {
+                body_content_type = "application/octet-stream";
+                axum::body::Body::from(bytes)
             }
             _ => axum::body::Body::empty(),
         };
 
         let mut headers = HeaderMap::new();
 
-        let content_type = if body_is_json {
-            "application/json"
-        } else {
-            "text/plain"
-        };
+        let content_type = body_content_type;
         headers.insert(
             HeaderName::from_str("Content-Type")
                 .map_err(|e| anyhow::anyhow!("Failed to parse header name Content-Type: {}", e))?,

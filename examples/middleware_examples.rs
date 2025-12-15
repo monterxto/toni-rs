@@ -54,10 +54,7 @@ impl Middleware for LoggerMiddleware {
         println!("➡️  {} {}", method, uri);
 
         if self.log_body {
-            match &req.body {
-                Body::Text(text) => println!("   Body: {}", text),
-                Body::Json(json) => println!("   Body: {}", json),
-            }
+            println!("{:?}", req.body);
         }
 
         let result = next.run(req).await;

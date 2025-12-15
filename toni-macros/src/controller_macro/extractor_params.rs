@@ -38,6 +38,8 @@ pub enum ExtractorKind {
     Json,
     /// Body<T> extractor (auto-detects content type)
     Body,
+    /// Bytes extractor (raw binary data)
+    Bytes,
     /// Validated<T> extractor
     Validated,
     /// HttpRequest (not an extractor, just passed through)
@@ -107,6 +109,7 @@ fn detect_extractor_kind(ty: &Type) -> ExtractorKind {
                 "Query" => ExtractorKind::Query,
                 "Json" => ExtractorKind::Json,
                 "Body" => ExtractorKind::Body,
+                "Bytes" => ExtractorKind::Bytes,
                 "Validated" => ExtractorKind::Validated,
                 "HttpRequest" => ExtractorKind::HttpRequest,
                 "Request" => ExtractorKind::Request,
@@ -137,6 +140,7 @@ pub fn generate_extractor_extractions(
             | ExtractorKind::Query
             | ExtractorKind::Json
             | ExtractorKind::Body
+            | ExtractorKind::Bytes
             | ExtractorKind::Validated
             | ExtractorKind::Request => {
                 // Generate extraction code

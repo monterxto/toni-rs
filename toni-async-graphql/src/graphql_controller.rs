@@ -172,17 +172,17 @@ where
                     });
                 }
             },
-            /*_ => {
+            Body::Binary(_) => {
                 return Box::new(HttpResponse {
                     status: 400,
                     body: Some(Body::Json(serde_json::json!({
                         "errors": [{
-                            "message": "Expected JSON body"
+                            "message": "GraphQL requests must be JSON or text, not binary"
                         }]
                     }))),
                     headers: vec![("content-type".to_string(), "application/json".to_string())],
                 });
-            }*/
+            }
         };
 
         // Get the GraphQLService
