@@ -22,7 +22,7 @@ impl TestServer {
 
         local.spawn_local(async move {
             let adapter = AxumAdapter::new();
-    
+
             let app = ToniFactory::create(module, adapter).await;
             let _ = app.listen(port, "127.0.0.1").await;
         });

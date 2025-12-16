@@ -14,7 +14,7 @@
 //! #[actix_web::main]
 //! async fn main() {
 //!     let adapter = ActixAdapter::new();
-//! 
+//!
 //!     let app = ToniFactory::create(AppModule::module_definition(), adapter);
 //!     app.listen(3000, "127.0.0.1").await;
 //! }

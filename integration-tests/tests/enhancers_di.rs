@@ -303,8 +303,7 @@ async fn test_di_guard_with_injected_dependencies() {
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
 
-        let app = ToniFactory::create(EnhancerDITestModule::module_definition(), adapter)
-            .await;
+        let app = ToniFactory::create(EnhancerDITestModule::module_definition(), adapter).await;
 
         // Get the tracker from DI container before listen() takes ownership
         let tracker = app
@@ -401,8 +400,7 @@ async fn test_di_interceptor_execution_order() {
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
 
-        let app = ToniFactory::create(EnhancerDITestModule::module_definition(), adapter)
-            .await;
+        let app = ToniFactory::create(EnhancerDITestModule::module_definition(), adapter).await;
 
         let tracker = app
             .get::<ExecutionTracker>()
@@ -494,8 +492,7 @@ async fn test_middleware_with_injected_dependencies() {
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
 
-        let app = ToniFactory::create(EnhancerDITestModule::module_definition(), adapter)
-            .await;
+        let app = ToniFactory::create(EnhancerDITestModule::module_definition(), adapter).await;
 
         let tracker = app
             .get::<ExecutionTracker>()
@@ -589,8 +586,7 @@ async fn test_no_enhancer_boilerplate_required() {
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
 
-        let app = ToniFactory::create(EnhancerDITestModule::module_definition(), adapter)
-            .await;
+        let app = ToniFactory::create(EnhancerDITestModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
@@ -614,9 +610,7 @@ async fn test_no_enhancer_boilerplate_required() {
             println!("✓ ExecutionTracker is a regular provider (NO EnhancerMarker impl needed)");
             println!("✓ AuthService is a regular provider (NO boilerplate)");
             println!("✓ Middleware/Guards/Interceptors auto-detected by #[injectable] macro");
-            println!(
-                "✓ Provider includes enhancer detection methods (merged from EnhancerMarker)"
-            );
+            println!("✓ Provider includes enhancer detection methods (merged from EnhancerMarker)");
             println!("✓ Runtime successfully resolves all enhancers from DI container via tokens");
             println!("✓ Zero boilerplate - just mark with #[injectable] and implement the trait!");
         })

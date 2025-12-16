@@ -61,8 +61,7 @@ async fn test_singleton_controller_default() {
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
 
-        let app = ToniFactory::create(SingletonTestModule::module_definition(), adapter)
-            .await;
+        let app = ToniFactory::create(SingletonTestModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
@@ -126,8 +125,7 @@ async fn test_request_scoped_controller_explicit() {
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
 
-        let app = ToniFactory::create(RequestTestModule::module_definition(), adapter)
-            .await;
+        let app = ToniFactory::create(RequestTestModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
@@ -200,8 +198,7 @@ async fn test_mixed_controller_scopes() {
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
 
-        let app = ToniFactory::create(MixedScopesModule::module_definition(), adapter)
-            .await;
+        let app = ToniFactory::create(MixedScopesModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
