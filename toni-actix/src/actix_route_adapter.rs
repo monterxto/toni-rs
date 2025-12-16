@@ -19,10 +19,13 @@ impl ActixRouteAdapter {
             .to_lowercase();
 
         // Parse body based on content-type
-        let body = if content_type.contains("application/octet-stream") {
+        let body_vec = body.to_vec();
+        let body = if content_type.contains("application/octet-stream")
+            || content_type.contains("multipart/form-data")
+        {
             // Binary data - keep as bytes
-            Body::Binary(body.to_vec())
-        } else if let Ok(body_str) = String::from_utf8(body.to_vec()) {
+            Body::Binary(body_vec)
+        } else if let Ok(body_str) = String::from_utf8(body_vec.clone()) {
             // Try parsing as UTF-8 first
             if let Ok(json) = serde_json::from_str::<Value>(&body_str) {
                 Body::Json(json)
@@ -32,7 +35,7 @@ impl ActixRouteAdapter {
         } else {
             // Not valid UTF-8 and no explicit binary content-type
             // This is likely binary data without proper content-type header
-            Body::Binary(body.to_vec())
+            Body::Binary(body_vec)
         };
 
         // Extract path parameters
@@ -43,16 +46,23 @@ impl ActixRouteAdapter {
             .collect();
 
         // Extract query parameters
-        let query_params: HashMap<String, String> = req
-            .query_string()
-            .split('&')
-            .filter_map(|pair| {
-                let mut parts = pair.split('=');
-                let key = parts.next()?;
-                let value = parts.next().unwrap_or("");
-                Some((key.to_string(), value.to_string()))
-            })
-            .collect();
+        let query_string = req.query_string();
+        let query_params: HashMap<String, String> = if query_string.is_empty() {
+            HashMap::new()
+        } else {
+            query_string
+                .split('&')
+                .filter_map(|pair| {
+                    if pair.is_empty() {
+                        return None;
+                    }
+                    let mut parts = pair.split('=');
+                    let key = parts.next()?;
+                    let value = parts.next().unwrap_or("");
+                    Some((key.to_string(), value.to_string()))
+                })
+                .collect()
+        };
 
         // Extract headers
         let headers: Vec<(String, String)> = req

@@ -21,7 +21,6 @@ impl RouteAdapter for AxumRouteAdapter {
     async fn adapt_request(request: Self::Request) -> Result<HttpRequest> {
         let (mut parts, body) = request.into_parts();
         let body_bytes = to_bytes(body, usize::MAX).await?;
-        let bytes = body_bytes.to_vec();
 
         // Check content-type to determine how to parse body
         let content_type = parts
@@ -31,10 +30,12 @@ impl RouteAdapter for AxumRouteAdapter {
             .unwrap_or("")
             .to_lowercase();
 
-        let body = if content_type.contains("application/octet-stream") {
+        let body = if content_type.contains("application/octet-stream")
+            || content_type.contains("multipart/form-data")
+        {
             // Binary data - keep as bytes
-            Body::Binary(bytes)
-        } else if let Ok(body_str) = String::from_utf8(bytes) {
+            Body::Binary(body_bytes.to_vec())
+        } else if let Ok(body_str) = String::from_utf8(body_bytes.to_vec()) {
             // Try parsing as UTF-8 first
             if let Ok(json) = serde_json::from_str::<Value>(&body_str) {
                 Body::Json(json)
