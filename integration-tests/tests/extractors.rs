@@ -71,10 +71,8 @@ async fn test_query_extractor() {
     // Spawn server in background
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
-        let app = factory
-            .create(ExtractorModule::module_definition(), adapter)
-            .await;
+
+        let app = ToniFactory::create(ExtractorModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
@@ -135,10 +133,8 @@ async fn test_json_extractor() {
     // Spawn server in background
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
-        let app = factory
-            .create(ExtractorModule::module_definition(), adapter)
-            .await;
+
+        let app = ToniFactory::create(ExtractorModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
@@ -239,10 +235,8 @@ async fn test_validated_extractor() {
     // Spawn server in background
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
-        let app = factory
-            .create(ValidatedModule::module_definition(), adapter)
-            .await;
+
+        let app = ToniFactory::create(ValidatedModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 

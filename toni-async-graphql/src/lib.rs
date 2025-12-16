@@ -42,8 +42,8 @@
 //!
 //!     // Create Toni app
 //!     let adapter = AxumAdapter::new();
-//!     let factory = ToniFactory::new();
-//!     let app = factory.create(
+//!
+//!     let app = ToniFactory::create(
 //!         AppModule {
 //!             imports: vec![graphql_module.into()],
 //!             ..Default::default()

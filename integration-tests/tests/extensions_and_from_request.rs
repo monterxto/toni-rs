@@ -188,12 +188,9 @@ mod tests {
     async fn test_module_compiles() {
         // Verify the module can be created
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
 
         // This tests that all the generated code compiles and types match
-        let _app = factory
-            .create(TestModule::module_definition(), adapter)
-            .await;
+        let _app = ToniFactory::create(TestModule::module_definition(), adapter).await;
 
         println!("✅ Module with from_request pattern compiles successfully!");
     }

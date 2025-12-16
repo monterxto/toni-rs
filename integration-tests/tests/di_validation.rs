@@ -1,7 +1,7 @@
 #![allow(dead_code, unused_variables)]
 
 use serial_test::serial;
-use toni::{injectable, module, HttpAdapter};
+use toni::{injectable, module, HttpAdapter, ToniFactory};
 use toni_axum::AxumAdapter;
 
 #[serial]
@@ -21,9 +21,7 @@ async fn valid_singleton_injects_singleton() {
 
     let adapter = AxumAdapter::new();
     let factory = toni::toni_factory::ToniFactory::new();
-    let _app = factory
-        .create(TestModule::module_definition(), adapter)
-        .await;
+    let _app = ToniFactory::create(TestModule::module_definition(), adapter).await;
 }
 
 #[serial]
@@ -43,9 +41,7 @@ async fn valid_request_injects_singleton() {
 
     let adapter = AxumAdapter::new();
     let factory = toni::toni_factory::ToniFactory::new();
-    let _app = factory
-        .create(TestModule::module_definition(), adapter)
-        .await;
+    let _app = ToniFactory::create(TestModule::module_definition(), adapter).await;
 }
 
 #[serial]
@@ -70,9 +66,7 @@ async fn valid_transient_injects_any_scope() {
 
     let adapter = AxumAdapter::new();
     let factory = toni::toni_factory::ToniFactory::new();
-    let _app = factory
-        .create(TestModule::module_definition(), adapter)
-        .await;
+    let _app = ToniFactory::create(TestModule::module_definition(), adapter).await;
 }
 
 #[serial]
@@ -93,9 +87,7 @@ async fn singleton_cannot_inject_request_scoped() {
 
     let adapter = AxumAdapter::new();
     let factory = toni::toni_factory::ToniFactory::new();
-    let _app = factory
-        .create(InvalidModule::module_definition(), adapter)
-        .await;
+    let _app = ToniFactory::create(InvalidModule::module_definition(), adapter).await;
 }
 
 #[serial]
@@ -115,9 +107,7 @@ async fn singleton_can_inject_transient() {
 
     let adapter = AxumAdapter::new();
     let factory = toni::toni_factory::ToniFactory::new();
-    let _app = factory
-        .create(TestModule::module_definition(), adapter)
-        .await;
+    let _app = ToniFactory::create(TestModule::module_definition(), adapter).await;
 }
 
 #[serial]
@@ -137,9 +127,7 @@ async fn request_can_inject_transient() {
 
     let adapter = AxumAdapter::new();
     let factory = toni::toni_factory::ToniFactory::new();
-    let _app = factory
-        .create(TestModule::module_definition(), adapter)
-        .await;
+    let _app = ToniFactory::create(TestModule::module_definition(), adapter).await;
 }
 
 #[serial]
@@ -167,9 +155,7 @@ async fn complex_valid_hierarchy() {
 
     let adapter = AxumAdapter::new();
     let factory = toni::toni_factory::ToniFactory::new();
-    let _app = factory
-        .create(TestModule::module_definition(), adapter)
-        .await;
+    let _app = ToniFactory::create(TestModule::module_definition(), adapter).await;
 }
 
 #[serial]
@@ -190,7 +176,5 @@ async fn explicit_singleton_with_request_fails() {
 
     let adapter = AxumAdapter::new();
     let factory = toni::toni_factory::ToniFactory::new();
-    let _app = factory
-        .create(TestModule::module_definition(), adapter)
-        .await;
+    let _app = ToniFactory::create(TestModule::module_definition(), adapter).await;
 }

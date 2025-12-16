@@ -58,10 +58,8 @@ async fn test_static_method_controller() {
     // Spawn server in background
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
-        let app = factory
-            .create(StaticTestModule::module_definition(), adapter)
-            .await;
+
+        let app = ToniFactory::create(StaticTestModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
@@ -148,10 +146,8 @@ async fn test_mixed_static_and_instance_methods() {
     // Spawn server in background
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
-        let app = factory
-            .create(MixedTestModule::module_definition(), adapter)
-            .await;
+
+        let app = ToniFactory::create(MixedTestModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
@@ -224,10 +220,9 @@ async fn test_request_scoped_static_methods() {
     // Spawn server in background
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
-        let app = factory
-            .create(RequestScopedStaticTestModule::module_definition(), adapter)
-            .await;
+
+        let app =
+            ToniFactory::create(RequestScopedStaticTestModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
@@ -290,10 +285,8 @@ async fn test_async_static_methods() {
     // Spawn server in background
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
-        let app = factory
-            .create(AsyncStaticTestModule::module_definition(), adapter)
-            .await;
+
+        let app = ToniFactory::create(AsyncStaticTestModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 

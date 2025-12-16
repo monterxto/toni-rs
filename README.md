@@ -87,8 +87,7 @@ use toni_axum::AxumAdapter;
 #[tokio::main]
 async fn main() {
     let adapter = AxumAdapter::new();
-    let factory = ToniFactory::new();
-    let app = factory.create(AppModule::module_definition(), adapter);
+    let app = ToniFactory::create(AppModule::module_definition(), adapter);
     app.listen(3000, "127.0.0.1").await;
 }
 ```
@@ -102,8 +101,7 @@ use toni_actix::ActixAdapter;
 #[actix_web::main]
 async fn main() {
     let adapter = ActixAdapter::new();
-    let factory = ToniFactory::new();
-    let app = factory.create(AppModule::module_definition(), adapter);
+    let app = ToniFactory::create(AppModule::module_definition(), adapter);
     app.listen(3000, "127.0.0.1").await;
 }
 ```

@@ -88,10 +88,8 @@ async fn test_valid_scope_hierarchies() {
 
     // This test should pass without panicking
     let adapter = AxumAdapter::new();
-    let factory = ToniFactory::new();
-    let _app = factory
-        .create(ValidScopesModule::module_definition(), adapter)
-        .await;
+
+    let _app = ToniFactory::create(ValidScopesModule::module_definition(), adapter).await;
 
     // If we get here without panicking, the test passed
 }
@@ -135,10 +133,8 @@ mod invalid_singleton_with_request {
 
         // This should panic with a scope validation error during module initialization
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
-        let _app = factory
-            .create(InvalidModule::module_definition(), adapter)
-            .await;
+
+        let _app = ToniFactory::create(InvalidModule::module_definition(), adapter).await;
     }
 }
 
@@ -176,10 +172,8 @@ async fn test_singleton_can_inject_transient() {
 
     // This should NOT panic - Singleton + Transient is allowed
     let adapter = AxumAdapter::new();
-    let factory = ToniFactory::new();
-    let _app = factory
-        .create(ValidModule2::module_definition(), adapter)
-        .await;
+
+    let _app = ToniFactory::create(ValidModule2::module_definition(), adapter).await;
 
     // If we get here without panicking, the test passed
 }
@@ -218,10 +212,8 @@ async fn test_request_can_inject_transient() {
 
     // This should NOT panic - Request + Transient is allowed
     let adapter = AxumAdapter::new();
-    let factory = ToniFactory::new();
-    let _app = factory
-        .create(ValidModule3::module_definition(), adapter)
-        .await;
+
+    let _app = ToniFactory::create(ValidModule3::module_definition(), adapter).await;
 
     // If we get here without panicking, the test passed
 }
@@ -271,10 +263,8 @@ async fn test_complex_valid_hierarchy() {
 
     // This should work: Singleton -> Singleton -> Request is valid
     let adapter = AxumAdapter::new();
-    let factory = ToniFactory::new();
-    let _app = factory
-        .create(ComplexValidModule::module_definition(), adapter)
-        .await;
+
+    let _app = ToniFactory::create(ComplexValidModule::module_definition(), adapter).await;
 
     // If we get here without panicking, the test passed
 }
@@ -318,9 +308,7 @@ mod explicit_singleton_violation {
 
         // Should panic even though user explicitly set singleton
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
-        let _app = factory
-            .create(ExplicitModule::module_definition(), adapter)
-            .await;
+
+        let _app = ToniFactory::create(ExplicitModule::module_definition(), adapter).await;
     }
 }

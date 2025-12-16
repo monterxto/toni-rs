@@ -302,9 +302,8 @@ async fn test_di_guard_with_injected_dependencies() {
 
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
-        let app = factory
-            .create(EnhancerDITestModule::module_definition(), adapter)
+
+        let app = ToniFactory::create(EnhancerDITestModule::module_definition(), adapter)
             .await;
 
         // Get the tracker from DI container before listen() takes ownership
@@ -401,9 +400,8 @@ async fn test_di_interceptor_execution_order() {
 
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
-        let app = factory
-            .create(EnhancerDITestModule::module_definition(), adapter)
+
+        let app = ToniFactory::create(EnhancerDITestModule::module_definition(), adapter)
             .await;
 
         let tracker = app
@@ -495,9 +493,8 @@ async fn test_middleware_with_injected_dependencies() {
 
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
-        let app = factory
-            .create(EnhancerDITestModule::module_definition(), adapter)
+
+        let app = ToniFactory::create(EnhancerDITestModule::module_definition(), adapter)
             .await;
 
         let tracker = app
@@ -577,9 +574,9 @@ async fn test_no_enhancer_boilerplate_required() {
     //   - Enhancers needed separate impl EnhancerMarker with method overrides
     //
     // After Phase 5:
-    //   - Regular providers: Just implement ProviderTrait (no EnhancerMarker boilerplate)
+    //   - Regular providers: Just implement Provider (no EnhancerMarker boilerplate)
     //   - Enhancers: Auto-detected by #[injectable] macro based on trait implementations
-    //   - ProviderTrait merged enhancer detection methods (as_guard, as_interceptor, etc.)
+    //   - Provider merged enhancer detection methods (as_guard, as_interceptor, etc.)
 
     use std::time::Duration;
     use toni::toni_factory::ToniFactory;
@@ -591,9 +588,8 @@ async fn test_no_enhancer_boilerplate_required() {
 
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
-        let app = factory
-            .create(EnhancerDITestModule::module_definition(), adapter)
+
+        let app = ToniFactory::create(EnhancerDITestModule::module_definition(), adapter)
             .await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
@@ -619,7 +615,7 @@ async fn test_no_enhancer_boilerplate_required() {
             println!("✓ AuthService is a regular provider (NO boilerplate)");
             println!("✓ Middleware/Guards/Interceptors auto-detected by #[injectable] macro");
             println!(
-                "✓ ProviderTrait includes enhancer detection methods (merged from EnhancerMarker)"
+                "✓ Provider includes enhancer detection methods (merged from EnhancerMarker)"
             );
             println!("✓ Runtime successfully resolves all enhancers from DI container via tokens");
             println!("✓ Zero boilerplate - just mark with #[injectable] and implement the trait!");

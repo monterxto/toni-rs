@@ -283,8 +283,7 @@ async fn test_three_level_enhancer_hierarchy() {
 
         // Create application
         let axum_adapter = AxumAdapter::new();
-        let app = factory
-            .create(TestModule::module_definition(), axum_adapter)
+        let app = ToniFactory::create(TestModule::module_definition(), axum_adapter)
             .await;
 
         app.listen(port, "127.0.0.1").await;

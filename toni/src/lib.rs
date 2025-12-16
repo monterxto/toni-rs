@@ -62,7 +62,7 @@ mod tests {
         let server_handle: JoinHandle<()> = tokio::spawn(async {
             // let factory = ToniFactory::new();
             // let mut axum_adapter = AxumAdapter::new();
-            // let app = factory.create(app_module, axum_adapter).unwrap();
+            // let app = ToniFactory::create(app_module, axum_adapter).unwrap();
             // app.listen(3000, "127.0.0.1").await;
             // let app = match app {
             //     Ok(app) => {

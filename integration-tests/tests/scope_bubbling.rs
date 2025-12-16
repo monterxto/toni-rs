@@ -182,8 +182,8 @@ mod tests {
         // Spawn server in background
         local.spawn_local(async move {
             let adapter = AxumAdapter::new();
-            let factory = ToniFactory::new();
-            let app = factory.create(OkModule::module_definition(), adapter).await;
+
+            let app = ToniFactory::create(OkModule::module_definition(), adapter).await;
             let _ = app.listen(port, "127.0.0.1").await;
         });
 
@@ -220,10 +220,8 @@ mod tests {
         // Spawn server in background - THIS SHOULD PRINT A WARNING
         local.spawn_local(async move {
             let adapter = AxumAdapter::new();
-            let factory = ToniFactory::new();
-            let app = factory
-                .create(ProblematicModule::module_definition(), adapter)
-                .await;
+
+            let app = ToniFactory::create(ProblematicModule::module_definition(), adapter).await;
             let _ = app.listen(port, "127.0.0.1").await;
         });
 
@@ -250,10 +248,8 @@ mod tests {
         // Spawn server in background
         local.spawn_local(async move {
             let adapter = AxumAdapter::new();
-            let factory = ToniFactory::new();
-            let app = factory
-                .create(CorrectModule::module_definition(), adapter)
-                .await;
+
+            let app = ToniFactory::create(CorrectModule::module_definition(), adapter).await;
             let _ = app.listen(port, "127.0.0.1").await;
         });
 
@@ -290,10 +286,8 @@ mod tests {
         // Spawn server in background - THIS SHOULD PRINT A WARNING
         local.spawn_local(async move {
             let adapter = AxumAdapter::new();
-            let factory = ToniFactory::new();
-            let app = factory
-                .create(MixedModule::module_definition(), adapter)
-                .await;
+
+            let app = ToniFactory::create(MixedModule::module_definition(), adapter).await;
             let _ = app.listen(port, "127.0.0.1").await;
         });
 
@@ -322,10 +316,9 @@ mod tests {
         // Spawn server in background - THIS SHOULD PRINT A STRONG WARNING
         local.spawn_local(async move {
             let adapter = AxumAdapter::new();
-            let factory = ToniFactory::new();
-            let app = factory
-                .create(ExplicitSingletonModule::module_definition(), adapter)
-                .await;
+
+            let app =
+                ToniFactory::create(ExplicitSingletonModule::module_definition(), adapter).await;
             let _ = app.listen(port, "127.0.0.1").await;
         });
 

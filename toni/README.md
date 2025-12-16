@@ -28,11 +28,13 @@
 ## Quickstart: Build a CRUD App
 
 Use the Toni CLI to create a new project:
+
 ```bash
 toni new my_app
 ```
 
 ## Project Structure
+
 ```
 src/
 ├── app/
@@ -44,9 +46,11 @@ src/
 ```
 
 ## Run the Server
+
 ```bash
 cargo run
 ```
+
 Test your endpoints at `http://localhost:3000/app`.
 
 ---
@@ -54,31 +58,35 @@ Test your endpoints at `http://localhost:3000/app`.
 ## Key Concepts
 
 ### Project Structure
-| File                | Role                                      |
-|---------------------|-------------------------------------------|
+
+| File                    | Role                                      |
+| ----------------------- | ----------------------------------------- |
 | **`app.controller.rs`** | Defines routes and handles HTTP requests. |
 | **`app.module.rs`**     | Configures dependencies and module setup. |
 | **`app.service.rs`**    | Implements core business logic.           |
 
 ### Decoupled HTTP Server
+
 Toni decouples your application from the HTTP server, and by default we use Axum. In the future we plan to integrate other HTTP adapters.
 
 ## Code Example
 
 **`main.rs`**
+
 ```rust
 use toni::{ToniFactory, AxumAdapter};
 
 #[tokio::main]
 async fn main() {
     let axum_adapter = AxumAdapter::new();
-    let factory = ToniFactory::new();
-    let app = factory.create(AppModule::module_definition(), axum_adapter);
+
+    let app = ToniFactory::create(AppModule::module_definition(), axum_adapter);
     app.listen(3000, "127.0.0.1").await;
 }
 ```
 
 **`app/app.module.rs`** (Root Module)
+
 ```rust
 #[module(
     imports: [],
@@ -90,6 +98,7 @@ pub struct AppModule;
 ```
 
 **`app/app.controller.rs`** (HTTP Routes)
+
 ```rust
 #[controller_struct(pub struct _AppController { app_service: _AppService })]
 #[controller("/app")]
@@ -107,6 +116,7 @@ impl _AppController {
 ```
 
 **`app/app.service.rs`** (Business Logic)
+
 ```rust
 #[injectable(pub struct _AppService;)]
 impl _AppService {
@@ -123,6 +133,7 @@ impl _AppService {
 ---
 
 ## License
+
 - **License**: MIT.
 
 ---

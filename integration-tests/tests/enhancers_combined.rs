@@ -404,11 +404,10 @@ async fn test_enhancers_execution_order() {
     // Spawn server in background
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
 
         // Create module with tracker injected into providers
         let module_def = EnhancerModule::module_definition();
-        let app = factory.create(module_def, adapter).await;
+        let app = ToniFactory::create(module_def, adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
@@ -559,9 +558,9 @@ async fn test_guard_authorization() {
 
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
+
         let module_def = EnhancerModule::module_definition();
-        let app = factory.create(module_def, adapter).await;
+        let app = ToniFactory::create(module_def, adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 

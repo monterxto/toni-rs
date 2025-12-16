@@ -22,8 +22,8 @@ impl TestServer {
 
         local.spawn_local(async move {
             let adapter = AxumAdapter::new();
-            let factory = ToniFactory::new();
-            let app = factory.create(module, adapter).await;
+    
+            let app = ToniFactory::create(module, adapter).await;
             let _ = app.listen(port, "127.0.0.1").await;
         });
 

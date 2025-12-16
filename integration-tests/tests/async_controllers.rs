@@ -84,10 +84,8 @@ async fn test_async_controller_methods() {
     // Spawn server in background
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
-        let app = factory
-            .create(AsyncModule::module_definition(), adapter)
-            .await;
+
+        let app = ToniFactory::create(AsyncModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
@@ -192,10 +190,8 @@ async fn test_async_with_real_async_operation() {
 
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
-        let app = factory
-            .create(HttpModule::module_definition(), adapter)
-            .await;
+
+        let app = ToniFactory::create(HttpModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 

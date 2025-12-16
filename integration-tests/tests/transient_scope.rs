@@ -95,10 +95,7 @@ async fn test_transient_scope_creates_separate_instances() {
     // Spawn server in background
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
-        let app = factory
-            .create(TransientTestModule::module_definition(), adapter)
-            .await;
+        let app = ToniFactory::create(TransientTestModule, adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
@@ -255,10 +252,7 @@ async fn test_controller_with_multiple_transient_fields() {
     // Spawn server in background
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
-        let factory = ToniFactory::new();
-        let app = factory
-            .create(MultiTransientModule::module_definition(), adapter)
-            .await;
+        let app = ToniFactory::create(MultiTransientModule, adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 

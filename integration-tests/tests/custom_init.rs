@@ -132,6 +132,6 @@ async fn test_custom_init_runtime() {
     let _factory = ToniFactory::new();
 
     // TODO: create the app and verify the init methods were called
-    // let app = factory.create(TestModule::module_definition(), adapter).await;
+    // let app = ToniFactory::create(TestModule::module_definition(), adapter).await;
     // ... test that services were initialized with custom logic ...
 }
