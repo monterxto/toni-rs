@@ -53,17 +53,50 @@ impl ToniFactory {
         self
     }
 
-    pub async fn create(
+    /// Create a new HTTP application with the specified adapter.
+    ///
+    /// # Example
+    /// ```ignore
+    /// use toni::ToniFactory;
+    /// use toni_axum::AxumAdapter;
+    ///
+    /// let app = ToniFactory::create(AppModule, AxumAdapter::new()).await;
+    /// app.listen(3000, "127.0.0.1").await;
+    /// ```
+    pub async fn create<A>(module: impl Into<ModuleDefinition>, adapter: A) -> ToniApplication<A>
+    where
+        A: HttpAdapter,
+    {
+        Self::new().create_with(module, adapter).await
+    }
+
+    /// Create a new HTTP application with custom factory configuration.
+    ///
+    /// # Example
+    /// ```ignore
+    /// use toni::ToniFactory;
+    /// use toni_axum::AxumAdapter;
+    ///
+    /// let mut factory = ToniFactory::new();
+    /// factory.use_global_guards(Arc::new(AuthGuard));
+    /// let app = factory.create_with(AppModule, AxumAdapter::new()).await;
+    /// app.listen(3000, "127.0.0.1").await;
+    /// ```
+    pub async fn create_with<A>(
         &self,
-        module: ModuleDefinition,
-        http_adapter: impl HttpAdapter,
-    ) -> ToniApplication<impl HttpAdapter> {
+        module: impl Into<ModuleDefinition>,
+        adapter: A,
+    ) -> ToniApplication<A>
+    where
+        A: HttpAdapter,
+    {
+        let http_adapter = adapter;
         let container = Rc::new(RefCell::new(ToniContainer::new()));
 
-        match self.initialize(module, container.clone()).await {
+        match self.initialize(module.into(), container.clone()).await {
             Ok(_) => (),
             Err(e) => {
-                eprintln!("Falha crítica na inicialização do módulo: {}", e);
+                eprintln!("Critical error during module initialization: {}", e);
                 std::process::exit(1);
             }
         };
@@ -72,12 +105,57 @@ impl ToniFactory {
         match app.init() {
             Ok(_) => (),
             Err(e) => {
-                eprintln!("Falha na inicialização da aplicação: {}", e);
+                eprintln!("Failed to initialize application: {}", e);
                 std::process::exit(1);
             }
         }
 
         app
+    }
+
+    /// Create a standalone DI container without an HTTP server.
+    ///
+    /// Useful for CLI tools, CRON jobs, and background tasks.
+    ///
+    /// # Example
+    /// ```ignore
+    /// use toni::ToniFactory;
+    ///
+    /// let ctx = ToniFactory::create_application_context(AppModule).await;
+    /// let service = ctx.borrow().get::<MyService>().await?;
+    /// service.do_work();
+    /// ```
+    pub async fn create_application_context(
+        module: impl Into<ModuleDefinition>,
+    ) -> Rc<RefCell<ToniContainer>> {
+        Self::new().create_application_context_with(module).await
+    }
+
+    /// Create a standalone DI container with custom factory configuration.
+    ///
+    /// # Example
+    /// ```ignore
+    /// use toni::ToniFactory;
+    ///
+    /// let mut factory = ToniFactory::new();
+    /// factory.use_global_guards(Arc::new(AuthGuard));
+    /// let ctx = factory.create_application_context_with(AppModule).await;
+    /// ```
+    pub async fn create_application_context_with(
+        &self,
+        module: impl Into<ModuleDefinition>,
+    ) -> Rc<RefCell<ToniContainer>> {
+        let container = Rc::new(RefCell::new(ToniContainer::new()));
+
+        match self.initialize(module.into(), container.clone()).await {
+            Ok(_) => (),
+            Err(e) => {
+                eprintln!("Critical error during module initialization: {}", e);
+                std::process::exit(1);
+            }
+        };
+
+        container
     }
 
     async fn initialize(
