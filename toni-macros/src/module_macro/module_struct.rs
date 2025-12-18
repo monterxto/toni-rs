@@ -1,10 +1,9 @@
 use proc_macro::TokenStream;
-use proc_macro2::{Span, TokenStream as TokenStream2};
+use proc_macro2::Span;
 use quote::quote;
 use syn::{
-    Ident, ImplItem, ItemImpl, Token, Type, TypePath, bracketed,
+    Ident, ImplItem, ItemImpl, ItemStruct, Token, Type, TypePath, Visibility, bracketed,
     parse::{Parse, ParseStream},
-    parse_macro_input,
     punctuated::Punctuated,
 };
 
@@ -138,34 +137,57 @@ impl TryFrom<TokenStream> for ModuleConfig {
     }
 }
 
-/// Extract configure_middleware method from impl block if present
-fn extract_configure_middleware_method(input: &ItemImpl) -> TokenStream2 {
-    // Look for a method named "configure_middleware" in the impl block
-    for item in &input.items {
-        if let ImplItem::Fn(method) = item {
-            if method.sig.ident == "configure_middleware" {
-                // Found it! Extract the method body and signature
-                let block = &method.block;
-                let sig = &method.sig;
+/// Represents either a struct definition or impl block for module parsing
+enum ModuleInput {
+    Struct(ItemStruct),
+    Impl(ItemImpl),
+}
 
-                // Validate signature matches expected pattern
-                // Expected: fn configure_middleware(&self, consumer: &mut MiddlewareConsumer)
-                if sig.inputs.len() != 2 {
-                    return quote! {
-                        compile_error!("configure_middleware must have signature: fn configure_middleware(&self, consumer: &mut MiddlewareConsumer)");
-                    };
-                }
-
-                // Return the method implementation
-                return quote! {
-                    #sig #block
-                };
-            }
+impl ModuleInput {
+    fn ident(&self) -> &Ident {
+        match self {
+            ModuleInput::Struct(s) => &s.ident,
+            ModuleInput::Impl(i) => match i.self_ty.as_ref() {
+                Type::Path(TypePath { path, .. }) => &path.segments.last().unwrap().ident,
+                _ => panic!("Invalid impl type"),
+            },
         }
     }
 
-    // No configure_middleware method found, return empty (use default trait impl)
-    quote! {}
+    fn visibility(&self) -> Option<&Visibility> {
+        match self {
+            ModuleInput::Struct(s) => Some(&s.vis),
+            ModuleInput::Impl(_) => None,
+        }
+    }
+
+    fn impl_items(&self) -> Vec<&ImplItem> {
+        match self {
+            ModuleInput::Struct(_) => vec![],
+            ModuleInput::Impl(i) => i.items.iter().collect(),
+        }
+    }
+
+    fn validate_unit_struct(&self) -> syn::Result<()> {
+        if let ModuleInput::Struct(s) = self {
+            if !s.fields.is_empty() {
+                return Err(syn::Error::new_spanned(
+                    &s.fields,
+                    "Module structs must be unit structs with no fields.\n\
+                     Example: `pub struct AppModule;`\n\
+                     \n\
+                     If you need to configure module behavior, use the macro attributes:\n\
+                     #[module(\n\
+                         imports: [...],\n\
+                         providers: [...],\n\
+                         controllers: [...],\n\
+                         exports: [...],\n\
+                     )]",
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
 pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -174,25 +196,61 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         Err(e) => return e.to_compile_error().into(),
     };
 
-    let input = parse_macro_input!(item as ItemImpl);
-    let input_type = input.self_ty.as_ref();
-    let input_ident = match input_type {
-        Type::Path(TypePath { path, .. }) => path.segments.last().unwrap().ident.clone(),
-        _ => {
-            return syn::Error::new(Span::call_site(), "Invalid input type")
-                .to_compile_error()
-                .into();
-        }
+    // Try parsing as struct first, then fall back to impl block for backward compatibility
+    let input = if let Ok(struct_input) = syn::parse::<ItemStruct>(item.clone()) {
+        ModuleInput::Struct(struct_input)
+    } else if let Ok(impl_input) = syn::parse::<ItemImpl>(item) {
+        ModuleInput::Impl(impl_input)
+    } else {
+        return syn::Error::new(
+            Span::call_site(),
+            "Module macro must be applied to either a struct or impl block",
+        )
+        .to_compile_error()
+        .into();
     };
+
+    // Validate unit struct if using struct syntax
+    if let Err(e) = input.validate_unit_struct() {
+        return e.to_compile_error().into();
+    }
+
+    let input_ident = input.ident().clone();
     let input_name = input_ident.to_string();
+    let visibility = input
+        .visibility()
+        .cloned()
+        .unwrap_or_else(|| syn::parse_quote!(pub));
     let imports = &config.imports;
     let controllers = config.controllers;
     let providers = &config.providers;
     let exports = &config.exports;
     let is_global = config.global;
 
-    // Extract configure_middleware method from impl block if present
-    let configure_middleware_impl = extract_configure_middleware_method(&input);
+    // Extract configure_middleware method from impl items if present
+    let configure_middleware_impl = {
+        let mut middleware_impl = quote! {};
+        for item in input.impl_items() {
+            if let ImplItem::Fn(method) = item {
+                if method.sig.ident == "configure_middleware" {
+                    let block = &method.block;
+                    let sig = &method.sig;
+
+                    if sig.inputs.len() != 2 {
+                        return quote! {
+                            compile_error!("configure_middleware must have signature: fn configure_middleware(&self, consumer: &mut MiddlewareConsumer)");
+                        }.into();
+                    }
+
+                    middleware_impl = quote! {
+                        #sig #block
+                    };
+                    break;
+                }
+            }
+        }
+        middleware_impl
+    };
 
     // Debug: uncomment to see what was extracted
     // eprintln!("configure_middleware_impl (len={}): {}", configure_middleware_impl.to_string().len(), configure_middleware_impl);
@@ -204,7 +262,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
     );
 
     let generated = quote! {
-        pub struct #input_ident;
+        #visibility struct #input_ident;
 
         // Generate unique ModuleRefManager for this module
         pub struct #module_ref_manager_name {

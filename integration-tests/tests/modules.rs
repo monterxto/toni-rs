@@ -222,3 +222,42 @@ async fn module_exports_selective_providers() {
     let body = resp.text().await.unwrap();
     assert_eq!(body, "public");
 }
+
+#[serial]
+#[tokio_localset_test::localset_test]
+async fn module_struct_syntax() {
+    #[injectable(pub struct TestService {})]
+    impl TestService {
+        pub fn message(&self) -> String {
+            "struct-syntax".to_string()
+        }
+    }
+
+    #[controller_struct(pub struct TestController {
+        #[inject]
+        service: TestService,
+    })]
+    #[controller("")]
+    impl TestController {
+        #[get("/test")]
+        fn test(&self, _req: HttpRequest) -> ToniBody {
+            ToniBody::Text(self.service.message())
+        }
+    }
+
+    #[module(
+        providers: [TestService],
+        controllers: [TestController],
+    )]
+    pub struct TestModule;
+
+    let server = TestServer::start(TestModule.into()).await;
+    let resp = server
+        .client()
+        .get(server.url("/test"))
+        .send()
+        .await
+        .unwrap();
+    let body = resp.text().await.unwrap();
+    assert_eq!(body, "struct-syntax");
+}
