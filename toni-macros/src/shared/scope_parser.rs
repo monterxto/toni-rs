@@ -33,11 +33,11 @@ impl Default for ControllerScope {
 /// Parse injectable attribute
 /// Supports two syntaxes:
 /// 1. Attribute: #[injectable(scope = "request", init = "new")] pub struct Foo { ... }
-/// 2. Nested (legacy): #[injectable(scope = "request", pub struct Foo { ... })]
+/// 2. Inline: #[injectable(scope = "request", pub struct Foo { ... })]
 pub struct ProviderStructArgs {
     pub scope: ProviderScope,
     pub init: Option<String>, // Optional custom constructor method name
-    pub struct_def: Option<ItemStruct>, // None if using new syntax (struct in item)
+    pub struct_def: Option<ItemStruct>, // None if using attribute syntax
 }
 
 /// Parse controller_struct attribute: #[controller_struct(scope = "request", init = "new", pub struct Foo { ... })]
@@ -54,10 +54,10 @@ pub struct ControllerStructArgs {
 /// - #[controller("/path", pub struct Foo { ... })]
 /// - #[controller("/path", scope = "request", pub struct Foo { ... })]
 pub struct ControllerArgs {
-    pub path: String,          // Controller path prefix (empty string if not specified)
+    pub path: String, // Controller path prefix (empty string if not specified)
     pub scope: ControllerScope,
-    pub was_explicit: bool,    // Did user explicitly write scope = "..."?
-    pub init: Option<String>,  // Optional custom constructor method name
+    pub was_explicit: bool,     // Did user explicitly write scope = "..."?
+    pub init: Option<String>,   // Optional custom constructor method name
     pub struct_def: ItemStruct, // The struct definition
 }
 
@@ -107,8 +107,8 @@ impl Parse for ProviderStructArgs {
             }
         }
 
-        // Try to parse struct definition (old syntax)
-        // If input is empty, struct_def will be None (new syntax)
+        // Try to parse struct definition (inline syntax)
+        // If input is empty, struct_def will be None (attribute syntax)
         let struct_def = if !input.is_empty() {
             Some(input.parse::<ItemStruct>()?)
         } else {
