@@ -148,7 +148,15 @@ pub fn generate_instance_provider_system(
 
     let struct_with_clone = add_clone_derive(struct_attrs);
 
-    let impl_def = impl_block.clone();
+    // Clone impl block and remove marker attributes (#[inject]) from constructor parameters
+    let mut impl_def = impl_block.clone();
+    for item in impl_def.items.iter_mut() {
+        if let syn::ImplItem::Fn(method) = item {
+            crate::markers_params::remove_marker_controller_fn::remove_marker_in_controller_fn_args(
+                method,
+            );
+        }
+    }
 
     // Detect which enhancer traits this struct implements
     // Checks both marker attributes (#[guard], etc.) and trait impl blocks
