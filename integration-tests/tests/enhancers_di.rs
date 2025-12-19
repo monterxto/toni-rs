@@ -13,8 +13,8 @@ use std::sync::{Arc, Mutex};
 use toni::async_trait;
 use toni::enhancer::{guard, interceptor, middleware};
 use toni::{
-    controller, controller_struct, get, injectable, module, use_guards, use_interceptors,
-    Body as ToniBody, HttpAdapter, HttpRequest,
+    controller, get, injectable, module, use_guards, use_interceptors, Body as ToniBody,
+    HttpAdapter, HttpRequest,
 };
 use toni_axum::AxumAdapter;
 
@@ -223,10 +223,9 @@ impl Interceptor for TimingInterceptor {
 // TEST CONTROLLER (References DI-based Enhancers)
 // ============================================================================
 
-#[controller_struct(pub struct EnhancerTestController {
+#[controller("/api", pub struct EnhancerTestController {
     tracker: ExecutionTracker,
 })]
-#[controller("/api")]
 impl EnhancerTestController {
     pub fn new(tracker: ExecutionTracker) -> Self {
         Self { tracker }

@@ -6,10 +6,7 @@
 //! 3. Dependencies are resolved correctly for each scope
 
 use serial_test::serial;
-use toni::{
-    controller, controller_struct, get, injectable, module, Body as ToniBody, HttpAdapter,
-    HttpRequest,
-};
+use toni::{controller, get, injectable, module, Body as ToniBody, HttpAdapter, HttpRequest};
 use toni_axum::AxumAdapter;
 use toni_config::{Config, ConfigModule};
 
@@ -32,8 +29,7 @@ impl AppService {
 // TEST 1: Singleton Controller (Default)
 // ============================================================================
 
-#[controller_struct(pub struct SingletonController { #[inject]service: AppService })]
-#[controller("/singleton")]
+#[controller("/singleton", pub struct SingletonController { #[inject]service: AppService })]
 impl SingletonController {
     #[get("/test")]
     fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -96,8 +92,7 @@ async fn test_singleton_controller_default() {
 // TEST 2: Explicit Request-scoped Controller
 // ============================================================================
 
-#[controller_struct(scope = "request", pub struct RequestController { #[inject]service: AppService })]
-#[controller("/request")]
+#[controller("/request", scope = "request", pub struct RequestController { #[inject]service: AppService })]
 impl RequestController {
     #[get("/test")]
     fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -160,8 +155,7 @@ async fn test_request_scoped_controller_explicit() {
 // TEST 3: Mixed Scopes - Both Controllers in Same Module
 // ============================================================================
 
-#[controller_struct(pub struct BothSingletonController { #[inject]service: AppService })]
-#[controller("/both/singleton")]
+#[controller("/both/singleton", pub struct BothSingletonController { #[inject]service: AppService })]
 impl BothSingletonController {
     #[get("/test")]
     fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -169,8 +163,7 @@ impl BothSingletonController {
     }
 }
 
-#[controller_struct(scope = "request", pub struct BothRequestController { #[inject]service: AppService })]
-#[controller("/both/request")]
+#[controller("/both/request", scope = "request", pub struct BothRequestController { #[inject]service: AppService })]
 impl BothRequestController {
     #[get("/test")]
     fn test(&self, _req: HttpRequest) -> ToniBody {

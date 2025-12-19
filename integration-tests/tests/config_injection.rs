@@ -4,10 +4,7 @@
 //! and makes HTTP requests to verify the configuration is accessible.
 
 use serial_test::serial;
-use toni::{
-    controller, controller_struct, get, injectable, module, Body as ToniBody, HttpAdapter,
-    HttpRequest,
-};
+use toni::{controller, get, injectable, module, Body as ToniBody, HttpAdapter, HttpRequest};
 use toni_axum::AxumAdapter;
 use toni_config::{Config, ConfigModule, ConfigService};
 
@@ -59,13 +56,13 @@ impl AppService {
 }
 
 // Controller that uses the service
-#[controller_struct(
+#[controller(
+    "/api",
     pub struct AppController {
         #[inject]
         service: AppService,
     }
 )]
-#[controller("/api")]
 impl AppController {
     #[get("/info")]
     fn get_info(&self, _req: HttpRequest) -> ToniBody {

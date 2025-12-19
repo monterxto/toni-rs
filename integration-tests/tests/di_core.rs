@@ -3,7 +3,7 @@ mod common;
 use common::TestServer;
 use serial_test::serial;
 use std::sync::atomic::{AtomicU32, Ordering};
-use toni::{controller, controller_struct, get, injectable, module, Body as ToniBody, HttpRequest};
+use toni::{controller, get, injectable, module, Body as ToniBody, HttpRequest};
 use toni_config::{Config, ConfigModule, ConfigService};
 
 #[derive(Config, Clone)]
@@ -27,8 +27,7 @@ impl SingletonService {
 async fn singleton_providers_created_once_across_requests() {
     SINGLETON_COUNTER.store(0, Ordering::SeqCst);
 
-    #[controller_struct(pub struct TestController { #[inject] service: SingletonService })]
-    #[controller("/")]
+    #[controller("/", pub struct TestController { #[inject] service: SingletonService })]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -82,8 +81,7 @@ async fn transient_providers_create_unique_instances_per_injection() {
         }
     }
 
-    #[controller_struct(pub struct TestController { #[inject] service: MultiService })]
-    #[controller("/")]
+    #[controller("/", pub struct TestController { #[inject] service: MultiService })]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -162,8 +160,7 @@ async fn transient_providers_with_owned_values() {
         }
     }
 
-    #[controller_struct(pub struct TestController { #[inject] service: ServiceWithMultipleIds })]
-    #[controller("/")]
+    #[controller("/", pub struct TestController { #[inject] service: ServiceWithMultipleIds })]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -203,8 +200,7 @@ async fn constructor_injection_auto_detected_new() {
         }
     }
 
-    #[controller_struct(pub struct TestController { #[inject] service: AutoService })]
-    #[controller("/")]
+    #[controller("/", pub struct TestController { #[inject] service: AutoService })]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -235,8 +231,7 @@ async fn constructor_injection_custom_init_method() {
         }
     }
 
-    #[controller_struct(pub struct TestController { #[inject] service: CustomService })]
-    #[controller("/")]
+    #[controller("/", pub struct TestController { #[inject] service: CustomService })]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -277,8 +272,7 @@ async fn field_injection_with_inject_attribute() {
         }
     }
 
-    #[controller_struct(pub struct TestController { #[inject] service: ServiceWithDeps })]
-    #[controller("/")]
+    #[controller("/", pub struct TestController { #[inject] service: ServiceWithDeps })]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -313,8 +307,7 @@ async fn field_injection_with_default_fallback() {
         }
     }
 
-    #[controller_struct(pub struct TestController { #[inject] service: ServiceWithDefault })]
-    #[controller("/")]
+    #[controller("/", pub struct TestController { #[inject] service: ServiceWithDefault })]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -349,8 +342,7 @@ async fn config_service_injection_in_providers() {
         }
     }
 
-    #[controller_struct(pub struct TestController { #[inject] service: ServiceWithConfig })]
-    #[controller("/")]
+    #[controller("/", pub struct TestController { #[inject] service: ServiceWithConfig })]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -388,8 +380,7 @@ async fn new_attribute_syntax() {
         }
     }
 
-    #[controller_struct(pub struct TestController { #[inject] service: NewSyntaxService })]
-    #[controller("/")]
+    #[controller("/", pub struct TestController { #[inject] service: NewSyntaxService })]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -420,11 +411,10 @@ async fn controller_constructor_injection() {
         }
     }
 
-    #[controller_struct(pub struct TestController {
+    #[controller("/", pub struct TestController {
         #[inject]
         dep: ControllerDep,
     })]
-    #[controller("/")]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {

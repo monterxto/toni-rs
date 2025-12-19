@@ -4,15 +4,14 @@ use common::TestServer;
 use serial_test::serial;
 use std::time::Duration;
 use toni::{
-    controller, controller_struct, get, injectable, module, provider_alias, provider_factory,
-    provider_token, provider_value, Body as ToniBody, HttpRequest,
+    controller, get, injectable, module, provider_alias, provider_factory, provider_token,
+    provider_value, Body as ToniBody, HttpRequest,
 };
 
 #[serial]
 #[tokio_localset_test::localset_test]
 async fn provider_value_injects_constant() {
-    #[controller_struct(pub struct TestController {})]
-    #[controller("")]
+    #[controller("", pub struct TestController {})]
     impl TestController {
         #[get("/port")]
         fn get_port(&self, _req: HttpRequest) -> ToniBody {
@@ -43,8 +42,7 @@ async fn provider_factory_sync_without_deps() {
 
     static CALL_COUNT: AtomicU32 = AtomicU32::new(0);
 
-    #[controller_struct(pub struct TestController {})]
-    #[controller("")]
+    #[controller("", pub struct TestController {})]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -93,8 +91,7 @@ async fn provider_factory_sync_with_deps() {
         }
     }
 
-    #[controller_struct(pub struct TestController {})]
-    #[controller("")]
+    #[controller("", pub struct TestController {})]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -141,8 +138,7 @@ async fn provider_factory_async_with_deps() {
         }
     }
 
-    #[controller_struct(pub struct TestController {})]
-    #[controller("")]
+    #[controller("", pub struct TestController {})]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -182,8 +178,7 @@ async fn provider_alias_creates_alternate_token() {
         }
     }
 
-    #[controller_struct(pub struct TestController {})]
-    #[controller("")]
+    #[controller("", pub struct TestController {})]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -220,8 +215,7 @@ async fn provider_token_for_custom_types() {
         }
     }
 
-    #[controller_struct(pub struct TestController {})]
-    #[controller("")]
+    #[controller("", pub struct TestController {})]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -281,8 +275,7 @@ async fn all_provider_variants_work_together() {
         }
     }
 
-    #[controller_struct(pub struct TestController {})]
-    #[controller("")]
+    #[controller("", pub struct TestController {})]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {

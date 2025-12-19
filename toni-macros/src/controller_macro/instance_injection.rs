@@ -8,8 +8,7 @@
 //! Example transformation:
 //! ```rust,ignore
 //! // User code:
-//! #[controller_struct(pub struct AppController { service: AppService })]
-//! #[controller("/api")]
+//! #[controller("/api", pub struct AppController { service: AppService })]
 //! impl AppController {
 //!     #[get("/info")]
 //!     fn get_info(&self, req: HttpRequest) -> ToniBody {

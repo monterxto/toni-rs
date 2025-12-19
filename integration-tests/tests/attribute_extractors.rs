@@ -3,9 +3,7 @@ mod common;
 use common::TestServer;
 use serde::{Deserialize, Serialize};
 use serial_test::serial;
-use toni::{
-    controller, controller_struct, extractors::Bytes, get, post, Body as ToniBody, HttpRequest,
-};
+use toni::{controller, extractors::Bytes, get, post, Body as ToniBody, HttpRequest};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct CreateUserDto {
@@ -27,8 +25,7 @@ struct SearchParams {
 /// - `#[query("name")]`: Extract query string parameters
 ///
 /// The macro automatically transforms these into proper type-safe extractors behind the scenes.
-#[controller_struct(pub struct AttributeController {})]
-#[controller("/api")]
+#[controller("/api", pub struct AttributeController {})]
 impl AttributeController {
     /// Extract JSON body using #[body] attribute
     #[post("/users")]

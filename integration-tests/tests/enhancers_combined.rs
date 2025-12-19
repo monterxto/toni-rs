@@ -14,8 +14,8 @@ use serial_test::serial;
 use std::sync::{Arc, Mutex};
 use toni::async_trait;
 use toni::{
-    controller, controller_struct, get, injectable, module, post, use_guards, use_interceptors,
-    use_pipes, Body as ToniBody, HttpAdapter, HttpRequest, HttpResponse,
+    controller, get, injectable, module, post, use_guards, use_interceptors, use_pipes,
+    Body as ToniBody, HttpAdapter, HttpRequest, HttpResponse,
 };
 use toni_axum::AxumAdapter;
 
@@ -295,14 +295,14 @@ impl TestService {
 }
 
 // Controller with various endpoint configurations
-#[controller_struct(
+#[controller(
+    "/api",
     pub struct EnhancerController {
         #[inject]
         service: TestService,
     }
 )]
 #[use_interceptors(LoggingInterceptor::new("controller", get_global_tracker()))] // Controller-level: applies to ALL methods
-#[controller("/api")]
 impl EnhancerController {
     /// Endpoint with all enhancers: guard + interceptor + pipe
     #[use_guards(AdminGuard::new(get_global_tracker()))]

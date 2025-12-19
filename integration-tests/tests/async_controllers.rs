@@ -3,10 +3,7 @@
 //! This test verifies that controller methods can be async and properly await async operations
 
 use serial_test::serial;
-use toni::{
-    controller, controller_struct, get, injectable, module, Body as ToniBody, HttpAdapter,
-    HttpRequest,
-};
+use toni::{controller, get, injectable, module, Body as ToniBody, HttpAdapter, HttpRequest};
 use toni_axum::AxumAdapter;
 
 // Simple async service
@@ -28,13 +25,13 @@ impl AsyncService {
 }
 
 // Controller with async methods
-#[controller_struct(
+#[controller(
+    "/async",
     pub struct AsyncController {
         #[inject]
         service: AsyncService,
     }
 )]
-#[controller("/async")]
 impl AsyncController {
     // Async method that awaits service call
     #[get("/data")]
@@ -164,13 +161,13 @@ async fn test_async_with_real_async_operation() {
         }
     }
 
-    #[controller_struct(
+    #[controller(
+        "/http",
         pub struct HttpController {
             #[inject]
             http_service: HttpService,
         }
     )]
-    #[controller("/http")]
     impl HttpController {
         #[get("/fetch")]
         async fn fetch(&self, _req: HttpRequest) -> ToniBody {

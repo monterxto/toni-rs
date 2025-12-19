@@ -9,13 +9,12 @@
 //! ## Basic Usage
 //!
 //! ```rust
-//! use toni::{controller_struct, controller, get, Request, Body as ToniBody, HttpRequest};
+//! use toni::{controller, get, Request, Body as ToniBody, HttpRequest};
 //!
-//! #[controller_struct(pub struct UserController {
+//! #[controller("/users", pub struct UserController {
 //!     #[inject]
 //!     request: Request,  // Built-in, automatically available!
 //! })]
-//! #[controller("/users")]
 //! impl UserController {
 //!     #[get("/me")]
 //!     fn get_current_user(&self, _req: HttpRequest) -> ToniBody {
@@ -31,16 +30,15 @@
 //! ## Accessing Extensions
 //!
 //! ```rust
-//! use toni::{controller_struct, controller, get, Request, Body as ToniBody, HttpRequest};
+//! use toni::{controller, get, Request, Body as ToniBody, HttpRequest};
 //!
 //! #[derive(Clone)]
 //! struct UserId(String);
 //!
-//! #[controller_struct(pub struct ProfileController {
+//! #[controller("/profile", pub struct ProfileController {
 //!     #[inject]
 //!     request: Request,
 //! })]
-//! #[controller("/profile")]
 //! impl ProfileController {
 //!     #[get("/")]
 //!     fn get_profile(&self, _req: HttpRequest) -> ToniBody {
@@ -57,13 +55,12 @@
 //! ## Accessing Headers
 //!
 //! ```rust
-//! use toni::{controller_struct, controller, get, Request, Body as ToniBody, HttpRequest};
+//! use toni::{controller, get, Request, Body as ToniBody, HttpRequest};
 //!
-//! #[controller_struct(pub struct ApiController {
+//! #[controller("/api", pub struct ApiController {
 //!     #[inject]
 //!     request: Request,
 //! })]
-//! #[controller("/api")]
 //! impl ApiController {
 //!     #[get("/data")]
 //!     fn get_data(&self, _req: HttpRequest) -> ToniBody {

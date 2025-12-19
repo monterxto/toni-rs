@@ -107,8 +107,8 @@ pub fn delete(_attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// **Controller-level guards (applies to all methods):**
 /// ```rust,ignore
+/// #[controller("/api", pub struct MyController{})]
 /// #[use_guards(AuthGuard{})]
-/// #[controller("/api")]
 /// impl MyController {
 ///     // All methods require authentication
 /// }

@@ -6,8 +6,7 @@
 use serde::Deserialize;
 use serial_test::serial;
 use toni::{
-    controller, controller_struct, extractors::Json, get, module, post, Body as ToniBody,
-    HttpAdapter, Request,
+    controller, extractors::Json, get, module, post, Body as ToniBody, HttpAdapter, Request,
 };
 use toni_axum::AxumAdapter;
 
@@ -17,8 +16,7 @@ struct CreateDto {
 }
 
 // Controller demonstrating optional Request parameter
-#[controller_struct(pub struct RequestExtractorController;)]
-#[controller("/api")]
+#[controller("/api", pub struct RequestExtractorController;)]
 impl RequestExtractorController {
     // Method WITHOUT Request parameter - clean!
     #[get("/hello")]

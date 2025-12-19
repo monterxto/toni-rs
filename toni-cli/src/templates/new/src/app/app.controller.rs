@@ -2,12 +2,12 @@ use toni_macros::{controller, controller_struct, get, post, put, delete};
 use toni::http_helpers::{HttpRequest, Body};
 use super::app_service::_AppService;
 
-#[controller_struct(
+#[controller(
+  "/app",
   pub struct _AppController {
     app_service: _AppService,
   }
 )]
-#[controller("/app")]
 impl _AppController {
 	#[post("")]
 	fn _create(&self, _req: HttpRequest) -> Body {

@@ -121,12 +121,12 @@ pub struct AppModule;
 **`app/app.controller.rs`** (HTTP Routes)
 
 ```rust
-#[controller_struct(
+#[controller(
+    "/app",
     pub struct _AppController {
         app_service: _AppService
     }
 )]
-#[controller("/app")]
 impl _AppController {
     #[post("")]
     fn create(&self, _req: HttpRequest) -> Body {

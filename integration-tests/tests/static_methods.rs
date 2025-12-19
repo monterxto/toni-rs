@@ -7,10 +7,7 @@
 //! 4. Static methods work with extractors
 
 use serial_test::serial;
-use toni::{
-    controller, controller_struct, get, injectable, module, Body as ToniBody, HttpAdapter,
-    HttpRequest,
-};
+use toni::{controller, get, injectable, module, Body as ToniBody, HttpAdapter, HttpRequest};
 use toni_axum::AxumAdapter;
 use toni_config::{Config, ConfigModule};
 
@@ -25,8 +22,7 @@ struct StaticTestConfig {
 // TEST 1: Pure Static Method Controller (no dependencies)
 // ============================================================================
 
-#[controller_struct(pub struct StaticController {})]
-#[controller("/static")]
+#[controller("/static", pub struct StaticController {})]
 impl StaticController {
     #[get("/hello")]
     fn hello(_req: HttpRequest) -> ToniBody {
@@ -111,8 +107,7 @@ impl MixedService {
     }
 }
 
-#[controller_struct(pub struct MixedController { #[inject]service: MixedService })]
-#[controller("/mixed")]
+#[controller("/mixed", pub struct MixedController { #[inject]service: MixedService })]
 impl MixedController {
     // Instance method - uses self.service
     #[get("/instance")]
@@ -192,8 +187,7 @@ async fn test_mixed_static_and_instance_methods() {
 // TEST 3: Request-scoped Controller with Static Methods
 // ============================================================================
 
-#[controller_struct(scope = "request", pub struct RequestScopedStaticController {})]
-#[controller("/request-static")]
+#[controller("/request-static", scope = "request", pub struct RequestScopedStaticController {})]
 impl RequestScopedStaticController {
     #[get("/test")]
     fn test(_req: HttpRequest) -> ToniBody {
@@ -255,8 +249,7 @@ async fn test_request_scoped_static_methods() {
 // TEST 4: Async Static Methods
 // ============================================================================
 
-#[controller_struct(pub struct AsyncStaticController {})]
-#[controller("/async-static")]
+#[controller("/async-static", pub struct AsyncStaticController {})]
 impl AsyncStaticController {
     #[get("/test")]
     async fn test(_req: HttpRequest) -> ToniBody {

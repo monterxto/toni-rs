@@ -3,7 +3,7 @@ mod common;
 use common::TestServer;
 use serial_test::serial;
 use toni::injector::ModuleRef;
-use toni::{controller, controller_struct, get, injectable, module, Body as ToniBody, HttpRequest};
+use toni::{controller, get, injectable, module, Body as ToniBody, HttpRequest};
 
 #[serial]
 #[tokio_localset_test::localset_test]
@@ -32,11 +32,10 @@ async fn global_modules_attribute_syntax() {
         }
     }
 
-    #[controller_struct(pub struct TestController {
+    #[controller("", pub struct TestController {
         #[inject]
         service: LocalService,
     })]
-    #[controller("")]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -72,11 +71,10 @@ async fn module_ref_runtime_provider_access() {
         }
     }
 
-    #[controller_struct(pub struct TestController {
+    #[controller("", pub struct TestController {
         #[inject]
         module_ref: ModuleRef,
     })]
-    #[controller("")]
     impl TestController {
         #[get("/test")]
         async fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -135,11 +133,10 @@ async fn nested_module_imports() {
     )]
     impl FeatureModule {}
 
-    #[controller_struct(pub struct TestController {
+    #[controller("", pub struct TestController {
         #[inject]
         feature: FeatureService,
     })]
-    #[controller("")]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -193,11 +190,10 @@ async fn module_exports_selective_providers() {
         }
     }
 
-    #[controller_struct(pub struct TestController {
+    #[controller("", pub struct TestController {
         #[inject]
         consumer: ConsumerService,
     })]
-    #[controller("")]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -233,11 +229,10 @@ async fn module_struct_syntax() {
         }
     }
 
-    #[controller_struct(pub struct TestController {
+    #[controller("", pub struct TestController {
         #[inject]
         service: TestService,
     })]
-    #[controller("")]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {

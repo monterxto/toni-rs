@@ -5,7 +5,7 @@
 use serde::Deserialize;
 use serial_test::serial;
 use toni::{
-    controller, controller_struct,
+    controller,
     extractors::{Json, Query, Validated},
     get, module, post, Body as ToniBody, HttpAdapter,
 };
@@ -27,10 +27,10 @@ struct CreateUserDto {
 }
 
 // Controller using extractors
-#[controller_struct(
+#[controller(
+    "/api",
     pub struct ExtractorController;
 )]
-#[controller("/api")]
 impl ExtractorController {
     // Test Query extractor with destructuring
     #[get("/search")]
@@ -203,10 +203,10 @@ struct ValidatedUserDto {
 }
 
 // Controller using Validated extractor
-#[controller_struct(
+#[controller(
+    "/validated",
     pub struct ValidatedController;
 )]
-#[controller("/validated")]
 impl ValidatedController {
     #[post("/users")]
     fn create_user(&self, Validated(Json(dto)): Validated<Json<ValidatedUserDto>>) -> ToniBody {

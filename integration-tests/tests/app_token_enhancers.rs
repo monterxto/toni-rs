@@ -12,8 +12,8 @@ use std::sync::{Arc, Mutex};
 use toni::async_trait;
 use toni::enhancer::{guard, interceptor};
 use toni::{
-    controller, controller_struct, get, injectable, module, provider_token, Body as ToniBody,
-    HttpAdapter, HttpRequest, ToniFactory,
+    controller, get, injectable, module, provider_token, Body as ToniBody, HttpAdapter,
+    HttpRequest, ToniFactory,
 };
 use toni_axum::AxumAdapter;
 
@@ -130,10 +130,9 @@ impl Interceptor for AppInterceptorWithDI {
 // CONTROLLER
 // ============================================================================
 
-#[controller_struct(pub struct TestController {
+#[controller("/api", pub struct TestController {
     tracker: ExecutionTracker,
 })]
-#[controller("/api")]
 impl TestController {
     pub fn new(tracker: ExecutionTracker) -> Self {
         Self { tracker }

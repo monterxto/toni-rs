@@ -2,8 +2,8 @@ use serial_test::serial;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 use toni::{
-    controller, controller_struct, get, injectable, module, toni_factory::ToniFactory,
-    Body as ToniBody, HttpAdapter, HttpRequest,
+    controller, get, injectable, module, toni_factory::ToniFactory, Body as ToniBody, HttpAdapter,
+    HttpRequest,
 };
 use toni_axum::AxumAdapter;
 
@@ -18,8 +18,7 @@ impl SingletonProvider {
     }
 }
 
-#[controller_struct(pub struct OkController { #[inject]provider: SingletonProvider })]
-#[controller("/ok")]
+#[controller("/ok", pub struct OkController { #[inject]provider: SingletonProvider })]
 impl OkController {
     #[get("/test")]
     fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -41,8 +40,7 @@ impl RequestScopedProvider {
 }
 
 // This should trigger a warning! Singleton controller with Request-scoped dependency
-#[controller_struct(pub struct ProblematicController { #[inject]provider: RequestScopedProvider })]
-#[controller("/problematic")]
+#[controller("/problematic", pub struct ProblematicController { #[inject]provider: RequestScopedProvider })]
 impl ProblematicController {
     #[get("/test")]
     fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -61,8 +59,7 @@ impl AnotherRequestProvider {
     }
 }
 
-#[controller_struct(scope = "request", pub struct CorrectController { #[inject]provider: AnotherRequestProvider })]
-#[controller("/correct")]
+#[controller("/correct", scope = "request", pub struct CorrectController { #[inject]provider: AnotherRequestProvider })]
 impl CorrectController {
     #[get("/test")]
     fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -89,13 +86,12 @@ impl SessionProvider {
 }
 
 // This should trigger a warning for SessionProvider being Request-scoped
-#[controller_struct(pub struct MixedController {
+#[controller("/mixed", pub struct MixedController {
     #[inject]
     cache: CacheProvider,
     #[inject]
     session: SessionProvider,
 })]
-#[controller("/mixed")]
 impl MixedController {
     #[get("/test")]
     fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -119,8 +115,7 @@ impl ContradictoryRequestProvider {
 }
 
 // User explicitly says "singleton" but has Request deps - should WARN and elevate anyway
-#[controller_struct(scope = "singleton", pub struct ExplicitSingletonController { #[inject]provider: ContradictoryRequestProvider })]
-#[controller("/explicit")]
+#[controller("/explicit", scope = "singleton", pub struct ExplicitSingletonController { #[inject]provider: ContradictoryRequestProvider })]
 impl ExplicitSingletonController {
     #[get("/test")]
     fn test(&self, _req: HttpRequest) -> ToniBody {

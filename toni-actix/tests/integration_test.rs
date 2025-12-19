@@ -1,7 +1,4 @@
-use toni::{
-    controller, controller_struct, get, injectable, module, post, Body as ToniBody, HttpAdapter,
-    HttpRequest,
-};
+use toni::{controller, get, injectable, module, post, Body as ToniBody, HttpAdapter, HttpRequest};
 use toni_actix::ActixAdapter;
 
 // Simple service for testing
@@ -19,13 +16,13 @@ impl TestService {
 }
 
 // Simple controller for testing
-#[controller_struct(
+#[controller(
+    "/test",
     pub struct TestController {
         #[inject]
         test_service: TestService,
     }
 )]
-#[controller("/test")]
 impl TestController {
     #[get("/hello")]
     fn hello(&self, _req: HttpRequest) -> ToniBody {

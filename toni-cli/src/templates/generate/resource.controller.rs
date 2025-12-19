@@ -2,12 +2,12 @@ use toni_macros::{controller, controller_struct, get, post, put, delete};
 use toni::http_helpers::{HttpRequest, Body};
 use super::resource_name_service::_RESOURCE_NAME_SERVICE;
 
-#[controller_struct(
+#[controller(
+  "/resource_name",
   pub struct _RESOURCE_NAME_CONTROLLER {
     resource_name_service: _RESOURCE_NAME_SERVICE,
   }
 )]
-#[controller("/resource_name")]
 impl _RESOURCE_NAME_CONTROLLER {
 	#[post("")]
 	fn _create(&self, _req: HttpRequest) -> Body {

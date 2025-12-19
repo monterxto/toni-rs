@@ -7,9 +7,8 @@ use toni::injector::Context;
 use toni::traits_helpers::middleware::{Middleware, MiddlewareResult, Next};
 use toni::traits_helpers::{Guard, Interceptor, InterceptorNext, MiddlewareConsumer, Pipe};
 use toni::{
-    controller, controller_struct, get, injectable, module, post, provider_factory, provider_token,
-    provider_value, use_guards, use_interceptors, use_pipes, Body as ToniBody, HttpRequest,
-    HttpResponse,
+    controller, get, injectable, module, post, provider_factory, provider_token, provider_value,
+    use_guards, use_interceptors, use_pipes, Body as ToniBody, HttpRequest, HttpResponse,
 };
 
 pub struct OrderTrackerMiddleware {
@@ -206,14 +205,13 @@ async fn enhancers_execution_order() {
         }
     }
 
-    #[controller_struct(pub struct EnhancerController {
+    #[controller("/api", pub struct EnhancerController {
         #[inject]
         service: TestService,
         #[inject]
         tracker: ExecutionOrder,
     })]
     #[use_interceptors(LoggingInterceptor::new("controller", get_tracker()))]
-    #[controller("/api")]
     impl EnhancerController {
         #[use_guards(AdminGuard::new(get_tracker()))]
         #[use_interceptors(LoggingInterceptor::new("method", get_tracker()))]
@@ -331,11 +329,10 @@ async fn guard_authorization() {
         TRACKER.get().unwrap().clone()
     }
 
-    #[controller_struct(pub struct TestController {
+    #[controller("/api", pub struct TestController {
         #[inject]
         tracker: ExecutionOrder,
     })]
-    #[controller("/api")]
     impl TestController {
         #[use_guards("AUTH_GUARD")]
         #[get("/auth-only")]
@@ -407,8 +404,7 @@ async fn di_in_enhancers() {
         }
     }
 
-    #[controller_struct(pub struct TestController {})]
-    #[controller("/api")]
+    #[controller("/api", pub struct TestController {})]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -458,11 +454,10 @@ async fn app_token_global_enhancers() {
         }
     }
 
-    #[controller_struct(pub struct TestController {
+    #[controller("/api", pub struct TestController {
         #[inject]
         tracker: ExecutionOrder,
     })]
-    #[controller("/api")]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -527,7 +522,7 @@ async fn provider_macro_scope_support() {
         }
     }
 
-    #[controller_struct(scope = "request", pub struct TestController {
+    #[controller("/test", scope = "request", pub struct TestController {
         #[inject("SINGLETON")]
         singleton1: Counter,
         #[inject("SINGLETON")]
@@ -541,7 +536,6 @@ async fn provider_macro_scope_support() {
         #[inject("TRANSIENT")]
         transient2: Counter,
     })]
-    #[controller("/test")]
     impl TestController {
         #[get("/get")]
         fn get_value(&self, _req: HttpRequest) -> ToniBody {

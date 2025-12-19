@@ -1,14 +1,11 @@
 /// Test that the built-in Request provider is automatically available
 /// in all modules without needing to explicitly add it to providers list.
-use toni::{
-    controller, controller_struct, get, module, Body as ToniBody, HttpAdapter, HttpRequest, Request,
-};
+use toni::{controller, get, module, Body as ToniBody, HttpAdapter, HttpRequest, Request};
 
-#[controller_struct(pub struct TestController {
+#[controller("/test", pub struct TestController {
     #[inject]
     request: Request, // Request is automatically available - no need to add to providers!
 })]
-#[controller("/test")]
 impl TestController {
     #[get("/info")]
     fn get_info(&self, _req: HttpRequest) -> ToniBody {

@@ -5,7 +5,7 @@
 //! 2. Explicit init attribute with custom constructor
 //! 3. Default fallback for structs without constructors
 
-use toni::{controller, controller_struct, get, injectable, module, Body as ToniBody, HttpRequest};
+use toni::{controller, get, injectable, module, Body as ToniBody, HttpRequest};
 
 // ============= Base Service =============
 
@@ -26,10 +26,9 @@ impl ConfigService {
 
 // ============= Example 1: Auto-detected new() =============
 
-#[controller_struct(pub struct AutoDetectedController {
+#[controller("/auto", pub struct AutoDetectedController {
     config_value: String,
 })]
-#[controller("/auto")]
 impl AutoDetectedController {
     // new() is auto-detected - config param will be DI-resolved
     pub fn new(config: ConfigService) -> Self {
@@ -46,10 +45,9 @@ impl AutoDetectedController {
 
 // ============= Example 2: Explicit init with custom name =============
 
-#[controller_struct(init = "create", pub struct ExplicitInitController {
+#[controller("/explicit", init = "create", pub struct ExplicitInitController {
     combined: String,
 })]
-#[controller("/explicit")]
 impl ExplicitInitController {
     // Custom constructor name - config param will be DI-resolved
     pub fn create(config: ConfigService) -> Self {
@@ -97,10 +95,9 @@ impl HelperService {
     }
 }
 
-#[controller_struct(pub struct MultiParamController {
+#[controller("/multi", pub struct MultiParamController {
     result: String,
 })]
-#[controller("/multi")]
 impl MultiParamController {
     pub fn new(config: ConfigService, helper: HelperService) -> Self {
         Self {

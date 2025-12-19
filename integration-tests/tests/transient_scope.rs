@@ -7,10 +7,7 @@
 
 use serial_test::serial;
 use std::sync::{Arc, Mutex};
-use toni::{
-    controller, controller_struct, get, injectable, module, Body as ToniBody, HttpAdapter,
-    HttpRequest,
-};
+use toni::{controller, get, injectable, module, Body as ToniBody, HttpAdapter, HttpRequest};
 use toni_axum::AxumAdapter;
 use toni_config::{Config, ConfigModule};
 
@@ -54,13 +51,13 @@ impl TransientTestService {
 }
 
 // Controller that uses the service
-#[controller_struct(
+#[controller(
+    "/api",
     pub struct TransientTestController {
         #[inject]
         service: TransientTestService,
     }
 )]
-#[controller("/api")]
 impl TransientTestController {
     #[get("/test")]
     fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -221,7 +218,8 @@ async fn test_controller_with_multiple_transient_fields() {
     }
 
     // Controller with two Transient fields directly
-    #[controller_struct(
+    #[controller(
+        "/multi",
         pub struct MultiTransientController {
             #[inject]
             helper_x: TransientHelper,
@@ -229,7 +227,6 @@ async fn test_controller_with_multiple_transient_fields() {
             helper_y: TransientHelper,
         }
     )]
-    #[controller("/multi")]
     impl MultiTransientController {
         #[get("/direct")]
         fn test_direct(&self, _req: HttpRequest) -> ToniBody {

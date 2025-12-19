@@ -8,10 +8,7 @@
 
 use serial_test::serial;
 use std::time::Duration;
-use toni::{
-    controller, controller_struct, get, injectable, module, Body as ToniBody, HttpAdapter,
-    HttpRequest,
-};
+use toni::{controller, get, injectable, module, Body as ToniBody, HttpAdapter, HttpRequest};
 use toni_axum::AxumAdapter;
 use toni_config::{Config, ConfigModule, ConfigService};
 
@@ -91,13 +88,13 @@ impl UserService {
     }
 }
 
-#[controller_struct(
+#[controller(
+    "/users",
     pub struct UserController {
         #[inject]
         user_service: UserService,
     }
 )]
-#[controller("/users")]
 impl UserController {
     #[get("/{id}")]
     fn get_user(&self, _req: HttpRequest) -> ToniBody {
@@ -145,13 +142,13 @@ impl OrderService {
     }
 }
 
-#[controller_struct(
+#[controller(
+    "/orders",
     pub struct OrderController {
         #[inject]
         order_service: OrderService,
     }
 )]
-#[controller("/orders")]
 impl OrderController {
     #[get("/create")]
     fn create_order(&self, _req: HttpRequest) -> ToniBody {
@@ -291,13 +288,13 @@ impl ProductService {
     }
 }
 
-#[controller_struct(
+#[controller(
+    "/products",
     pub struct ProductController {
         #[inject]
         product_service: ProductService,
     }
 )]
-#[controller("/products")]
 impl ProductController {
     #[get("/{id}")]
     fn get_product(&self, _req: HttpRequest) -> ToniBody {
