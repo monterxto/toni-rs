@@ -9,7 +9,7 @@ use crate::{
 use super::instance_injection::generate_instance_controller_system;
 
 /// Check if the impl block has a `new()` method
-fn has_new_method(impl_block: &ItemImpl) -> bool {
+pub fn has_new_method(impl_block: &ItemImpl) -> bool {
     impl_block.items.iter().any(|item| {
         if let ImplItem::Fn(method) = item {
             method.sig.ident == "new"
@@ -20,7 +20,7 @@ fn has_new_method(impl_block: &ItemImpl) -> bool {
 }
 
 /// Extract parameters from a constructor method (init or new())
-fn extract_constructor_params(
+pub fn extract_constructor_params(
     impl_block: &ItemImpl,
     method_name: &str,
 ) -> Result<Vec<(Ident, Type, TokenStream)>> {

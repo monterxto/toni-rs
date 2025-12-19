@@ -47,8 +47,11 @@ pub fn provider_struct(attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn controller(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    item
+pub fn controller(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let attr = proc_macro2::TokenStream::from(attr);
+    let item = proc_macro2::TokenStream::from(item);
+    let output = controller_macro::controller_consolidated::handle_controller_consolidated(attr, item);
+    proc_macro::TokenStream::from(output.unwrap_or_else(|e| e.to_compile_error()))
 }
 
 #[proc_macro_attribute]

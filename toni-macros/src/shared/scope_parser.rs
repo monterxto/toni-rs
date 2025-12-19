@@ -48,6 +48,19 @@ pub struct ControllerStructArgs {
     pub struct_def: ItemStruct,
 }
 
+/// Parse new consolidated controller attribute
+/// Supports:
+/// - #[controller(pub struct Foo { ... })]
+/// - #[controller("/path", pub struct Foo { ... })]
+/// - #[controller("/path", scope = "request", pub struct Foo { ... })]
+pub struct ControllerArgs {
+    pub path: String,          // Controller path prefix (empty string if not specified)
+    pub scope: ControllerScope,
+    pub was_explicit: bool,    // Did user explicitly write scope = "..."?
+    pub init: Option<String>,  // Optional custom constructor method name
+    pub struct_def: ItemStruct, // The struct definition
+}
+
 impl Parse for ProviderStructArgs {
     fn parse(input: ParseStream) -> Result<Self> {
         let mut scope = ProviderScope::default();
@@ -161,6 +174,76 @@ impl Parse for ControllerStructArgs {
         let struct_def: ItemStruct = input.parse()?;
 
         Ok(ControllerStructArgs {
+            scope,
+            was_explicit,
+            init,
+            struct_def,
+        })
+    }
+}
+
+impl Parse for ControllerArgs {
+    fn parse(input: ParseStream) -> Result<Self> {
+        let mut path = String::new();
+        let mut scope = ControllerScope::default();
+        let mut was_explicit = false;
+        let mut init: Option<String> = None;
+
+        // Check if first token is a string literal (path)
+        if input.peek(LitStr) {
+            let path_lit: LitStr = input.parse()?;
+            path = path_lit.value();
+
+            // Consume comma if present
+            if input.peek(Token![,]) {
+                let _: Token![,] = input.parse()?;
+            }
+        }
+
+        // Parse optional named arguments: scope = "...", init = "..."
+        while input.peek(syn::Ident) && !input.peek(Token![pub]) && !input.peek(Token![struct]) {
+            let ident: syn::Ident = input.parse()?;
+
+            if ident == "scope" {
+                let _eq: Token![=] = input.parse()?;
+                let value: LitStr = input.parse()?;
+
+                was_explicit = true;
+                scope = match value.value().as_str() {
+                    "singleton" => ControllerScope::Singleton,
+                    "request" => ControllerScope::Request,
+                    other => {
+                        return Err(syn::Error::new(
+                            value.span(),
+                            format!(
+                                "Invalid controller scope: '{}'. Must be 'singleton' or 'request'",
+                                other
+                            ),
+                        ));
+                    }
+                };
+            } else if ident == "init" {
+                let _eq: Token![=] = input.parse()?;
+                let value: LitStr = input.parse()?;
+                init = Some(value.value());
+            } else {
+                return Err(syn::Error::new(
+                    ident.span(),
+                    format!("Unknown attribute: '{}'. Expected 'scope' or 'init'", ident),
+                ));
+            }
+
+            // Consume comma if present
+            if input.peek(Token![,]) {
+                let _: Token![,] = input.parse()?;
+            }
+        }
+
+        // Parse the struct definition
+        let struct_def: ItemStruct = input.parse()?;
+
+        Ok(ControllerArgs {
+            path,
             scope,
             was_explicit,
             init,
