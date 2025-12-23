@@ -60,7 +60,7 @@ async fn constructor_param_inject_basic() {
 #[serial]
 #[tokio_localset_test::localset_test]
 async fn constructor_param_inject_custom_token() {
-    //const DB_TOKEN: &str = "CustomDatabase";
+    const DB_TOKEN: &str = "CustomDatabase";
 
     #[injectable(pub struct DatabaseService {})]
     impl DatabaseService {
@@ -72,12 +72,12 @@ async fn constructor_param_inject_custom_token() {
     // Use #[inject(token)] on constructor parameter to override DI token
     #[injectable(pub struct ApiService {})]
     impl ApiService {
-        /*fn new(#[inject(DB_TOKEN)] _db: DatabaseService) -> Self {
-            Self {}
-        }*/
-        fn new(#[inject("CustomDatabase")] _db: DatabaseService) -> Self {
+        fn new(#[inject(DB_TOKEN)] _db: DatabaseService) -> Self {
             Self {}
         }
+        /*fn new(#[inject("CustomDatabase")] _db: DatabaseService) -> Self {
+            Self {}
+        }*/
 
         pub fn get_data(&self, db: &DatabaseService) -> String {
             db.query()
@@ -85,8 +85,8 @@ async fn constructor_param_inject_custom_token() {
     }
 
     #[controller("", pub struct TestController {
-        //#[inject(DB_TOKEN)]
-        #[inject("CustomDatabase")]
+        #[inject(DB_TOKEN)]
+        //#[inject("CustomDatabase")]
         db: DatabaseService,
         #[inject]
         api: ApiService,

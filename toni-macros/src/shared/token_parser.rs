@@ -21,9 +21,39 @@ impl TokenType {
             TokenType::Type(path) => quote! {
                 std::any::type_name::<#path>().to_string()
             },
-            TokenType::Const(path) => quote! {
-                #path.name().to_string()
-            },
+            TokenType::Const(path) => {
+                // Support both Token<T> consts and string consts
+                // Token<T> has .name() method, &str consts can use .to_string()
+                // We generate code that works for both by trying Token<T> pattern first
+                quote! {
+                    {
+                        // Try to use as Token<T> first (has .name() method)
+                        // If it's a &str const, this will be the fallback
+                        let __token_value = #path;
+
+                        // Use trait-based detection at compile time
+                        trait __ToniTokenName {
+                            fn __get_token_name(&self) -> String;
+                        }
+
+                        // Implement for Token<T> - use .name()
+                        impl<T: ?Sized> __ToniTokenName for ::toni::di::Token<T> {
+                            fn __get_token_name(&self) -> String {
+                                self.name().to_string()
+                            }
+                        }
+
+                        // Implement for &str - use .to_string()
+                        impl __ToniTokenName for &str {
+                            fn __get_token_name(&self) -> String {
+                                self.to_string()
+                            }
+                        }
+
+                        __token_value.__get_token_name()
+                    }
+                }
+            }
         }
     }
 
