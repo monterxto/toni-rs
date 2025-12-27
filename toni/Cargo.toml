@@ -1,6 +1,6 @@
 [package]
 name = "toni"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 keywords = ["http", "web", "framework"]
 categories = ["asynchronous", "network-programming", "web-programming"]
