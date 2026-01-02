@@ -18,13 +18,15 @@ pub struct AxumAdapter {
     instance: Router,
 }
 
-impl HttpAdapter for AxumAdapter {
-    fn new() -> Self {
+impl AxumAdapter {
+    pub fn new() -> Self {
         Self {
             instance: Router::new(),
         }
     }
+}
 
+impl HttpAdapter for AxumAdapter {
     fn add_route(&mut self, path: &str, method: HttpMethod, handler: Arc<InstanceWrapper>) {
         let route_handler = move |req: Request<Body>| {
             let handler: Arc<InstanceWrapper> = handler.clone();

@@ -17,13 +17,15 @@ struct RouteConfig {
     handler: Arc<InstanceWrapper>,
 }
 
-impl HttpAdapter for ActixAdapter {
-    fn new() -> Self {
+impl ActixAdapter {
+    pub fn new() -> Self {
         Self {
             routes: Arc::new(std::sync::Mutex::new(Vec::new())),
         }
     }
+}
 
+impl HttpAdapter for ActixAdapter {
     fn add_route(&mut self, path: &str, method: HttpMethod, handler: Arc<InstanceWrapper>) {
         println!("Adding route: {} {:?}", path, method);
 
