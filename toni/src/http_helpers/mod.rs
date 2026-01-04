@@ -4,7 +4,7 @@ pub use self::body::Body;
 
 #[path = "http_response.enum.rs"]
 mod http_response;
-pub use self::http_response::{HttpResponse, HttpResponseDefault};
+pub use self::http_response::{HttpResponse, HttpResponseBuilder, HttpResponseDefault};
 
 #[path = "http_request.struct.rs"]
 mod http_request;

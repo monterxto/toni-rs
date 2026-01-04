@@ -115,3 +115,19 @@ impl IntoResponse for &'static str {
         }
     }
 }
+
+// Support for Result<T, E> where both T and E implement IntoResponse
+impl<T, E> IntoResponse for Result<T, E>
+where
+    T: IntoResponse<Response = HttpResponse>,
+    E: IntoResponse<Response = HttpResponse>,
+{
+    type Response = HttpResponse;
+
+    fn to_response(&self) -> Self::Response {
+        match self {
+            Ok(value) => value.to_response(),
+            Err(error) => error.to_response(),
+        }
+    }
+}

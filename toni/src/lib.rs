@@ -2,6 +2,7 @@
 pub mod adapter;
 pub mod builtin_module;
 pub mod di;
+pub mod errors;
 pub mod extractors;
 #[path = "adapter/http_adapter.rs"]
 pub mod http_adapter;
@@ -21,7 +22,9 @@ pub mod traits_helpers;
 // Re-exports for adapter crates
 pub use adapter::RouteAdapter;
 pub use http_adapter::HttpAdapter;
-pub use http_helpers::{Body, HttpMethod, HttpRequest, HttpResponse, IntoResponse};
+pub use http_helpers::{
+    Body, HttpMethod, HttpRequest, HttpResponse, HttpResponseBuilder, IntoResponse,
+};
 pub use injector::InstanceWrapper;
 
 // Re-export built-in providers
