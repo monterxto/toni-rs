@@ -423,11 +423,33 @@ impl ToniInstanceLoader {
         // Add directly instantiated pipes (struct literal or constructor syntax)
         pipes.extend(controller.get_pipes());
 
+        let mut error_handlers = Vec::new();
+        for token in controller.get_error_handler_tokens() {
+            if let Some(provider_box) = providers.get(&token) {
+                if let Some(error_handler) = provider_box.as_error_handler() {
+                    error_handlers.push(error_handler);
+                } else {
+                    return Err(anyhow!(
+                        "Provider '{}' was expected to be an ErrorHandler but as_error_handler() returned None. \
+                         Ensure the provider implements the ErrorHandler trait.",
+                        token
+                    ));
+                }
+            } else {
+                return Err(anyhow!(
+                    "ErrorHandler provider '{}' not found in DI container. \
+                     Did you forget to add it to the module's providers?",
+                    token
+                ));
+            }
+        }
+        error_handlers.extend(controller.get_error_handlers());
+
         Ok(EnhancerMetadata {
             guards,
             interceptors,
             pipes,
-            error_handlers: Vec::new(), // TODO: Add support for controller-level error handlers
+            error_handlers,
         })
     }
 

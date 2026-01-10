@@ -5,7 +5,9 @@ use rustc_hash::FxHashMap;
 
 use crate::http_helpers::{HttpMethod, HttpRequest, HttpResponse, IntoResponse};
 
-use super::{Guard, Interceptor, Pipe, provider::ProviderTrait, validate::Validatable};
+use super::{
+    ErrorHandler, Guard, Interceptor, Pipe, provider::ProviderTrait, validate::Validatable,
+};
 
 #[async_trait]
 pub trait ControllerTrait: Send + Sync {
@@ -38,6 +40,16 @@ pub trait ControllerTrait: Send + Sync {
 
     /// Get pipe tokens for DI resolution
     fn get_pipe_tokens(&self) -> Vec<String> {
+        vec![]
+    }
+
+    /// Get error handler tokens for DI resolution
+    fn get_error_handler_tokens(&self) -> Vec<String> {
+        vec![]
+    }
+
+    /// Get error handler instances
+    fn get_error_handlers(&self) -> Vec<Arc<dyn ErrorHandler>> {
         vec![]
     }
 

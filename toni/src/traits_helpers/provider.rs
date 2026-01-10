@@ -3,7 +3,7 @@ use std::{any::Any, sync::Arc};
 use async_trait::async_trait;
 use rustc_hash::FxHashMap;
 
-use super::{Guard, Interceptor, Pipe, middleware::Middleware};
+use super::{ErrorHandler, Guard, Interceptor, Pipe, middleware::Middleware};
 use crate::{ProviderScope, http_helpers::HttpRequest};
 
 #[async_trait]
@@ -39,6 +39,11 @@ pub trait ProviderTrait: Send + Sync {
 
     /// Returns this provider as Middleware if it implements the Middleware trait
     fn as_middleware(&self) -> Option<Arc<dyn Middleware>> {
+        None
+    }
+
+    /// Returns this provider as an ErrorHandler if it implements the ErrorHandler trait
+    fn as_error_handler(&self) -> Option<Arc<dyn ErrorHandler>> {
         None
     }
 }
