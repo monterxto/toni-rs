@@ -1,0 +1,256 @@
+//! Error handling example
+//!
+//! Demonstrates:
+//! 1. Custom error handlers with logging
+//! 2. HttpError enum for controller errors
+//! 3. HttpResponse builder pattern
+//! 4. Guards causing errors
+//!
+//! Run with:
+//! ```bash
+//! cargo run --example error_handling
+//! ```
+
+use serde_json::json;
+use std::sync::Arc;
+use toni::{
+    async_trait, controller,
+    errors::HttpError,
+    get, injectable,
+    injector::Context,
+    module, post,
+    toni_factory::ToniFactory,
+    traits_helpers::{ErrorHandler, Guard},
+    Body as ToniBody, HttpRequest, HttpResponse,
+};
+use toni_axum::AxumAdapter;
+use toni_macros::use_guards;
+
+pub struct CustomErrorHandler;
+
+#[async_trait]
+impl ErrorHandler for CustomErrorHandler {
+    async fn handle_error(
+        &self,
+        error: Box<dyn std::error::Error + Send>,
+        request: &HttpRequest,
+    ) -> HttpResponse {
+        eprintln!(
+            "[{}] Error on {} {}: {}",
+            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"),
+            request.method,
+            request.uri,
+            error
+        );
+
+        if let Some(http_error) = error.downcast_ref::<HttpError>() {
+            return http_error.to_response();
+        }
+
+        let status_code = if error.to_string().contains("Forbidden") {
+            403
+        } else {
+            500
+        };
+
+        HttpResponse::builder()
+            .status(status_code)
+            .json(json!({
+                "statusCode": status_code,
+                "message": "An unexpected error occurred",
+                "error": "Internal Server Error",
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+                "path": request.uri,
+            }))
+            .build()
+    }
+}
+
+pub struct AuthGuard;
+
+impl Guard for AuthGuard {
+    fn can_activate(&self, context: &Context) -> bool {
+        context.take_request().has_header("X-Auth-Token")
+    }
+}
+
+#[injectable(pub struct UserService {})]
+impl UserService {
+    fn find_user(&self, id: &str) -> Result<serde_json::Value, HttpError> {
+        if id == "1" {
+            Ok(json!({
+                "id": "1",
+                "name": "John Doe",
+                "email": "john@example.com"
+            }))
+        } else if id == "invalid" {
+            Err(HttpError::bad_request("Invalid user ID format"))
+        } else {
+            Err(HttpError::not_found(format!("User {} not found", id)))
+        }
+    }
+
+    fn authenticate(&self, token: &str) -> Result<(), HttpError> {
+        if token == "valid-token" {
+            Ok(())
+        } else if token.is_empty() {
+            Err(HttpError::unauthorized("Authentication token required"))
+        } else {
+            Err(HttpError::forbidden("Invalid authentication token"))
+        }
+    }
+
+    fn create_user(&self, email: &str) -> Result<serde_json::Value, HttpError> {
+        if email == "existing@example.com" {
+            Err(HttpError::conflict("User with this email already exists"))
+        } else if !email.contains('@') {
+            Err(HttpError::unprocessable_entity("Invalid email format"))
+        } else {
+            Ok(json!({
+                "id": "new-123",
+                "email": email,
+                "created": true
+            }))
+        }
+    }
+}
+
+#[controller("/api", pub struct ApiController {})]
+impl ApiController {
+    #[get("/hello")]
+    fn hello(&self, _req: HttpRequest) -> HttpResponse {
+        HttpResponse::ok()
+            .json(json!({"message": "Hello, World!"}))
+            .build()
+    }
+
+    #[get("/with-headers")]
+    fn with_headers(&self, _req: HttpRequest) -> HttpResponse {
+        HttpResponse::ok()
+            .header("X-Custom-Header", "CustomValue")
+            .header("X-Request-ID", "12345")
+            .json(json!({"status": "success"}))
+            .build()
+    }
+
+    #[post("/create")]
+    fn create(&self, _req: HttpRequest) -> HttpResponse {
+        HttpResponse::created()
+            .header("Location", "/api/resource/123")
+            .json(json!({
+                "id": 123,
+                "message": "Resource created"
+            }))
+            .build()
+    }
+
+    #[get("/protected")]
+    #[use_guards(AuthGuard)]
+    fn protected(&self, _req: HttpRequest) -> ToniBody {
+        ToniBody::Json(json!({"message": "Access granted"}))
+    }
+
+    #[get("/not-found")]
+    fn not_found(&self, _req: HttpRequest) -> Result<ToniBody, HttpError> {
+        Err(HttpError::not_found("Resource not found"))
+    }
+
+    #[get("/server-error")]
+    fn server_error(&self, _req: HttpRequest) -> Result<ToniBody, HttpError> {
+        Err(HttpError::internal_server_error("Something went wrong"))
+    }
+}
+
+#[controller("/users", pub struct UserController {
+    #[inject]
+    service: UserService,
+})]
+impl UserController {
+    #[get("/{id}")]
+    fn get_user(&self, req: HttpRequest) -> Result<ToniBody, HttpError> {
+        let id = req
+            .path_params
+            .get("id")
+            .ok_or_else(|| HttpError::bad_request("Missing user ID"))?;
+
+        let user = self.service.find_user(id)?;
+        Ok(ToniBody::Json(user))
+    }
+
+    #[get("/me")]
+    fn get_current_user(&self, req: HttpRequest) -> Result<ToniBody, HttpError> {
+        let token = req
+            .header("Authorization")
+            .ok_or_else(|| HttpError::unauthorized("Authorization header required"))?;
+
+        self.service.authenticate(token)?;
+
+        Ok(ToniBody::Json(json!({
+            "id": "current-user",
+            "name": "Authenticated User"
+        })))
+    }
+
+    #[post("/")]
+    fn create_user(&self, req: HttpRequest) -> Result<HttpResponse, HttpError> {
+        let email = if let ToniBody::Json(body) = &req.body {
+            body.get("email")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| HttpError::bad_request("Email is required"))?
+        } else {
+            return Err(HttpError::bad_request("Invalid request body"));
+        };
+
+        let user = self.service.create_user(email)?;
+
+        Ok(HttpResponse::created()
+            .header("Location", format!("/users/{}", user["id"]))
+            .json(user)
+            .build())
+    }
+
+    #[get("/special")]
+    fn special(&self, _req: HttpRequest) -> Result<ToniBody, HttpError> {
+        Err(HttpError::custom(418, "I'm a teapot"))
+    }
+}
+
+#[module(
+    controllers: [ApiController, UserController],
+    providers: [UserService],
+)]
+pub struct AppModule;
+
+#[tokio::main]
+async fn main() {
+    println!("Server running on http://localhost:3000\n");
+    println!("HttpResponse builder examples:");
+    println!("  GET  http://localhost:3000/api/hello");
+    println!("  GET  http://localhost:3000/api/with-headers");
+    println!("  POST http://localhost:3000/api/create\n");
+
+    println!("Guard errors:");
+    println!("  GET  http://localhost:3000/api/protected       → 403 (no X-Auth-Token)\n");
+
+    println!("HttpError examples:");
+    println!("  GET  http://localhost:3000/users/1             → 200 (success)");
+    println!("  GET  http://localhost:3000/users/999           → 404 (not found)");
+    println!("  GET  http://localhost:3000/users/invalid       → 400 (bad request)");
+    println!("  GET  http://localhost:3000/users/me            → 401 (unauthorized)");
+    println!("  GET  http://localhost:3000/users/me -H 'Authorization: valid-token'");
+    println!("  POST http://localhost:3000/users -d '{{\"email\":\"test@example.com\"}}'");
+    println!(
+        "  POST http://localhost:3000/users -d '{{\"email\":\"existing@example.com\"}}' → 409"
+    );
+    println!("  GET  http://localhost:3000/users/special       → 418 (I'm a teapot)");
+    println!("  GET  http://localhost:3000/api/server-error    → 500\n");
+
+    println!("All errors logged with timestamps via CustomErrorHandler\n");
+
+    let mut factory = ToniFactory::new();
+    factory.use_global_error_handler(Arc::new(CustomErrorHandler));
+
+    let app = factory.create_with(AppModule, AxumAdapter::new()).await;
+
+    app.listen(3000, "127.0.0.1").await;
+}

@@ -23,5 +23,5 @@ name = "middleware_examples"
 path = "middleware_examples.rs"
 
 [[example]]
-name = "error_handling_and_builder"
-path = "error_handling_and_builder.rs"
+name = "error_handling"
+path = "error_handling.rs"

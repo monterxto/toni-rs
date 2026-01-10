@@ -427,6 +427,7 @@ impl ToniInstanceLoader {
             guards,
             interceptors,
             pipes,
+            error_handlers: Vec::new(), // TODO: Add support for controller-level error handlers
         })
     }
 

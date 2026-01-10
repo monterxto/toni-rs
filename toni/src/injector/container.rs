@@ -25,6 +25,7 @@ pub struct ToniContainer {
     global_guards: Vec<Arc<dyn Guard>>,
     global_interceptors: Vec<Arc<dyn Interceptor>>,
     global_pipes: Vec<Arc<dyn Pipe>>,
+    global_error_handlers: Vec<Arc<dyn crate::traits_helpers::ErrorHandler>>,
     /// APP_* token providers - providers registered with special tokens (module_token, provider_token)
     /// These will be resolved to global enhancers after DI container is built
     app_guard_providers: Vec<(String, String)>,
@@ -48,6 +49,7 @@ impl ToniContainer {
             global_guards: Vec::new(),
             global_interceptors: Vec::new(),
             global_pipes: Vec::new(),
+            global_error_handlers: Vec::new(),
             app_guard_providers: Vec::new(),
             app_interceptor_providers: Vec::new(),
             app_pipe_providers: Vec::new(),
@@ -66,11 +68,19 @@ impl ToniContainer {
         self.global_pipes.push(pipe);
     }
 
+    pub fn add_global_error_handler(
+        &mut self,
+        handler: Arc<dyn crate::traits_helpers::ErrorHandler>,
+    ) {
+        self.global_error_handlers.push(handler);
+    }
+
     pub fn get_global_enhancers(&self) -> EnhancerMetadata {
         EnhancerMetadata {
             guards: self.global_guards.clone(),
             interceptors: self.global_interceptors.clone(),
             pipes: self.global_pipes.clone(),
+            error_handlers: self.global_error_handlers.clone(),
         }
     }
 

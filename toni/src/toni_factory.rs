@@ -20,6 +20,7 @@ pub struct ToniFactory {
     global_guards: Vec<Arc<dyn Guard>>,
     global_interceptors: Vec<Arc<dyn Interceptor>>,
     global_pipes: Vec<Arc<dyn Pipe>>,
+    global_error_handler: Option<Arc<dyn crate::traits_helpers::ErrorHandler>>,
 }
 
 impl ToniFactory {
@@ -30,6 +31,7 @@ impl ToniFactory {
             global_guards: Vec::new(),
             global_interceptors: Vec::new(),
             global_pipes: Vec::new(),
+            global_error_handler: None,
         }
     }
 
@@ -50,6 +52,26 @@ impl ToniFactory {
 
     pub fn use_global_pipes(&mut self, pipe: Arc<dyn Pipe>) -> &mut Self {
         self.global_pipes.push(pipe);
+        self
+    }
+
+    /// Register a global error handler for all controllers
+    ///
+    /// The global error handler will be used to handle errors from all controllers
+    /// unless a controller specifies its own error handler.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// let mut factory = ToniFactory::new();
+    /// factory.use_global_error_handler(Arc::new(CustomErrorHandler));
+    /// let app = factory.create_with(AppModule, AxumAdapter::new()).await;
+    /// ```
+    pub fn use_global_error_handler(
+        &mut self,
+        handler: Arc<dyn crate::traits_helpers::ErrorHandler>,
+    ) -> &mut Self {
+        self.global_error_handler = Some(handler);
         self
     }
 
@@ -192,6 +214,9 @@ impl ToniFactory {
             }
             for pipe in &self.global_pipes {
                 container_mut.add_global_pipe(pipe.clone());
+            }
+            if let Some(error_handler) = &self.global_error_handler {
+                container_mut.add_global_error_handler(error_handler.clone());
             }
         }
 
