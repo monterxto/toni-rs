@@ -67,6 +67,7 @@ pub struct EnhancerTraits {
     pub is_interceptor: bool,
     pub is_pipe: bool,
     pub is_middleware: bool,
+    pub is_error_handler: bool,
 }
 
 /// Detect which enhancer traits are implemented
@@ -90,6 +91,7 @@ fn detect_enhancer_traits(struct_attrs: &ItemStruct, impl_block: &ItemImpl) -> E
     traits.is_interceptor = traits.is_interceptor || markers.is_interceptor;
     traits.is_middleware = traits.is_middleware || markers.is_middleware;
     traits.is_pipe = traits.is_pipe || markers.is_pipe;
+    traits.is_error_handler = traits.is_error_handler || markers.is_error_handler;
 
     // Also check for marker attributes on the impl block
     // This handles the pattern: #[middleware] #[injectable(pub struct Foo { ... })] impl Foo { ... }
@@ -113,6 +115,10 @@ fn detect_enhancer_traits(struct_attrs: &ItemStruct, impl_block: &ItemImpl) -> E
                     eprintln!("    -> Detected PIPE marker!");
                     traits.is_pipe = true;
                 }
+                "error_handler" => {
+                    eprintln!("    -> Detected ERROR_HANDLER marker!");
+                    traits.is_error_handler = true;
+                }
                 _ => {}
             }
         }
@@ -131,6 +137,7 @@ fn detect_enhancer_traits(struct_attrs: &ItemStruct, impl_block: &ItemImpl) -> E
             "Interceptor" => traits.is_interceptor = true,
             "Pipe" => traits.is_pipe = true,
             "Middleware" => traits.is_middleware = true,
+            "ErrorHandler" => traits.is_error_handler = true,
             _ => {}
         }
     }
@@ -262,6 +269,14 @@ fn generate_enhancer_methods(traits: &EnhancerTraits) -> TokenStream {
     if traits.is_middleware {
         methods.push(quote! {
             fn as_middleware(&self) -> Option<::std::sync::Arc<dyn ::toni::traits_helpers::middleware::Middleware>> {
+                Some(::std::sync::Arc::new((*self.instance).clone()))
+            }
+        });
+    }
+
+    if traits.is_error_handler {
+        methods.push(quote! {
+            fn as_error_handler(&self) -> Option<::std::sync::Arc<dyn ::toni::traits_helpers::ErrorHandler>> {
                 Some(::std::sync::Arc::new((*self.instance).clone()))
             }
         });

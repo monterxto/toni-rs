@@ -615,6 +615,14 @@ fn generate_singleton_controller_wrapper(
         .map(|info| &info.token_expr)
         .collect();
 
+    let error_handler_tokens: Vec<_> = enhancer_infos
+        .get("error_handlers")
+        .unwrap_or(&binding)
+        .iter()
+        .filter(|info| !info.token_expr.is_empty())
+        .map(|info| &info.token_expr)
+        .collect();
+
     // Generate direct instantiation expressions for fallback (when not in DI)
     // Only include enhancers with explicit constructor calls (instance_expr is non-empty)
     let guard_instances: Vec<_> = enhancer_infos
@@ -635,6 +643,14 @@ fn generate_singleton_controller_wrapper(
 
     let pipe_instances: Vec<_> = enhancer_infos
         .get("pipes")
+        .unwrap_or(&binding)
+        .iter()
+        .filter(|info| !info.instance_expr.is_empty())
+        .map(|info| &info.instance_expr)
+        .collect();
+
+    let error_handler_instances: Vec<_> = enhancer_infos
+        .get("error_handlers")
         .unwrap_or(&binding)
         .iter()
         .filter(|info| !info.instance_expr.is_empty())
@@ -734,6 +750,14 @@ fn generate_singleton_controller_wrapper(
                 vec![#(#pipe_tokens),*]
             }
 
+            fn get_error_handler_tokens(&self) -> Vec<String> {
+                vec![#(#error_handler_tokens),*]
+            }
+
+            fn get_error_handlers(&self) -> Vec<::std::sync::Arc<dyn ::toni::traits_helpers::ErrorHandler>> {
+                vec![#(::std::sync::Arc::new(#error_handler_instances)),*]
+            }
+
             fn get_body_dto(&self, _req: &::toni::http_helpers::HttpRequest) -> Option<Box<dyn ::toni::traits_helpers::validate::Validatable>> {
                 #body_dto_stream
             }
@@ -783,6 +807,14 @@ fn generate_request_controller_wrapper(
         .map(|info| &info.token_expr)
         .collect();
 
+    let error_handler_tokens: Vec<_> = enhancer_infos
+        .get("error_handlers")
+        .unwrap_or(&binding)
+        .iter()
+        .filter(|info| !info.token_expr.is_empty())
+        .map(|info| &info.token_expr)
+        .collect();
+
     // Generate direct instantiation expressions for fallback (when not in DI)
     // Only include enhancers with explicit constructor calls (instance_expr is non-empty)
     let guard_instances: Vec<_> = enhancer_infos
@@ -803,6 +835,14 @@ fn generate_request_controller_wrapper(
 
     let pipe_instances: Vec<_> = enhancer_infos
         .get("pipes")
+        .unwrap_or(&binding)
+        .iter()
+        .filter(|info| !info.instance_expr.is_empty())
+        .map(|info| &info.instance_expr)
+        .collect();
+
+    let error_handler_instances: Vec<_> = enhancer_infos
+        .get("error_handlers")
         .unwrap_or(&binding)
         .iter()
         .filter(|info| !info.instance_expr.is_empty())
@@ -885,6 +925,14 @@ fn generate_request_controller_wrapper(
 
             fn get_pipe_tokens(&self) -> Vec<String> {
                 vec![#(#pipe_tokens),*]
+            }
+
+            fn get_error_handler_tokens(&self) -> Vec<String> {
+                vec![#(#error_handler_tokens),*]
+            }
+
+            fn get_error_handlers(&self) -> Vec<::std::sync::Arc<dyn ::toni::traits_helpers::ErrorHandler>> {
+                vec![#(::std::sync::Arc::new(#error_handler_instances)),*]
             }
 
             fn get_body_dto(&self, _req: &::toni::http_helpers::HttpRequest) -> Option<Box<dyn ::toni::traits_helpers::validate::Validatable>> {

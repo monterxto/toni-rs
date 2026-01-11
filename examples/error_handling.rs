@@ -1,10 +1,14 @@
-//! Error handling example
+//! Comprehensive error handling example
 //!
 //! Demonstrates:
-//! 1. Custom error handlers with logging
-//! 2. HttpError enum for controller errors
-//! 3. HttpResponse builder pattern
-//! 4. Guards causing errors
+//! 1. Global error handlers (via factory.use_global_error_handler)
+//! 2. Controller-level error handlers (via #[use_error_handlers] on impl)
+//! 3. Method-level error handlers (via #[use_error_handlers] on methods)
+//! 4. Chain-of-responsibility pattern (handlers return Option)
+//! 5. Specialized error handlers for different error types
+//! 6. HttpError enum for controller errors
+//! 7. HttpResponse builder pattern
+//! 8. Guards causing errors
 //!
 //! Run with:
 //! ```bash
@@ -24,47 +28,145 @@ use toni::{
     Body as ToniBody, HttpRequest, HttpResponse,
 };
 use toni_axum::AxumAdapter;
-use toni_macros::use_guards;
+use toni_macros::{use_error_handlers, use_guards};
 
-pub struct CustomErrorHandler;
+// Global error handler - catches all unhandled errors
+pub struct GlobalErrorHandler;
 
 #[async_trait]
-impl ErrorHandler for CustomErrorHandler {
+impl ErrorHandler for GlobalErrorHandler {
     async fn handle_error(
         &self,
         error: Box<dyn std::error::Error + Send>,
         request: &HttpRequest,
     ) -> Option<HttpResponse> {
         eprintln!(
-            "[{}] Error on {} {}: {}",
-            chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"),
-            request.method,
-            request.uri,
-            error
+            "[GlobalErrorHandler] {} {}: {}",
+            request.method, request.uri, error
         );
 
         if let Some(http_error) = error.downcast_ref::<HttpError>() {
             return Some(http_error.to_response());
         }
 
-        let status_code = if error.to_string().contains("Forbidden") {
-            403
-        } else {
-            500
-        };
-
         Some(
             HttpResponse::builder()
-                .status(status_code)
+                .status(500)
                 .json(json!({
-                    "statusCode": status_code,
+                    "statusCode": 500,
                     "message": "An unexpected error occurred",
                     "error": "Internal Server Error",
+                    "handler": "GlobalErrorHandler",
                     "timestamp": chrono::Utc::now().to_rfc3339(),
                     "path": request.uri,
                 }))
                 .build(),
         )
+    }
+}
+
+// Specialized handler for validation errors (400, 422)
+pub struct ValidationErrorHandler;
+
+#[async_trait]
+impl ErrorHandler for ValidationErrorHandler {
+    async fn handle_error(
+        &self,
+        error: Box<dyn std::error::Error + Send>,
+        request: &HttpRequest,
+    ) -> Option<HttpResponse> {
+        if let Some(http_error) = error.downcast_ref::<HttpError>() {
+            let status = http_error.status_code();
+            if matches!(status, 400 | 422) {
+                eprintln!(
+                    "[ValidationErrorHandler] Handling validation error on {}: {}",
+                    request.uri, error
+                );
+                return Some(
+                    HttpResponse::builder()
+                        .status(status)
+                        .json(json!({
+                            "statusCode": status,
+                            "message": http_error.message(),
+                            "error": "Validation Error",
+                            "handler": "ValidationErrorHandler",
+                            "timestamp": chrono::Utc::now().to_rfc3339(),
+                            "path": request.uri,
+                        }))
+                        .build(),
+                );
+            }
+        }
+        None
+    }
+}
+
+// Specialized handler for database errors (409 conflict)
+pub struct DatabaseErrorHandler;
+
+#[async_trait]
+impl ErrorHandler for DatabaseErrorHandler {
+    async fn handle_error(
+        &self,
+        error: Box<dyn std::error::Error + Send>,
+        request: &HttpRequest,
+    ) -> Option<HttpResponse> {
+        if let Some(http_error) = error.downcast_ref::<HttpError>() {
+            if http_error.status_code() == 409 {
+                eprintln!(
+                    "[DatabaseErrorHandler] Handling conflict error on {}: {}",
+                    request.uri, error
+                );
+                return Some(
+                    HttpResponse::builder()
+                        .status(409)
+                        .json(json!({
+                            "statusCode": 409,
+                            "message": http_error.message(),
+                            "error": "Database Conflict",
+                            "handler": "DatabaseErrorHandler",
+                            "timestamp": chrono::Utc::now().to_rfc3339(),
+                            "path": request.uri,
+                        }))
+                        .build(),
+                );
+            }
+        }
+        None
+    }
+}
+
+// Controller-level error handler for user operations
+pub struct UserControllerErrorHandler;
+
+#[async_trait]
+impl ErrorHandler for UserControllerErrorHandler {
+    async fn handle_error(
+        &self,
+        error: Box<dyn std::error::Error + Send>,
+        request: &HttpRequest,
+    ) -> Option<HttpResponse> {
+        eprintln!(
+            "[UserControllerErrorHandler] {} {}: {}",
+            request.method, request.uri, error
+        );
+
+        if let Some(http_error) = error.downcast_ref::<HttpError>() {
+            return Some(
+                HttpResponse::builder()
+                    .status(http_error.status_code())
+                    .json(json!({
+                        "statusCode": http_error.status_code(),
+                        "message": http_error.message(),
+                        "handler": "UserControllerErrorHandler",
+                        "timestamp": chrono::Utc::now().to_rfc3339(),
+                        "path": request.uri,
+                    }))
+                    .build(),
+            );
+        }
+
+        None
     }
 }
 
@@ -167,6 +269,7 @@ impl ApiController {
     #[inject]
     service: UserService,
 })]
+#[use_error_handlers(UserControllerErrorHandler{})]
 impl UserController {
     #[get("/{id}")]
     fn get_user(&self, req: HttpRequest) -> Result<ToniBody, HttpError> {
@@ -194,6 +297,7 @@ impl UserController {
     }
 
     #[post("/")]
+    #[use_error_handlers(ValidationErrorHandler{}, DatabaseErrorHandler{})]
     fn create_user(&self, req: HttpRequest) -> Result<HttpResponse, HttpError> {
         let email = if let ToniBody::Json(body) = &req.body {
             body.get("email")
@@ -247,10 +351,30 @@ async fn main() {
     println!("  GET  http://localhost:3000/users/special       → 418 (I'm a teapot)");
     println!("  GET  http://localhost:3000/api/server-error    → 500\n");
 
-    println!("All errors logged with timestamps via CustomErrorHandler\n");
+    println!("Error Handler Levels (Chain-of-Responsibility):");
+    println!("  Method-level:");
+    println!("    - POST /users uses ValidationErrorHandler → DatabaseErrorHandler");
+    println!("  Controller-level:");
+    println!("    - UserController uses UserControllerErrorHandler");
+    println!("  Global-level:");
+    println!("    - GlobalErrorHandler (via factory.use_global_error_handler)\n");
+
+    println!("Execution order for POST /users errors:");
+    println!("  1. ValidationErrorHandler (checks for 400/422)");
+    println!("  2. DatabaseErrorHandler (checks for 409)");
+    println!("  3. UserControllerErrorHandler (catches other user errors)");
+    println!("  4. GlobalErrorHandler (final fallback)\n");
+
+    println!("Test the chain-of-responsibility:");
+    println!("  POST /users -d '{{\"email\":\"\"}}' → ValidationErrorHandler (400)");
+    println!(
+        "  POST /users -d '{{\"email\":\"existing@example.com\"}}' → DatabaseErrorHandler (409)"
+    );
+    println!("  GET /users/404 → UserControllerErrorHandler (404)");
+    println!("  GET /api/server-error → GlobalErrorHandler (500)\n");
 
     let mut factory = ToniFactory::new();
-    factory.use_global_error_handler(Arc::new(CustomErrorHandler));
+    factory.use_global_error_handler(Arc::new(GlobalErrorHandler));
 
     let app = factory.create_with(AppModule, AxumAdapter::new()).await;
 

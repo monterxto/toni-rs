@@ -242,6 +242,64 @@ pub fn use_pipes(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
 }
 
+/// Applies error handlers to route handlers or controllers for custom error processing.
+///
+/// Error handlers catch errors from route handlers and return custom HTTP responses.
+/// They follow a chain-of-responsibility pattern where specialized handlers can pass
+/// errors to more generic handlers by returning None.
+///
+/// # Syntax
+///
+/// - **Type name only** - Requires the error handler to be registered in DI container:
+///   ```rust,ignore
+///   #[use_error_handlers(CustomErrorHandler)]
+///   ```
+///
+/// - **Struct literal** - Directly instantiates the error handler:
+///   ```rust,ignore
+///   #[use_error_handlers(ValidationErrorHandler{})]
+///   #[use_error_handlers(DatabaseErrorHandler { log_queries: true })]
+///   ```
+///
+/// - **Constructor call** - Directly calls the constructor:
+///   ```rust,ignore
+///   #[use_error_handlers(LoggingErrorHandler::new(log_level))]
+///   ```
+///
+/// # Examples
+///
+/// **Method-level error handlers:**
+/// ```rust,ignore
+/// #[use_error_handlers(ValidationErrorHandler{}, DatabaseErrorHandler{})]
+/// #[post("/users")]
+/// fn create_user(&self, req: HttpRequest) -> Result<HttpResponse, HttpError> {
+///     // Validation and database errors are handled by specialized handlers
+/// }
+/// ```
+///
+/// **Controller-level error handlers (applies to all methods):**
+/// ```rust,ignore
+/// #[use_error_handlers(CustomErrorHandler{})]
+/// #[controller("/api")]
+/// impl MyController {
+///     // All methods use custom error handling
+/// }
+/// ```
+///
+/// # Execution Order
+///
+/// Error handlers execute in reverse hierarchical order (most specific first):
+/// 1. Method-level error handlers (in order specified)
+/// 2. Controller-level error handlers (in order specified)
+/// 3. Global error handlers (registered via `ToniFactory`)
+///
+/// Each handler can return Some(response) to handle the error, or None to pass
+/// to the next handler. If all handlers return None, a default 500 error is returned.
+#[proc_macro_attribute]
+pub fn use_error_handlers(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+
 // Helper derive to register #[inject] and #[default] as valid attributes
 // This allows them to be used on struct fields in injectable/controller_struct
 #[proc_macro_derive(Injectable, attributes(inject, default))]
@@ -313,5 +371,10 @@ pub fn middleware(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
 #[proc_macro_attribute]
 pub fn pipe(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+
+#[proc_macro_attribute]
+pub fn error_handler(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
 }

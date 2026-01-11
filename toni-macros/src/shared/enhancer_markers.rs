@@ -7,11 +7,12 @@ pub struct EnhancerMarkers {
     pub is_interceptor: bool,
     pub is_middleware: bool,
     pub is_pipe: bool,
+    pub is_error_handler: bool,
 }
 
 impl EnhancerMarkers {
     /// Check struct attributes for enhancer markers
-    /// Looks for #[guard], #[interceptor], #[middleware], #[pipe] attributes
+    /// Looks for #[guard], #[interceptor], #[middleware], #[pipe], #[error_handler] attributes
     pub fn detect(struct_attrs: &ItemStruct) -> Self {
         let mut markers = Self::default();
 
@@ -23,6 +24,7 @@ impl EnhancerMarkers {
                     "interceptor" => markers.is_interceptor = true,
                     "middleware" => markers.is_middleware = true,
                     "pipe" => markers.is_pipe = true,
+                    "error_handler" => markers.is_error_handler = true,
                     _ => {}
                 }
             }
@@ -33,6 +35,10 @@ impl EnhancerMarkers {
 
     /// Check if any enhancer markers are present
     pub fn has_any(&self) -> bool {
-        self.is_guard || self.is_interceptor || self.is_middleware || self.is_pipe
+        self.is_guard
+            || self.is_interceptor
+            || self.is_middleware
+            || self.is_pipe
+            || self.is_error_handler
     }
 }

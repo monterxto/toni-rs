@@ -7,7 +7,7 @@ use syn::{Attribute, Error, Ident, Result, Token, punctuated::Punctuated, spanne
 fn is_enhancer(segment: &Ident) -> bool {
     matches!(
         segment.to_string().as_str(),
-        "use_guards" | "use_interceptors" | "use_pipes"
+        "use_guards" | "use_interceptors" | "use_pipes" | "use_error_handlers"
     )
 }
 
