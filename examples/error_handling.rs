@@ -34,7 +34,7 @@ impl ErrorHandler for CustomErrorHandler {
         &self,
         error: Box<dyn std::error::Error + Send>,
         request: &HttpRequest,
-    ) -> HttpResponse {
+    ) -> Option<HttpResponse> {
         eprintln!(
             "[{}] Error on {} {}: {}",
             chrono::Utc::now().format("%Y-%m-%d %H:%M:%S"),
@@ -44,7 +44,7 @@ impl ErrorHandler for CustomErrorHandler {
         );
 
         if let Some(http_error) = error.downcast_ref::<HttpError>() {
-            return http_error.to_response();
+            return Some(http_error.to_response());
         }
 
         let status_code = if error.to_string().contains("Forbidden") {
@@ -53,16 +53,18 @@ impl ErrorHandler for CustomErrorHandler {
             500
         };
 
-        HttpResponse::builder()
-            .status(status_code)
-            .json(json!({
-                "statusCode": status_code,
-                "message": "An unexpected error occurred",
-                "error": "Internal Server Error",
-                "timestamp": chrono::Utc::now().to_rfc3339(),
-                "path": request.uri,
-            }))
-            .build()
+        Some(
+            HttpResponse::builder()
+                .status(status_code)
+                .json(json!({
+                    "statusCode": status_code,
+                    "message": "An unexpected error occurred",
+                    "error": "Internal Server Error",
+                    "timestamp": chrono::Utc::now().to_rfc3339(),
+                    "path": request.uri,
+                }))
+                .build(),
+        )
     }
 }
 

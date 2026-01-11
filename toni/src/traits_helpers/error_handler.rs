@@ -56,24 +56,18 @@ use std::error::Error;
 /// Trait for handling errors and converting them to HTTP responses
 ///
 /// Implement this trait to customize how errors are converted to responses.
-/// Useful for adding custom formatting, logging, or error transformations.
+/// Handlers are called in order (method > controller > global) until one returns Some.
 #[async_trait]
 pub trait ErrorHandler: Send + Sync {
-    /// Handle an error and return an HTTP response
+    /// Try to handle an error and return an HTTP response
     ///
-    /// # Arguments
-    ///
-    /// * `error` - The error that occurred
-    /// * `request` - The HTTP request that caused the error
-    ///
-    /// # Returns
-    ///
-    /// An HttpResponse that will be sent to the client
+    /// Return Some(response) to handle the error, or None to pass to the next handler.
+    /// If all handlers return None, a default 500 error is returned.
     async fn handle_error(
         &self,
         error: Box<dyn Error + Send>,
         request: &HttpRequest,
-    ) -> HttpResponse;
+    ) -> Option<HttpResponse>;
 }
 
 /// Default error handler implementation
@@ -90,14 +84,12 @@ impl ErrorHandler for DefaultErrorHandler {
         &self,
         error: Box<dyn Error + Send>,
         _request: &HttpRequest,
-    ) -> HttpResponse {
-        // Try to downcast to HttpError
+    ) -> Option<HttpResponse> {
         if let Some(http_error) = error.downcast_ref::<HttpError>() {
-            return http_error.to_response();
+            return Some(http_error.to_response());
         }
 
-        // Fallback: 500 Internal Server Error for unknown errors
-        HttpResponse {
+        Some(HttpResponse {
             status: 500,
             body: Some(Body::Json(json!({
                 "statusCode": 500,
@@ -105,7 +97,7 @@ impl ErrorHandler for DefaultErrorHandler {
                 "error": "Internal Server Error",
             }))),
             headers: vec![("Content-Type".to_string(), "application/json".to_string())],
-        }
+        })
     }
 }
 
@@ -128,11 +120,8 @@ impl<H: ErrorHandler> ErrorHandler for LoggingErrorHandler<H> {
         &self,
         error: Box<dyn Error + Send>,
         request: &HttpRequest,
-    ) -> HttpResponse {
-        // Log the error
+    ) -> Option<HttpResponse> {
         eprintln!("[ERROR] {} {} - {}", request.method, request.uri, error);
-
-        // Delegate to inner handler
         self.inner.handle_error(error, request).await
     }
 }
@@ -161,7 +150,10 @@ mod tests {
         let error = HttpError::not_found("Resource not found");
         let request = create_test_request();
 
-        let response = handler.handle_error(Box::new(error), &request).await;
+        let response = handler
+            .handle_error(Box::new(error), &request)
+            .await
+            .unwrap();
 
         assert_eq!(response.status, 404);
     }
@@ -172,7 +164,10 @@ mod tests {
         let error = std::io::Error::new(std::io::ErrorKind::Other, "Unknown error");
         let request = create_test_request();
 
-        let response = handler.handle_error(Box::new(error), &request).await;
+        let response = handler
+            .handle_error(Box::new(error), &request)
+            .await
+            .unwrap();
 
         assert_eq!(response.status, 500);
     }

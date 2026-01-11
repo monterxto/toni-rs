@@ -132,21 +132,23 @@ impl InstanceWrapper {
         match middleware_result {
             Ok(response) => Box::new(response),
             Err(e) => {
-                // Use custom error handler if available (use last handler - most specific)
-                if let Some(handler) = error_handlers_for_middleware.last() {
-                    let response = handler.handle_error(e, &req_clone).await;
-                    Box::new(response)
-                } else {
-                    // Fallback to default error handling
-                    let mut error_response = HttpResponse::new();
-                    error_response.status = 500;
-                    error_response.body =
-                        Some(crate::http_helpers::Body::Json(serde_json::json!({
-                            "error": "Internal Server Error",
-                            "message": "An error occurred while processing the request"
-                        })));
-                    Box::new(error_response)
+                let error_msg = e.to_string();
+                for handler in error_handlers_for_middleware.iter().rev() {
+                    let error: Box<dyn std::error::Error + Send + Sync> = Box::new(
+                        std::io::Error::new(std::io::ErrorKind::Other, error_msg.clone()),
+                    );
+                    if let Some(response) = handler.handle_error(error, &req_clone).await {
+                        return Box::new(response);
+                    }
                 }
+
+                let mut error_response = HttpResponse::new();
+                error_response.status = 500;
+                error_response.body = Some(crate::http_helpers::Body::Json(serde_json::json!({
+                    "error": "Internal Server Error",
+                    "message": "An error occurred while processing the request"
+                })));
+                Box::new(error_response)
             }
         }
     }
@@ -202,28 +204,26 @@ impl InstanceWrapper {
         error_handlers: &[Arc<dyn ErrorHandler>],
         request: &HttpRequest,
     ) -> HttpResponse {
-        // If status >= 400 AND error handler exists, route through it
         if response.status >= 400 {
-            if let Some(handler) = error_handlers.last() {
-                // Extract error message from response
-                let error_msg =
-                    if let Some(crate::http_helpers::Body::Json(ref body)) = response.body {
-                        body.get("message")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("HTTP Error")
-                            .to_string()
-                    } else if let Some(crate::http_helpers::Body::Text(ref text)) = response.body {
-                        text.clone()
-                    } else {
-                        format!("HTTP {} Error", response.status)
-                    };
+            let error_msg = if let Some(crate::http_helpers::Body::Json(ref body)) = response.body {
+                body.get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("HTTP Error")
+                    .to_string()
+            } else if let Some(crate::http_helpers::Body::Text(ref text)) = response.body {
+                text.clone()
+            } else {
+                format!("HTTP {} Error", response.status)
+            };
 
-                // Create error object
-                let error: Box<dyn std::error::Error + Send> =
-                    Box::new(std::io::Error::new(std::io::ErrorKind::Other, error_msg));
-
-                // Let ErrorHandler format the response (use most specific handler)
-                return handler.handle_error(error, request).await;
+            for handler in error_handlers.iter().rev() {
+                let error: Box<dyn std::error::Error + Send> = Box::new(std::io::Error::new(
+                    std::io::ErrorKind::Other,
+                    error_msg.clone(),
+                ));
+                if let Some(handled) = handler.handle_error(error, request).await {
+                    return handled;
+                }
             }
         }
         response
@@ -310,19 +310,14 @@ impl InstanceWrapper {
         pipes: &[Arc<dyn Pipe>],
         error_handlers: &[Arc<dyn ErrorHandler>],
     ) {
-        // Execute the handler normally
         Self::execute_handler(context, instance, pipes).await;
 
-        // If error handler is available, check if response is an error
-        if let Some(handler) = error_handlers.last() {
-            // Get the response to inspect it
+        if !error_handlers.is_empty() {
             let response_box = context.get_response_ref();
 
             if let Some(response_ref) = response_box {
-                // Convert to HttpResponse to check status
                 let http_response = response_ref.to_response();
 
-                // If status >= 400, it's an error - use error handler
                 if http_response.status >= 400 {
                     let error_msg = if let Some(crate::http_helpers::Body::Json(ref body)) =
                         http_response.body
@@ -335,13 +330,17 @@ impl InstanceWrapper {
                         format!("HTTP {} Error", http_response.status)
                     };
 
-                    let error: Box<dyn std::error::Error + Send> =
-                        Box::new(std::io::Error::new(std::io::ErrorKind::Other, error_msg));
-
-                    // Extract request from context
                     let request = context.take_request();
-                    let handled_response = handler.handle_error(error, request).await;
-                    context.set_response(Box::new(handled_response));
+
+                    for handler in error_handlers.iter().rev() {
+                        let error: Box<dyn std::error::Error + Send> = Box::new(
+                            std::io::Error::new(std::io::ErrorKind::Other, error_msg.clone()),
+                        );
+                        if let Some(handled_response) = handler.handle_error(error, request).await {
+                            context.set_response(Box::new(handled_response));
+                            return;
+                        }
+                    }
                 }
             }
         }
