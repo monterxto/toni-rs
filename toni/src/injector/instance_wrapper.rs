@@ -205,22 +205,11 @@ impl InstanceWrapper {
         request: &HttpRequest,
     ) -> HttpResponse {
         if response.status >= 400 {
-            let error_msg = if let Some(crate::http_helpers::Body::Json(ref body)) = response.body {
-                body.get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("HTTP Error")
-                    .to_string()
-            } else if let Some(crate::http_helpers::Body::Text(ref text)) = response.body {
-                text.clone()
-            } else {
-                format!("HTTP {} Error", response.status)
-            };
+            // Reconstruct HttpError from response to preserve type information
+            let http_error = Self::response_to_http_error(&response);
 
             for handler in error_handlers.iter().rev() {
-                let error: Box<dyn std::error::Error + Send> = Box::new(std::io::Error::new(
-                    std::io::ErrorKind::Other,
-                    error_msg.clone(),
-                ));
+                let error: Box<dyn std::error::Error + Send> = Box::new(http_error.clone());
                 if let Some(handled) = handler.handle_error(error, request).await {
                     return handled;
                 }
@@ -319,23 +308,13 @@ impl InstanceWrapper {
                 let http_response = response_ref.to_response();
 
                 if http_response.status >= 400 {
-                    let error_msg = if let Some(crate::http_helpers::Body::Json(ref body)) =
-                        http_response.body
-                    {
-                        body.get("message")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("HTTP Error")
-                            .to_string()
-                    } else {
-                        format!("HTTP {} Error", http_response.status)
-                    };
-
                     let request = context.take_request();
 
+                    // Reconstruct HttpError from response to preserve type information
+                    let http_error = Self::response_to_http_error(&http_response);
+
                     for handler in error_handlers.iter().rev() {
-                        let error: Box<dyn std::error::Error + Send> = Box::new(
-                            std::io::Error::new(std::io::ErrorKind::Other, error_msg.clone()),
-                        );
+                        let error: Box<dyn std::error::Error + Send> = Box::new(http_error.clone());
                         if let Some(handled_response) = handler.handle_error(error, request).await {
                             context.set_response(Box::new(handled_response));
                             return;
@@ -343,6 +322,32 @@ impl InstanceWrapper {
                     }
                 }
             }
+        }
+    }
+
+    /// Reconstruct HttpError from HttpResponse
+    /// This preserves the error type for proper error handler matching
+    fn response_to_http_error(response: &HttpResponse) -> crate::errors::HttpError {
+        let message = if let Some(crate::http_helpers::Body::Json(ref body)) = response.body {
+            body.get("message")
+                .and_then(|v| v.as_str())
+                .unwrap_or("HTTP Error")
+                .to_string()
+        } else if let Some(crate::http_helpers::Body::Text(ref text)) = response.body {
+            text.clone()
+        } else {
+            format!("HTTP {} Error", response.status)
+        };
+
+        match response.status {
+            400 => crate::errors::HttpError::bad_request(message),
+            401 => crate::errors::HttpError::unauthorized(message),
+            403 => crate::errors::HttpError::forbidden(message),
+            404 => crate::errors::HttpError::not_found(message),
+            409 => crate::errors::HttpError::conflict(message),
+            422 => crate::errors::HttpError::unprocessable_entity(message),
+            500 => crate::errors::HttpError::internal_server_error(message),
+            status => crate::errors::HttpError::custom(status, message),
         }
     }
 }
