@@ -352,7 +352,7 @@ pub fn provide(input: TokenStream) -> TokenStream {
 // ENHANCER MARKER ATTRIBUTES
 // ============================================================================
 // These attributes mark structs as specific enhancer types (Guard, Interceptor, etc.)
-// They are pass-through attributes that #[injectable] can detect
+// Usage: #[injectable(pub struct Foo {})] #[guard] impl Foo { ... }
 
 #[proc_macro_attribute]
 pub fn guard(_attr: TokenStream, item: TokenStream) -> TokenStream {

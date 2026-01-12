@@ -93,38 +93,23 @@ fn detect_enhancer_traits(struct_attrs: &ItemStruct, impl_block: &ItemImpl) -> E
     traits.is_pipe = traits.is_pipe || markers.is_pipe;
     traits.is_error_handler = traits.is_error_handler || markers.is_error_handler;
 
-    // Also check for marker attributes on the impl block
-    // This handles the pattern: #[middleware] #[injectable(pub struct Foo { ... })] impl Foo { ... }
+    // Check for marker attributes on the impl block
+    // Pattern: #[injectable(pub struct Foo { ... })] #[middleware] impl Foo { ... }
     for attr in &impl_block.attrs {
         if let Some(ident) = attr.path().get_ident() {
             let attr_name = ident.to_string();
             match attr_name.as_str() {
-                "guard" => {
-                    eprintln!("    -> Detected GUARD marker!");
-                    traits.is_guard = true;
-                }
-                "interceptor" => {
-                    eprintln!("    -> Detected INTERCEPTOR marker!");
-                    traits.is_interceptor = true;
-                }
-                "middleware" => {
-                    eprintln!("    -> Detected MIDDLEWARE marker!");
-                    traits.is_middleware = true;
-                }
-                "pipe" => {
-                    eprintln!("    -> Detected PIPE marker!");
-                    traits.is_pipe = true;
-                }
-                "error_handler" => {
-                    eprintln!("    -> Detected ERROR_HANDLER marker!");
-                    traits.is_error_handler = true;
-                }
+                "guard" => traits.is_guard = true,
+                "interceptor" => traits.is_interceptor = true,
+                "middleware" => traits.is_middleware = true,
+                "pipe" => traits.is_pipe = true,
+                "error_handler" => traits.is_error_handler = true,
                 _ => {}
             }
         }
     }
 
-    // Also check if this is a trait impl block (backwards compatibility)
+    // Check if this is a trait impl block (backwards compatibility)
     if let Some((_, path, _)) = &impl_block.trait_ {
         let trait_name = path
             .segments

@@ -9,6 +9,7 @@
 //! 6. HttpError enum for controller errors
 //! 7. HttpResponse builder pattern
 //! 8. Guards causing errors
+//! 9. DI-based error handlers (registered in providers and resolved from container)
 //!
 //! Run with:
 //! ```bash
@@ -19,6 +20,7 @@ use serde_json::json;
 use std::sync::Arc;
 use toni::{
     async_trait, controller,
+    enhancer::error_handler,
     errors::HttpError,
     get, injectable,
     injector::Context,
@@ -136,7 +138,7 @@ impl ErrorHandler for DatabaseErrorHandler {
     }
 }
 
-// Controller-level error handler for user operations
+// Controller-level error handler for user operations (direct instantiation)
 pub struct UserControllerErrorHandler;
 
 #[async_trait]
@@ -166,6 +168,47 @@ impl ErrorHandler for UserControllerErrorHandler {
             );
         }
 
+        None
+    }
+}
+
+// DI-based error handler - registered in providers and resolved from container
+#[injectable(pub struct NotFoundErrorHandler {})]
+#[error_handler]
+impl NotFoundErrorHandler {
+    pub fn new() -> Self {
+        Self {}
+    }
+}
+
+#[async_trait]
+impl ErrorHandler for NotFoundErrorHandler {
+    async fn handle_error(
+        &self,
+        error: Box<dyn std::error::Error + Send>,
+        request: &HttpRequest,
+    ) -> Option<HttpResponse> {
+        if let Some(http_error) = error.downcast_ref::<HttpError>() {
+            if http_error.status_code() == 404 {
+                eprintln!(
+                    "[NotFoundErrorHandler - DI] Handling 404 on {}: {}",
+                    request.uri, error
+                );
+                return Some(
+                    HttpResponse::builder()
+                        .status(404)
+                        .json(json!({
+                            "statusCode": 404,
+                            "message": http_error.message(),
+                            "error": "Not Found",
+                            "handler": "NotFoundErrorHandler (DI-based)",
+                            "timestamp": chrono::Utc::now().to_rfc3339(),
+                            "path": request.uri,
+                        }))
+                        .build(),
+                );
+            }
+        }
         None
     }
 }
@@ -249,7 +292,7 @@ impl ApiController {
     }
 
     #[get("/protected")]
-    #[use_guards(AuthGuard)]
+    #[use_guards(AuthGuard{})]
     fn protected(&self, _req: HttpRequest) -> ToniBody {
         ToniBody::Json(json!({"message": "Access granted"}))
     }
@@ -321,9 +364,39 @@ impl UserController {
     }
 }
 
+// Demonstrates DI-based error handler using type name only (no direct instantiation)
+#[controller("/products", pub struct ProductController {})]
+#[use_error_handlers(NotFoundErrorHandler)]
+impl ProductController {
+    #[get("/{id}")]
+    fn get_product(&self, req: HttpRequest) -> Result<ToniBody, HttpError> {
+        let id = req
+            .path_params
+            .get("id")
+            .ok_or_else(|| HttpError::bad_request("Missing product ID"))?;
+
+        if id == "1" {
+            Ok(ToniBody::Json(json!({
+                "id": "1",
+                "name": "Widget",
+                "price": 19.99
+            })))
+        } else {
+            Err(HttpError::not_found(format!("Product {} not found", id)))
+        }
+    }
+
+    #[get("/")]
+    fn list_products(&self, _req: HttpRequest) -> ToniBody {
+        ToniBody::Json(json!([
+            {"id": "1", "name": "Widget", "price": 19.99}
+        ]))
+    }
+}
+
 #[module(
-    controllers: [ApiController, UserController],
-    providers: [UserService],
+    controllers: [ApiController, UserController, ProductController],
+    providers: [UserService, NotFoundErrorHandler],
 )]
 pub struct AppModule;
 
@@ -372,6 +445,20 @@ async fn main() {
     );
     println!("  GET /users/404 → UserControllerErrorHandler (404)");
     println!("  GET /api/server-error → GlobalErrorHandler (500)\n");
+
+    println!("DI-based error handlers:");
+    println!("  ProductController uses NotFoundErrorHandler (resolved from DI container)");
+    println!("  GET  http://localhost:3000/products/1      → 200 (success)");
+    println!("  GET  http://localhost:3000/products/999    → 404 (NotFoundErrorHandler via DI)");
+    println!("  GET  http://localhost:3000/products        → 200 (list all)\n");
+
+    println!("Two approaches to error handlers:");
+    println!("  1. Direct instantiation: #[use_error_handlers(Handler{{}})]");
+    println!("     - Used by UserController, ApiController");
+    println!("  2. DI resolution: #[use_error_handlers(Handler)]");
+    println!("     - Requires #[error_handler] marker attribute");
+    println!("     - Registered in module providers");
+    println!("     - Used by ProductController\n");
 
     let mut factory = ToniFactory::new();
     factory.use_global_error_handler(Arc::new(GlobalErrorHandler));
