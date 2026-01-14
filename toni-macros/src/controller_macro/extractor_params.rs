@@ -46,6 +46,13 @@ pub enum ExtractorKind {
     HttpRequest,
     /// Request extractor (optional parameter)
     Request,
+    /// Option<T> wrapped extractor (optional extraction)
+    Optional {
+        /// The inner extractor kind
+        inner_kind: Box<ExtractorKind>,
+        /// The inner type T from Option<T>
+        inner_type: Type,
+    },
     /// Unknown type - will be passed as-is
     Unknown,
 }
@@ -56,7 +63,6 @@ fn extract_param_name(pat: &syn::Pat) -> Option<Ident> {
     match pat {
         syn::Pat::Ident(pat_ident) => Some(pat_ident.ident.clone()),
         syn::Pat::TupleStruct(tuple_struct) => {
-            // Recurse into the first element
             if let Some(inner) = tuple_struct.elems.first() {
                 extract_param_name(inner)
             } else {
@@ -73,14 +79,24 @@ pub fn get_extractor_params(method: &ImplItemFn) -> Result<Vec<ExtractorParam>> 
 
     for input in method.sig.inputs.iter() {
         if let FnArg::Typed(pat_type) = input {
-            // Get parameter name - recursively extract from nested patterns
+            // Skip parameters with marker attributes (#[body], #[query], #[param])
+            if !pat_type.attrs.is_empty() {
+                if let Some(attr_ident) = pat_type.attrs[0].path().get_ident() {
+                    if matches!(
+                        attr_ident.to_string().as_str(),
+                        "body" | "param" | "query" | "inject"
+                    ) {
+                        continue;
+                    }
+                }
+            }
+
             let param_name = extract_param_name(&pat_type.pat);
             let param_name = match param_name {
                 Some(name) => name,
                 None => continue,
             };
 
-            // Skip `self` parameter
             if param_name == "self" {
                 continue;
             }
@@ -104,6 +120,22 @@ fn detect_extractor_kind(ty: &Type) -> ExtractorKind {
     if let Type::Path(type_path) = ty {
         if let Some(segment) = type_path.path.segments.last() {
             let type_name = segment.ident.to_string();
+
+            if type_name == "Option" {
+                if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                    if let Some(syn::GenericArgument::Type(inner_type)) = args.args.first() {
+                        // Recursively detect the inner extractor kind
+                        let inner_kind = detect_extractor_kind(inner_type);
+                        return ExtractorKind::Optional {
+                            inner_kind: Box::new(inner_kind),
+                            inner_type: inner_type.clone(),
+                        };
+                    }
+                }
+                // If we can't extract the inner type, treat as Unknown
+                return ExtractorKind::Unknown;
+            }
+
             return match type_name.as_str() {
                 "Path" => ExtractorKind::Path,
                 "Query" => ExtractorKind::Query,
@@ -131,10 +163,17 @@ pub fn generate_extractor_extractions(
         let param_name = &param.param_name;
         let param_type = &param.param_type;
 
-        match param.kind {
+        match &param.kind {
             ExtractorKind::HttpRequest => {
-                // Just pass req directly
                 call_args.push(quote! { req.clone() });
+            }
+            ExtractorKind::Optional { inner_type, .. } => {
+                // Returns None on extraction failure instead of 400 error
+                let extraction = quote! {
+                    let #param_name = <#inner_type as ::toni::FromRequest>::from_request(&req).ok();
+                };
+                extractions.push(extraction);
+                call_args.push(quote! { #param_name });
             }
             ExtractorKind::Path
             | ExtractorKind::Query
@@ -143,7 +182,6 @@ pub fn generate_extractor_extractions(
             | ExtractorKind::Bytes
             | ExtractorKind::Validated
             | ExtractorKind::Request => {
-                // Generate extraction code
                 let extraction = quote! {
                     let #param_name = match <#param_type as ::toni::FromRequest>::from_request(&req) {
                         Ok(value) => value,
