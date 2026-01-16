@@ -374,7 +374,7 @@ impl ExamplesController {
 
     /// Example 2: Path parameter with automatic parsing
     /// curl http://localhost:3000/api/users/123
-    #[get("/users/:id")]
+    #[get("/users/{id}")]
     fn get_user(&self, Path(params): Path<UserParams>) -> ToniBody {
         ToniBody::Json(serde_json::json!({
             "id": params.id,
@@ -421,7 +421,7 @@ impl ExamplesController {
     /// Example 5: Automatic type parsing (Path<i32>)
     /// curl http://localhost:3000/api/products/42
     /// curl http://localhost:3000/api/products/abc  ← Returns 400 automatically
-    #[get("/products/:id")]
+    #[get("/products/{id}")]
     fn get_product(&self, Path(params): Path<ProductIdParam>) -> ToniBody {
         ToniBody::Json(serde_json::json!({
             "id": params.id,
