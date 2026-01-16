@@ -25,3 +25,7 @@ path = "middleware_examples.rs"
 [[example]]
 name = "error_handling"
 path = "error_handling.rs"
+
+[[example]]
+name = "custom_extractors"
+path = "custom_extractors.rs"
