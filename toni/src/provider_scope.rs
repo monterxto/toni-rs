@@ -27,8 +27,6 @@ pub enum ProviderScope {
     ///
     /// **Use for:** Request-specific context, user session data, audit logging
     ///
-    /// **Note:** Still requires explicit implementation (future feature)
-    ///
     /// # Example
     /// ```ignore
     /// #[injectable(scope = "request")]
@@ -43,8 +41,6 @@ pub enum ProviderScope {
     /// Each dependent gets a unique instance.
     ///
     /// **Use for:** Non-cacheable operations, stateful one-off services
-    ///
-    /// **Note:** Still requires explicit implementation (future feature)
     ///
     /// # Example
     /// ```ignore
