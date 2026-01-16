@@ -14,6 +14,7 @@ path = "src/lib.rs"
 proc-macro = true
 
 [dependencies]
+indexmap = "2.7.0"
 proc-macro2 = "1.0.92"
 quote = "1.0.38"
 syn = { version = "2.0.94", features = ["visit-mut", "default", "full"] }

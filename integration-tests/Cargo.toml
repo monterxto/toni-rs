@@ -21,4 +21,5 @@ serde_json = "1.0"
 serial_test = "3.2.0"
 validator = { version = "0.20.0", features = ["derive"] }
 rand = "0.8"
+uuid = { version = "1.11", features = ["v4"] }
 tokio_localset_test = { git = "https://github.com/ifeanyi-ugwu/tokio_localset_test.git", rev = "7fa973b8da300ea8ebbb6ff90f59ef760fcf9bfc" }

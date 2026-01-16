@@ -54,7 +54,7 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Ident, ItemImpl, ItemStruct, Result};
+use syn::{Ident, ItemImpl, ItemStruct, Result, Type};
 
 use crate::shared::{
     dependency_info::DependencyInfo, enhancer_markers::EnhancerMarkers, scope_parser::ProviderScope,
@@ -508,11 +508,69 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
         &dependencies.fields
     };
 
-    for (field_name, full_type, lookup_token_expr) in deps_to_resolve {
-        let field_name_str = field_name.to_string();
+    // Group by token for deduplication while preserving declaration order
+    use indexmap::IndexMap;
+    let mut type_groups: IndexMap<String, Vec<(Ident, Type, TokenStream)>> = IndexMap::new();
 
-        let resolution = quote! {
-            let #field_name: #full_type = {
+    for (field_name, full_type, lookup_token_expr) in deps_to_resolve {
+        // Group by token, not type - same type can map to different providers
+        let type_key = quote!(#lookup_token_expr).to_string();
+        type_groups.entry(type_key).or_insert_with(Vec::new).push((
+            field_name.clone(),
+            full_type.clone(),
+            lookup_token_expr.clone(),
+        ));
+    }
+    for (_type_key, fields_of_type) in type_groups {
+        let (first_field_name, full_type, lookup_token_expr) = &fields_of_type[0];
+        let field_name_str = first_field_name.to_string();
+
+        if fields_of_type.len() == 1 {
+            // Only one field of this type
+            let field_name = first_field_name;
+            let resolution = quote! {
+                let #field_name: #full_type = {
+                    let __lookup_token = #lookup_token_expr;
+                    let provider = self.dependencies
+                        .get(&__lookup_token)
+                        .unwrap_or_else(|| panic!(
+                            "Missing dependency '{}' for field '{}'",
+                            __lookup_token, #field_name_str
+                        ));
+
+                    let any_box = provider.execute(vec![], _req).await;
+
+                    *any_box.downcast::<#full_type>()
+                        .unwrap_or_else(|_| panic!(
+                            "Failed to downcast '{}' to {}",
+                            __lookup_token,
+                            stringify!(#full_type)
+                        ))
+                };
+            };
+
+            resolutions.push(resolution);
+            field_names.push(field_name.clone());
+        } else {
+            // Multiple fields of the same type - deduplicate based on scope
+            let temp_var = syn::Ident::new(
+                &format!("__temp_instance_{}", first_field_name),
+                first_field_name.span(),
+            );
+            let field_idents: Vec<_> = fields_of_type.iter().map(|(name, _, _)| name).collect();
+
+            let field_declarations: Vec<TokenStream> = field_idents
+                .iter()
+                .map(|field_ident| {
+                    quote! {
+                        let #field_ident: #full_type;
+                    }
+                })
+                .collect();
+
+            let resolution = quote! {
+                #(#field_declarations)*
+
                 let __lookup_token = #lookup_token_expr;
                 let provider = self.dependencies
                     .get(&__lookup_token)
@@ -521,19 +579,40 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
                         __lookup_token, #field_name_str
                     ));
 
-                let any_box = provider.execute(vec![], _req).await;
+                if matches!(provider.get_scope(), ::toni::ProviderScope::Transient) {
+                    #(
+                        #field_idents = {
+                            let any_box = provider.execute(vec![], _req).await;
+                            *any_box.downcast::<#full_type>()
+                                .unwrap_or_else(|_| panic!(
+                                    "Failed to downcast '{}' to {}",
+                                    __lookup_token,
+                                    stringify!(#full_type)
+                                ))
+                        };
+                    )*
+                } else {
+                    let #temp_var: #full_type = {
+                        let any_box = provider.execute(vec![], _req).await;
+                        *any_box.downcast::<#full_type>()
+                            .unwrap_or_else(|_| panic!(
+                                "Failed to downcast '{}' to {}",
+                                __lookup_token,
+                                stringify!(#full_type)
+                            ))
+                    };
 
-                *any_box.downcast::<#full_type>()
-                    .unwrap_or_else(|_| panic!(
-                        "Failed to downcast '{}' to {}",
-                        __lookup_token,
-                        stringify!(#full_type)
-                    ))
+                    #(
+                        #field_idents = #temp_var.clone();
+                    )*
+                }
             };
-        };
 
-        resolutions.push(resolution);
-        field_names.push(field_name.clone());
+            resolutions.push(resolution);
+            for (field_name, _, _) in &fields_of_type {
+                field_names.push(field_name.clone());
+            }
+        }
     }
 
     (resolutions, field_names)
@@ -553,11 +632,69 @@ fn generate_manager_field_resolutions(
         &dependencies.fields
     };
 
-    for (field_name, full_type, lookup_token_expr) in deps_to_resolve {
-        let field_name_str = field_name.to_string();
+    // Group by token for deduplication while preserving declaration order
+    use indexmap::IndexMap;
+    let mut type_groups: IndexMap<String, Vec<(Ident, Type, TokenStream)>> = IndexMap::new();
 
-        let resolution = quote! {
-            let #field_name: #full_type = {
+    for (field_name, full_type, lookup_token_expr) in deps_to_resolve {
+        // Group by token, not type - same type can map to different providers
+        let type_key = quote!(#lookup_token_expr).to_string();
+        type_groups.entry(type_key).or_insert_with(Vec::new).push((
+            field_name.clone(),
+            full_type.clone(),
+            lookup_token_expr.clone(),
+        ));
+    }
+    for (_type_key, fields_of_type) in type_groups {
+        let (first_field_name, full_type, lookup_token_expr) = &fields_of_type[0];
+        let field_name_str = first_field_name.to_string();
+
+        if fields_of_type.len() == 1 {
+            // Only one field of this type
+            let field_name = first_field_name;
+            let resolution = quote! {
+                let #field_name: #full_type = {
+                    let __lookup_token = #lookup_token_expr;
+                    let provider = dependencies
+                        .get(&__lookup_token)
+                        .unwrap_or_else(|| panic!(
+                            "Missing dependency '{}' for field '{}'",
+                            __lookup_token, #field_name_str
+                        ));
+
+                    let any_box = provider.execute(vec![], None).await;
+
+                    *any_box.downcast::<#full_type>()
+                        .unwrap_or_else(|_| panic!(
+                            "Failed to downcast '{}' to {}",
+                            __lookup_token,
+                            stringify!(#full_type)
+                        ))
+                };
+            };
+
+            resolutions.push(resolution);
+            field_names.push(field_name.clone());
+        } else {
+            // Multiple fields of the same type - deduplicate based on scope
+            let temp_var = syn::Ident::new(
+                &format!("__temp_instance_{}", first_field_name),
+                first_field_name.span(),
+            );
+            let field_idents: Vec<_> = fields_of_type.iter().map(|(name, _, _)| name).collect();
+
+            let field_declarations: Vec<TokenStream> = field_idents
+                .iter()
+                .map(|field_ident| {
+                    quote! {
+                        let #field_ident: #full_type;
+                    }
+                })
+                .collect();
+
+            let resolution = quote! {
+                #(#field_declarations)*
+
                 let __lookup_token = #lookup_token_expr;
                 let provider = dependencies
                     .get(&__lookup_token)
@@ -566,19 +703,40 @@ fn generate_manager_field_resolutions(
                         __lookup_token, #field_name_str
                     ));
 
-                let any_box = provider.execute(vec![], None).await;
+                if matches!(provider.get_scope(), ::toni::ProviderScope::Transient) {
+                    #(
+                        #field_idents = {
+                            let any_box = provider.execute(vec![], None).await;
+                            *any_box.downcast::<#full_type>()
+                                .unwrap_or_else(|_| panic!(
+                                    "Failed to downcast '{}' to {}",
+                                    __lookup_token,
+                                    stringify!(#full_type)
+                                ))
+                        };
+                    )*
+                } else {
+                    let #temp_var: #full_type = {
+                        let any_box = provider.execute(vec![], None).await;
+                        *any_box.downcast::<#full_type>()
+                            .unwrap_or_else(|_| panic!(
+                                "Failed to downcast '{}' to {}",
+                                __lookup_token,
+                                stringify!(#full_type)
+                            ))
+                    };
 
-                *any_box.downcast::<#full_type>()
-                    .unwrap_or_else(|_| panic!(
-                        "Failed to downcast '{}' to {}",
-                        __lookup_token,
-                        stringify!(#full_type)
-                    ))
+                    #(
+                        #field_idents = #temp_var.clone();
+                    )*
+                }
             };
-        };
 
-        resolutions.push(resolution);
-        field_names.push(field_name.clone());
+            resolutions.push(resolution);
+            for (field_name, _, _) in &fields_of_type {
+                field_names.push(field_name.clone());
+            }
+        }
     }
 
     (resolutions, field_names)

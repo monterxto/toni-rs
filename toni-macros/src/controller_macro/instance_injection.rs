@@ -51,7 +51,8 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use std::collections::HashMap;
 use syn::{
-    Attribute, Error, Ident, ImplItemFn, ItemImpl, ItemStruct, LitStr, Result, spanned::Spanned,
+    Attribute, Error, Ident, ImplItemFn, ItemImpl, ItemStruct, LitStr, Result, Type,
+    spanned::Spanned,
 };
 
 use crate::{
@@ -434,38 +435,119 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
         &dependencies.fields
     };
 
-    // Process each dependency individually
+    // Group by token to deduplicate fields with same provider while preserving order
+    // IndexMap required to maintain declaration order for constructor parameters
+    use indexmap::IndexMap;
+    let mut type_groups: IndexMap<String, Vec<(Ident, Type, TokenStream)>> = IndexMap::new();
+
     for (field_name, full_type, lookup_token_expr) in deps_to_resolve {
-        let resolution = quote! {
-            let #field_name: #full_type = {
+        // Group by token, not type - same type can map to different providers
+        let type_key = quote!(#lookup_token_expr).to_string();
+        type_groups.entry(type_key).or_insert_with(Vec::new).push((
+            field_name.clone(),
+            full_type.clone(),
+            lookup_token_expr.clone(),
+        ));
+    }
+
+    for (_type_key, fields_of_type) in type_groups {
+        let (first_field_name, full_type, lookup_token_expr) = &fields_of_type[0];
+
+        if fields_of_type.len() == 1 {
+            let field_name = first_field_name;
+            let resolution = quote! {
+                let #field_name: #full_type = {
+                    let __lookup_token = #lookup_token_expr;
+                    let provider = self.dependencies
+                        .get(&__lookup_token)
+                        .unwrap_or_else(|| panic!("Missing dependency '{}'", __lookup_token));
+
+                    let any_box = provider.execute(vec![], Some(&req)).await;
+
+                    *any_box.downcast::<#full_type>()
+                        .unwrap_or_else(|_| panic!(
+                            "Failed to downcast '{}' to {}",
+                            __lookup_token,
+                            stringify!(#full_type)
+                        ))
+                };
+            };
+
+            resolutions.push(resolution);
+            field_names.push(field_name.clone());
+        } else {
+            // Multiple fields with same token - apply scope-aware deduplication
+            let temp_var = syn::Ident::new(
+                &format!("__temp_instance_{}", first_field_name),
+                first_field_name.span(),
+            );
+
+            let field_idents: Vec<_> = fields_of_type.iter().map(|(name, _, _)| name).collect();
+
+            // Declare variables outside if/else to avoid scope issues
+            let field_declarations: Vec<TokenStream> = field_idents
+                .iter()
+                .map(|field_ident| {
+                    quote! {
+                        let #field_ident: #full_type;
+                    }
+                })
+                .collect();
+
+            let resolution = quote! {
+                #(#field_declarations)*
+
                 let __lookup_token = #lookup_token_expr;
                 let provider = self.dependencies
                     .get(&__lookup_token)
                     .unwrap_or_else(|| panic!("Missing dependency '{}'", __lookup_token));
 
-                let any_box = provider.execute(vec![], Some(&req)).await;
-
-                *any_box.downcast::<#full_type>()
-                    .unwrap_or_else(|_| panic!(
-                        "Failed to downcast '{}' to {}",
-                        __lookup_token,
-                        stringify!(#full_type)
-                    ))
+                if matches!(provider.get_scope(), ::toni::ProviderScope::Transient) {
+                    // Transient: fresh instance per field
+                    #(
+                        #field_idents = {
+                            let any_box = provider.execute(vec![], Some(&req)).await;
+                            *any_box.downcast::<#full_type>()
+                                .unwrap_or_else(|_| panic!(
+                                    "Failed to downcast '{}' to {}",
+                                    __lookup_token,
+                                    stringify!(#full_type)
+                                ))
+                        };
+                    )*
+                } else {
+                    // Singleton/Request: shared instance cloned to all fields
+                    let #temp_var: #full_type = {
+                        let any_box = provider.execute(vec![], Some(&req)).await;
+                        *any_box.downcast::<#full_type>()
+                            .unwrap_or_else(|_| panic!(
+                                "Failed to downcast '{}' to {}",
+                                __lookup_token,
+                                stringify!(#full_type)
+                            ))
+                    };
+                    #(
+                        #field_idents = #temp_var.clone();
+                    )*
+                }
             };
-        };
 
-        resolutions.push(resolution);
-        field_names.push(field_name.clone());
+            resolutions.push(resolution);
+
+            // Add all field names to the list
+            for (field_name, _, _) in &fields_of_type {
+                field_names.push(field_name.clone());
+            }
+        }
     }
 
     (resolutions, field_names)
 }
 
-// NOTE: Old deduplication logic was removed since TokenStream can't be easily compared
-// If deduplication is needed in the future, we would need to:
-// 1. Store type information separately from the runtime token generation
-// 2. Group by static type information at compile time
-// 3. Generate runtime token expressions for each grouped field
+// NOTE: Deduplication is now implemented by grouping fields by their Type.
+// - For Singleton/Request scopes: Same instance shared across all fields of the same type
+// - For Transient scope: Each field gets a fresh instance (no deduplication)
+// This matches NestJS behavior where Request-scoped providers are shared within a request.
 
 fn generate_method_call(
     method: &ImplItemFn,
@@ -1002,6 +1084,135 @@ fn generate_manager(
     }
 }
 
+/// Generate field resolutions for Singleton controller manager
+/// Applies scope-aware deduplication matching NestJS:
+/// - Singleton/Request: fields with same token share one instance
+/// - Transient: each field gets fresh instance
+fn generate_controller_manager_field_resolutions(
+    dependencies: &DependencyInfo,
+) -> (Vec<TokenStream>, Vec<Ident>) {
+    let mut resolutions = Vec::new();
+    let mut field_names = Vec::new();
+
+    // When a constructor is specified, resolve its parameters instead of struct fields
+    let deps_to_resolve = if !dependencies.constructor_params.is_empty() {
+        &dependencies.constructor_params
+    } else {
+        &dependencies.fields
+    };
+
+    // Group by token for deduplication while preserving declaration order
+    // IndexMap required to maintain constructor parameter order
+    use indexmap::IndexMap;
+    let mut type_groups: IndexMap<String, Vec<(Ident, Type, TokenStream)>> = IndexMap::new();
+
+    for (field_name, full_type, lookup_token_expr) in deps_to_resolve {
+        // Group by token, not type - same type can map to different providers
+        let type_key = quote!(#lookup_token_expr).to_string();
+        type_groups.entry(type_key).or_insert_with(Vec::new).push((
+            field_name.clone(),
+            full_type.clone(),
+            lookup_token_expr.clone(),
+        ));
+    }
+    for (_type_key, fields_of_type) in type_groups {
+        let (first_field_name, full_type, lookup_token_expr) = &fields_of_type[0];
+        let field_name_str = first_field_name.to_string();
+
+        if fields_of_type.len() == 1 {
+            let field_name = first_field_name;
+            let resolution = quote! {
+                let #field_name: #full_type = {
+                    let __lookup_token = #lookup_token_expr;
+                    let provider = dependencies
+                        .get(&__lookup_token)
+                        .unwrap_or_else(|| panic!(
+                            "Missing dependency '{}' for field '{}'",
+                            __lookup_token, #field_name_str
+                        ));
+
+                    let any_box = provider.execute(vec![], None).await;
+
+                    *any_box.downcast::<#full_type>()
+                        .unwrap_or_else(|_| panic!(
+                            "Failed to downcast '{}' to {}",
+                            __lookup_token,
+                            stringify!(#full_type)
+                        ))
+                };
+            };
+
+            resolutions.push(resolution);
+            field_names.push(field_name.clone());
+        } else {
+            // Multiple fields with same token - apply scope-aware deduplication
+            let temp_var = syn::Ident::new(
+                &format!("__temp_instance_{}", first_field_name),
+                first_field_name.span(),
+            );
+            let field_idents: Vec<_> = fields_of_type.iter().map(|(name, _, _)| name).collect();
+
+            // Declare variables outside if/else to avoid scope issues
+            let field_declarations: Vec<TokenStream> = field_idents
+                .iter()
+                .map(|field_ident| {
+                    quote! {
+                        let #field_ident: #full_type;
+                    }
+                })
+                .collect();
+
+            let resolution = quote! {
+                #(#field_declarations)*
+
+                let __lookup_token = #lookup_token_expr;
+                let provider = dependencies
+                    .get(&__lookup_token)
+                    .unwrap_or_else(|| panic!(
+                        "Missing dependency '{}' for field '{}'",
+                        __lookup_token, #field_name_str
+                    ));
+
+                if matches!(provider.get_scope(), ::toni::ProviderScope::Transient) {
+                    // Transient: fresh instance per field
+                    #(
+                        #field_idents = {
+                            let any_box = provider.execute(vec![], None).await;
+                            *any_box.downcast::<#full_type>()
+                                .unwrap_or_else(|_| panic!(
+                                    "Failed to downcast '{}' to {}",
+                                    __lookup_token,
+                                    stringify!(#full_type)
+                                ))
+                        };
+                    )*
+                } else {
+                    // Singleton/Request: shared instance cloned to all fields
+                    let #temp_var: #full_type = {
+                        let any_box = provider.execute(vec![], None).await;
+                        *any_box.downcast::<#full_type>()
+                            .unwrap_or_else(|_| panic!(
+                                "Failed to downcast '{}' to {}",
+                                __lookup_token,
+                                stringify!(#full_type)
+                            ))
+                    };
+                    #(
+                        #field_idents = #temp_var.clone();
+                    )*
+                }
+            };
+
+            resolutions.push(resolution);
+            for (field_name, _, _) in &fields_of_type {
+                field_names.push(field_name.clone());
+            }
+        }
+    }
+
+    (resolutions, field_names)
+}
+
 // Singleton manager - creates controller instance AT STARTUP
 // OR elevates to Request scope if dependencies require it
 fn generate_singleton_manager(
@@ -1033,43 +1244,9 @@ fn generate_singleton_manager(
         .map(|token_expr| token_expr)
         .collect();
 
-    // When a constructor is specified, resolve its parameters instead of struct fields
-    let deps_to_resolve = if !dependencies.constructor_params.is_empty() {
-        &dependencies.constructor_params
-    } else {
-        &dependencies.fields
-    };
-
-    // Generate field resolutions AT STARTUP (no HttpRequest available)
-    let field_resolutions = deps_to_resolve
-        .iter()
-        .map(|(field_name, full_type, lookup_token_expr)| {
-            quote! {
-                let #field_name: #full_type = {
-                    let __lookup_token = #lookup_token_expr;
-                    let provider = dependencies
-                        .get(&__lookup_token)
-                        .unwrap_or_else(|| panic!("Missing dependency '{}'", __lookup_token));
-
-                    let any_box = provider.execute(vec![], None).await;
-
-                    *any_box.downcast::<#full_type>()
-                        .unwrap_or_else(|_| panic!(
-                            "Failed to downcast '{}' to {}",
-                            __lookup_token,
-                            stringify!(#full_type)
-                        ))
-                };
-            }
-        })
-        .collect::<Vec<_>>();
-
-    let field_names: Vec<_> = deps_to_resolve
-        .iter()
-        .map(|(field_name, _, _)| field_name.clone())
-        .collect();
-
-    // Generate struct instantiation based on DI source
+    // Generate field resolutions with scope-aware deduplication
+    let (field_resolutions, field_names) =
+        generate_controller_manager_field_resolutions(dependencies);
     let struct_instantiation = if let Some(init_method_name) = &dependencies.init_method {
         // Constructor-based DI: call the constructor with resolved parameters
         let init_method = Ident::new(init_method_name, struct_name.span());
