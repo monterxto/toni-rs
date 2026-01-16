@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     async_trait,
-    http_helpers::{HttpMethod, HttpRequest, HttpResponse, IntoResponse},
+    http_helpers::{HttpMethod, HttpRequest, HttpResponse, IntoResponse, RouteMetadata},
     middleware::{Middleware, MiddlewareChain},
     structs_helpers::EnhancerMetadata,
     traits_helpers::{ControllerTrait, ErrorHandler, Guard, Interceptor, InterceptorNext, Pipe},
@@ -16,6 +16,7 @@ struct ChainNext {
     instance: Arc<Box<dyn ControllerTrait>>,
     pipes: Vec<Arc<dyn Pipe>>,
     error_handlers: Vec<Arc<dyn ErrorHandler>>,
+    route_metadata: Arc<RouteMetadata>,
 }
 
 #[async_trait]
@@ -27,6 +28,7 @@ impl InterceptorNext for ChainNext {
             &self.instance,
             &self.pipes,
             &self.error_handlers,
+            &self.route_metadata,
         )
         .await;
     }
@@ -39,6 +41,7 @@ pub struct InstanceWrapper {
     pipes: Vec<Arc<dyn Pipe>>,
     middleware_chain: MiddlewareChain,
     error_handlers: Vec<Arc<dyn ErrorHandler>>,
+    route_metadata: Arc<RouteMetadata>,
 }
 
 impl InstanceWrapper {
@@ -61,6 +64,8 @@ impl InstanceWrapper {
         let mut error_handlers = global_enhancers.error_handlers;
         error_handlers.extend(enhancer_metadata.error_handlers);
 
+        let route_metadata = instance.get_route_metadata();
+
         Self {
             instance,
             guards,
@@ -68,6 +73,7 @@ impl InstanceWrapper {
             pipes,
             middleware_chain: MiddlewareChain::new(),
             error_handlers,
+            route_metadata,
         }
     }
 
@@ -99,6 +105,7 @@ impl InstanceWrapper {
         let pipes = self.pipes.clone();
         let error_handlers_for_controller = self.error_handlers.clone();
         let error_handlers_for_middleware = self.error_handlers.clone();
+        let route_metadata = self.route_metadata.clone();
 
         // Store request reference for middleware error handling
         // We need to clone here because middleware.execute takes ownership
@@ -113,6 +120,7 @@ impl InstanceWrapper {
                 let interceptors = interceptors.clone();
                 let pipes = pipes.clone();
                 let error_handlers = error_handlers_for_controller.clone();
+                let route_metadata = route_metadata.clone();
 
                 Box::pin(async move {
                     Self::execute_controller_logic(
@@ -122,6 +130,7 @@ impl InstanceWrapper {
                         interceptors,
                         pipes,
                         error_handlers,
+                        route_metadata,
                     )
                     .await
                 })
@@ -161,8 +170,9 @@ impl InstanceWrapper {
         interceptors: Vec<Arc<dyn Interceptor>>,
         pipes: Vec<Arc<dyn Pipe>>,
         error_handlers: Vec<Arc<dyn ErrorHandler>>,
+        route_metadata: Arc<RouteMetadata>,
     ) -> HttpResponse {
-        let mut context = Context::from_request(req);
+        let mut context = Context::new(req, route_metadata.clone());
 
         // Execute guards
         for guard in &guards {
@@ -191,6 +201,7 @@ impl InstanceWrapper {
             &instance,
             &pipes,
             &error_handlers,
+            &route_metadata,
         )
         .await;
 
@@ -225,6 +236,7 @@ impl InstanceWrapper {
         instance: &Arc<Box<dyn ControllerTrait>>,
         pipes: &[Arc<dyn Pipe>],
         error_handlers: &[Arc<dyn ErrorHandler>],
+        route_metadata: &Arc<RouteMetadata>,
     ) {
         // If no interceptors, execute handler directly with error handling
         if interceptors.is_empty() {
@@ -242,6 +254,7 @@ impl InstanceWrapper {
             instance: instance.clone(),
             pipes: pipes.to_vec(),
             error_handlers: error_handlers.to_vec(),
+            route_metadata: route_metadata.clone(),
         };
 
         // Execute this interceptor with the next chain

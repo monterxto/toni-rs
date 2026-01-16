@@ -29,3 +29,7 @@ path = "error_handling.rs"
 [[example]]
 name = "custom_extractors"
 path = "custom_extractors.rs"
+
+[[example]]
+name = "route_metadata"
+path = "route_metadata.rs"

@@ -257,6 +257,20 @@ fn get_marker_params(method: &ImplItemFn) -> Result<Vec<MarkerParam>> {
     get_params(method)
 }
 
+/// Extract #[set_metadata(...)] expressions from method attributes
+fn get_metadata_exprs(attrs: &[Attribute]) -> Result<Vec<TokenStream>> {
+    let mut metadata_exprs = Vec::new();
+
+    for attr in attrs {
+        if attr.path().is_ident("set_metadata") {
+            let expr: syn::Expr = attr.parse_args()?;
+            metadata_exprs.push(quote! { #expr });
+        }
+    }
+
+    Ok(metadata_exprs)
+}
+
 fn generate_controller_wrapper(
     method: &ImplItemFn,
     struct_name: &Ident,
@@ -342,6 +356,9 @@ fn generate_controller_wrapper(
     // Get enhancer infos for DI resolution
     let enhancer_infos = create_enhancer_infos(controller_enhancers_attr, method_enhancers_attr)?;
 
+    // Extract #[set_metadata(...)] expressions
+    let metadata_exprs = get_metadata_exprs(&method.attrs)?;
+
     // Check if we're using extractors or marker params
     let extractor_params = get_extractor_params(method)?;
     let has_extractors = extractor_params
@@ -381,6 +398,7 @@ fn generate_controller_wrapper(
         &enhancer_infos,
         &marker_params_extraction,
         &body_dto_token_stream,
+        &metadata_exprs,
         scope,
         struct_name, // Pass struct_name for downcast in singleton wrapper
         is_static_method,
@@ -539,6 +557,7 @@ fn generate_controller_wrapper_code(
     enhancer_infos: &HashMap<String, Vec<EnhancerInfo>>,
     marker_params_extraction: &[TokenStream],
     body_dto_token_stream: &Option<TokenStream>,
+    metadata_exprs: &[TokenStream],
     scope: crate::shared::scope_parser::ControllerScope,
     struct_name: &Ident,
     is_static_method: bool,
@@ -555,7 +574,8 @@ fn generate_controller_wrapper_code(
             enhancer_infos,
             marker_params_extraction,
             body_dto_token_stream,
-            struct_name, // Pass struct name for downcast
+            metadata_exprs,
+            struct_name,
             is_static_method,
         ),
         ControllerScope::Request => generate_request_controller_wrapper(
@@ -569,6 +589,7 @@ fn generate_controller_wrapper_code(
             enhancer_infos,
             marker_params_extraction,
             body_dto_token_stream,
+            metadata_exprs,
             is_static_method,
         ),
     }
@@ -584,7 +605,8 @@ fn generate_singleton_controller_wrapper(
     enhancer_infos: &HashMap<String, Vec<EnhancerInfo>>,
     marker_params_extraction: &[TokenStream],
     body_dto_token_stream: &Option<TokenStream>,
-    struct_name: &Ident, // Need this for downcast type
+    metadata_exprs: &[TokenStream],
+    struct_name: &Ident,
     is_static_method: bool,
 ) -> TokenStream {
     let binding = Vec::new();
@@ -758,6 +780,12 @@ fn generate_singleton_controller_wrapper(
                 vec![#(::std::sync::Arc::new(#error_handler_instances)),*]
             }
 
+            fn get_route_metadata(&self) -> ::std::sync::Arc<::toni::http_helpers::RouteMetadata> {
+                let mut metadata = ::toni::http_helpers::RouteMetadata::new();
+                #(metadata.insert(#metadata_exprs);)*
+                ::std::sync::Arc::new(metadata)
+            }
+
             fn get_body_dto(&self, _req: &::toni::http_helpers::HttpRequest) -> Option<Box<dyn ::toni::traits_helpers::validate::Validatable>> {
                 #body_dto_stream
             }
@@ -777,6 +805,7 @@ fn generate_request_controller_wrapper(
     enhancer_infos: &HashMap<String, Vec<EnhancerInfo>>,
     marker_params_extraction: &[TokenStream],
     body_dto_token_stream: &Option<TokenStream>,
+    metadata_exprs: &[TokenStream],
     is_static_method: bool,
 ) -> TokenStream {
     let binding = Vec::new();
@@ -933,6 +962,12 @@ fn generate_request_controller_wrapper(
 
             fn get_error_handlers(&self) -> Vec<::std::sync::Arc<dyn ::toni::traits_helpers::ErrorHandler>> {
                 vec![#(::std::sync::Arc::new(#error_handler_instances)),*]
+            }
+
+            fn get_route_metadata(&self) -> ::std::sync::Arc<::toni::http_helpers::RouteMetadata> {
+                let mut metadata = ::toni::http_helpers::RouteMetadata::new();
+                #(metadata.insert(#metadata_exprs);)*
+                ::std::sync::Arc::new(metadata)
             }
 
             fn get_body_dto(&self, _req: &::toni::http_helpers::HttpRequest) -> Option<Box<dyn ::toni::traits_helpers::validate::Validatable>> {

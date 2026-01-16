@@ -1,24 +1,37 @@
+use std::sync::Arc;
+
 use crate::{
-    http_helpers::{HttpRequest, HttpResponse, IntoResponse},
+    http_helpers::{HttpRequest, HttpResponse, IntoResponse, RouteMetadata},
     traits_helpers::validate::Validatable,
 };
 
 #[derive(Debug)]
 pub struct Context {
     original_request: HttpRequest,
+    route_metadata: Arc<RouteMetadata>,
     response: Option<Box<dyn IntoResponse<Response = HttpResponse> + Send>>,
     should_abort: bool,
     dto: Option<Box<dyn Validatable>>,
 }
 
 impl Context {
-    pub fn from_request(req: HttpRequest) -> Self {
+    pub fn new(req: HttpRequest, route_metadata: Arc<RouteMetadata>) -> Self {
         Self {
             original_request: req,
+            route_metadata,
             response: None,
             should_abort: false,
             dto: None,
         }
+    }
+
+    /// Creates context without route metadata
+    pub fn from_request(req: HttpRequest) -> Self {
+        Self::new(req, Arc::new(RouteMetadata::new()))
+    }
+
+    pub fn route_metadata(&self) -> &RouteMetadata {
+        &self.route_metadata
     }
 
     pub fn take_request(&self) -> &HttpRequest {

@@ -300,6 +300,49 @@ pub fn use_error_handlers(_attr: TokenStream, item: TokenStream) -> TokenStream 
     item
 }
 
+/// Attaches metadata to a route handler for use by guards, interceptors, or other enhancers.
+///
+/// Route metadata is stored once at startup and shared across all requests to the route.
+/// Guards and interceptors can read this metadata via `context.route_metadata().get::<T>()`.
+///
+/// # Usage
+///
+/// ```rust,ignore
+/// // Define a metadata type
+/// #[derive(Clone)]
+/// pub struct Roles(pub Vec<&'static str>);
+///
+/// // Attach to route
+/// #[set_metadata(Roles(vec!["admin", "moderator"]))]
+/// #[get("/admin")]
+/// fn admin_panel(&self) -> ToniBody { ... }
+///
+/// // Read in guard
+/// impl Guard for RolesGuard {
+///     fn can_activate(&self, context: &Context) -> bool {
+///         if let Some(Roles(required)) = context.route_metadata().get::<Roles>() {
+///             // Check user has required roles
+///         }
+///         true
+///     }
+/// }
+/// ```
+///
+/// # Multiple Metadata
+///
+/// Multiple `#[set_metadata(...)]` attributes can be applied to the same route:
+///
+/// ```rust,ignore
+/// #[set_metadata(Roles(vec!["user"]))]
+/// #[set_metadata(RateLimit { max: 100, window: 60 })]
+/// #[get("/api/data")]
+/// fn get_data(&self) -> ToniBody { ... }
+/// ```
+#[proc_macro_attribute]
+pub fn set_metadata(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+
 // Helper derive to register #[inject] and #[default] as valid attributes
 // This allows them to be used on struct fields in injectable/controller_struct
 #[proc_macro_derive(Injectable, attributes(inject, default))]

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use rustc_hash::FxHashMap;
 
-use crate::http_helpers::{HttpMethod, HttpRequest, HttpResponse, IntoResponse};
+use crate::http_helpers::{HttpMethod, HttpRequest, HttpResponse, IntoResponse, RouteMetadata};
 
 use super::{
     ErrorHandler, Guard, Interceptor, Pipe, provider::ProviderTrait, validate::Validatable,
@@ -51,6 +51,11 @@ pub trait ControllerTrait: Send + Sync {
     /// Get error handler instances
     fn get_error_handlers(&self) -> Vec<Arc<dyn ErrorHandler>> {
         vec![]
+    }
+
+    /// Get route metadata (roles, permissions, custom config)
+    fn get_route_metadata(&self) -> Arc<RouteMetadata> {
+        Arc::new(RouteMetadata::new())
     }
 
     fn get_body_dto(&self, req: &HttpRequest) -> Option<Box<dyn Validatable>>;

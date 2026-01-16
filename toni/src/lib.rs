@@ -23,7 +23,7 @@ pub mod traits_helpers;
 pub use adapter::RouteAdapter;
 pub use http_adapter::HttpAdapter;
 pub use http_helpers::{
-    Body, HttpMethod, HttpRequest, HttpResponse, HttpResponseBuilder, IntoResponse,
+    Body, HttpMethod, HttpRequest, HttpResponse, HttpResponseBuilder, IntoResponse, RouteMetadata,
 };
 pub use injector::InstanceWrapper;
 
@@ -31,7 +31,7 @@ pub use injector::InstanceWrapper;
 pub use request::{Request, RequestManager};
 
 // Re-export ModuleRef for dynamic DI resolution
-pub use injector::{IntoToken, ModuleRef};
+pub use injector::{Context, IntoToken, ModuleRef};
 
 // Re-export dependencies used in macro-generated code
 // This allows users to only depend on `toni` without needing to add these explicitly
