@@ -1,15 +1,11 @@
-//! Comprehensive test for all provider variant macros
+//! Provider pattern reference showing all macro variants and token types.
 //!
-//! This test verifies all provider variants work together:
-//! 1. provider_value! - constant values
-//! 2. provider_factory! - factory functions (sync/async, with/without deps)
-//! 3. provider_alias! - aliases to existing providers
-//! 4. provider_token! - custom tokens for existing types
+//! This demonstrates every valid combination of provider macros with different token types.
+//! For runtime tests, see `integration-tests/tests/di_providers.rs`.
 
 use std::time::Duration;
+use toni::di::APP_GUARD;
 use toni::{injectable, module, provider_alias, provider_factory, provider_token, provider_value};
-
-// ============= Services =============
 
 #[injectable(pub struct ConfigService {
     env: String,
@@ -41,64 +37,49 @@ impl LoggerService {
     }
 }
 
-// ============= Test Module =============
-
 #[module(
     providers: [
-        // Injectable services
         ConfigService,
         LoggerService,
 
-        // Value providers
+        // provider_value! - Static constants with different token types
         provider_value!("APP_NAME", "ToniApp".to_string()),
         provider_value!("PORT", 3000_u16),
-        provider_value!("TIMEOUT", Duration::from_secs(30)),
+        provider_value!(Duration, Duration::from_secs(60)),
+        provider_value!(APP_GUARD, "global_guard".to_string()),
 
-        // Factory providers (no deps)
+        // provider_factory! - Sync and async factories
         provider_factory!("REQUEST_ID", || {
             format!("req_{}", std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
                 .as_millis())
         }),
-
-        // Factory providers (with deps)
         provider_factory!("APP_INFO", |config: ConfigService| {
             format!("App running in {} mode", config.get_env())
         }),
-
-        // Async factory (with deps)
+        // Async factory auto-detected by 'async' keyword
         provider_factory!("ASYNC_STATUS", async |logger: LoggerService| {
             tokio::time::sleep(Duration::from_millis(1)).await;
             logger.log("System initialized")
         }),
 
-        // Aliases
+        // provider_alias! - Create alternate tokens pointing to existing providers
         provider_alias!("Config", ConfigService),
-        provider_alias!("Logger", LoggerService),
         provider_alias!("APP_PORT", "PORT"),
 
-        // Custom tokens
+        // provider_token! - Register type under custom token (type NOT auto-registered)
         provider_token!("PRIMARY_CONFIG", ConfigService),
-        provider_token!("SECONDARY_LOGGER", LoggerService),
     ],
     exports: [],
 )]
-impl CombinedProviderTestModule {}
+impl ProviderPatternsModule {}
 
-// ============= Tests =============
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn test_all_provider_variants_compile() {
-        // Test that all provider variants work together
-        // This demonstrates:
-        // 1. Value providers for constants
-        // 2. Factory providers with and without dependencies
-        // 3. Async factories with auto-detection
-        // 4. Aliases pointing to services and other values
-        // 5. Custom tokens for existing types
-        assert!(true);
-    }
+fn main() {
+    println!("Provider patterns example compiled successfully!");
+    println!("\nDemonstrated patterns:");
+    println!("  - provider_value! with string/type/const tokens");
+    println!("  - provider_factory! with sync/async, with/without deps");
+    println!("  - provider_alias! for alternate tokens");
+    println!("  - provider_token! for custom token registration");
 }
