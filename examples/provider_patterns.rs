@@ -1,6 +1,8 @@
-//! Provider pattern reference showing all macro variants and token types.
+//! Provider pattern reference showing all individual provider macros and token types.
 //!
-//! This demonstrates every valid combination of provider macros with different token types.
+//! This demonstrates: provider_value!, provider_factory!, provider_alias!, provider_token!
+//!
+//! For the unified provide! macro, see `integration-tests/tests/provide_macro.rs`.
 //! For runtime tests, see `integration-tests/tests/di_providers.rs`.
 
 use std::time::Duration;
