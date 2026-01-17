@@ -11,7 +11,7 @@ use toni::{
 #[serial]
 #[tokio_localset_test::localset_test]
 async fn provider_value_injects_constant() {
-    #[controller("", pub struct TestController {})]
+    #[controller(pub struct TestController {})]
     impl TestController {
         #[get("/port")]
         fn get_port(&self, _req: HttpRequest) -> ToniBody {
