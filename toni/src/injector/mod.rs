@@ -11,6 +11,9 @@ pub use self::dependency_graph::DependencyGraph;
 mod instance_wrapper;
 pub use self::instance_wrapper::InstanceWrapper;
 
+mod protocol;
+pub use self::protocol::{Protocol, ProtocolType};
+
 mod context;
 pub use self::context::Context;
 
