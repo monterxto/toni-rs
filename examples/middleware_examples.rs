@@ -16,7 +16,7 @@ use std::time::Instant;
 
 use toni::{
     async_trait,
-    http_helpers::{Body, HttpRequest, HttpResponse, IntoResponse},
+    http_helpers::{Body, HttpRequest, HttpResponse, ToResponse},
     middleware::{Middleware, MiddlewareResult, Next},
 };
 

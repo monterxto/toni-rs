@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
-use crate::http_helpers::{HttpRequest, HttpResponse, IntoResponse};
+use crate::http_helpers::{HttpRequest, HttpResponse, ToResponse};
 use crate::injector::InstanceWrapper;
 
 pub trait RouteAdapter {
@@ -12,7 +12,7 @@ pub trait RouteAdapter {
     fn adapt_request(request: Self::Request) -> impl Future<Output = Result<HttpRequest>>;
 
     fn adapt_response(
-        response: Box<dyn IntoResponse<Response = HttpResponse>>,
+        response: Box<dyn ToResponse<Response = HttpResponse>>,
     ) -> Result<Self::Response>;
 
     fn handle_request(

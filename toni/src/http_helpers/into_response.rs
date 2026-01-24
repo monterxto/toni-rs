@@ -4,13 +4,13 @@ use serde_json::Value;
 
 use super::{Body, HttpResponse};
 
-pub trait IntoResponse: Debug {
+pub trait ToResponse: Debug {
     type Response;
 
     fn to_response(&self) -> Self::Response;
 }
 
-impl IntoResponse for HttpResponse {
+impl ToResponse for HttpResponse {
     type Response = Self;
 
     fn to_response(&self) -> Self {
@@ -18,7 +18,7 @@ impl IntoResponse for HttpResponse {
     }
 }
 
-impl IntoResponse for Body {
+impl ToResponse for Body {
     type Response = HttpResponse;
 
     fn to_response(&self) -> Self::Response {
@@ -29,7 +29,7 @@ impl IntoResponse for Body {
     }
 }
 
-impl IntoResponse for u16 {
+impl ToResponse for u16 {
     type Response = HttpResponse;
 
     fn to_response(&self) -> Self::Response {
@@ -40,7 +40,7 @@ impl IntoResponse for u16 {
     }
 }
 
-impl IntoResponse for Vec<(String, String)> {
+impl ToResponse for Vec<(String, String)> {
     type Response = HttpResponse;
 
     fn to_response(&self) -> Self::Response {
@@ -51,7 +51,7 @@ impl IntoResponse for Vec<(String, String)> {
     }
 }
 
-impl IntoResponse for (u16, Body) {
+impl ToResponse for (u16, Body) {
     type Response = HttpResponse;
 
     fn to_response(&self) -> Self::Response {
@@ -63,10 +63,10 @@ impl IntoResponse for (u16, Body) {
     }
 }
 
-// impl<T1, T2> IntoResponse for (T1, T2)
+// impl<T1, T2> ToResponse for (T1, T2)
 // where
-//     T1: IntoResponse<Response = HttpResponse>,
-//     T2: IntoResponse<Response = HttpResponse>,
+//     T1: ToResponse<Response = HttpResponse>,
+//     T2: ToResponse<Response = HttpResponse>,
 // {
 //     type Response = HttpResponse;
 
@@ -82,7 +82,7 @@ impl IntoResponse for (u16, Body) {
 //     }
 // }
 
-impl IntoResponse for Value {
+impl ToResponse for Value {
     type Response = HttpResponse;
 
     fn to_response(&self) -> Self::Response {
@@ -94,7 +94,7 @@ impl IntoResponse for Value {
     }
 }
 
-impl IntoResponse for String {
+impl ToResponse for String {
     type Response = HttpResponse;
 
     fn to_response(&self) -> Self::Response {
@@ -105,7 +105,7 @@ impl IntoResponse for String {
     }
 }
 
-impl IntoResponse for &'static str {
+impl ToResponse for &'static str {
     type Response = HttpResponse;
 
     fn to_response(&self) -> Self::Response {
@@ -116,11 +116,11 @@ impl IntoResponse for &'static str {
     }
 }
 
-// Support for Result<T, E> where both T and E implement IntoResponse
-impl<T, E> IntoResponse for Result<T, E>
+// Support for Result<T, E> where both T and E implement ToResponse
+impl<T, E> ToResponse for Result<T, E>
 where
-    T: IntoResponse<Response = HttpResponse>,
-    E: IntoResponse<Response = HttpResponse>,
+    T: ToResponse<Response = HttpResponse>,
+    E: ToResponse<Response = HttpResponse>,
 {
     type Response = HttpResponse;
 

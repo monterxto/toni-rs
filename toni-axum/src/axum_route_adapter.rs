@@ -10,7 +10,7 @@ use axum::{
 use serde_json::Value;
 use std::str::FromStr;
 
-use toni::{http_helpers::Extensions, Body, HttpRequest, HttpResponse, IntoResponse, RouteAdapter};
+use toni::{http_helpers::Extensions, Body, HttpRequest, HttpResponse, RouteAdapter, ToResponse};
 
 pub struct AxumRouteAdapter;
 
@@ -76,7 +76,7 @@ impl RouteAdapter for AxumRouteAdapter {
     }
 
     fn adapt_response(
-        response: Box<dyn IntoResponse<Response = HttpResponse>>,
+        response: Box<dyn ToResponse<Response = HttpResponse>>,
     ) -> Result<Self::Response> {
         let response = response.to_response();
 

@@ -16,7 +16,7 @@ pub use self::http_method::HttpMethod;
 
 #[path = "into_response.rs"]
 mod into_response;
-pub use self::into_response::IntoResponse;
+pub use self::into_response::ToResponse;
 
 mod extensions;
 pub use self::extensions::Extensions;

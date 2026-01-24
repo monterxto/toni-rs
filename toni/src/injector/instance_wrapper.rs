@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     async_trait,
-    http_helpers::{HttpMethod, HttpRequest, HttpResponse, IntoResponse, RouteMetadata},
+    http_helpers::{HttpMethod, HttpRequest, HttpResponse, RouteMetadata, ToResponse},
     middleware::{Middleware, MiddlewareChain},
     structs_helpers::EnhancerMetadata,
     traits_helpers::{ControllerTrait, ErrorHandler, Guard, Interceptor, InterceptorNext, Pipe},
@@ -98,7 +98,7 @@ impl InstanceWrapper {
     pub async fn handle_request(
         &self,
         req: HttpRequest,
-    ) -> Box<dyn IntoResponse<Response = HttpResponse> + Send> {
+    ) -> Box<dyn ToResponse<Response = HttpResponse> + Send> {
         let instance = self.instance.clone();
         let guards = self.guards.clone();
         let interceptors = self.interceptors.clone();

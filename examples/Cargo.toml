@@ -37,3 +37,7 @@ path = "route_metadata.rs"
 [[example]]
 name = "provider_patterns"
 path = "provider_patterns.rs"
+
+[[example]]
+name = "multi_protocol_context"
+path = "multi_protocol_context.rs"
