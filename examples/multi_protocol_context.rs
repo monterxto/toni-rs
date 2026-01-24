@@ -1,10 +1,10 @@
 //! Multi-Protocol Execution Context Examples
 //!
 //! Demonstrates writing guards and interceptors that work across HTTP, WebSocket,
-//! and future RPC protocols using Toni's unified Context.
+//! and RPC protocols using Toni's unified Context.
 
 use std::collections::HashMap;
-use toni::{Context, Protocol, ProtocolType, WsClient, WsHandshake, WsMessage};
+use toni::{Context, Protocol, ProtocolType, RpcContext, RpcData, WsClient, WsHandshake, WsMessage};
 
 // ============================================================================
 // Universal Guards
@@ -15,7 +15,7 @@ pub struct UniversalAuthGuard;
 
 impl UniversalAuthGuard {
     pub fn can_activate(&self, context: &Context) -> bool {
-        // HTTP uses Bearer tokens in headers, WebSocket uses query params during handshake
+        // HTTP uses Bearer tokens in headers, WebSocket uses query params, RPC uses metadata
         let token = match context.protocol_type() {
             ProtocolType::Http => {
                 let (request, _) = context.switch_to_http().expect("HTTP context");
@@ -26,6 +26,10 @@ impl UniversalAuthGuard {
             ProtocolType::WebSocket => {
                 let (client, _, _) = context.switch_to_ws().expect("WebSocket context");
                 client.handshake.query.get("token").map(|s| s.as_str())
+            }
+            ProtocolType::Rpc => {
+                let (_, rpc_context) = context.switch_to_rpc().expect("RPC context");
+                rpc_context.get_metadata("authorization")
             }
         };
 
@@ -49,9 +53,7 @@ impl LoggingInterceptor {
                 let (request, _) = context.switch_to_http().unwrap();
                 println!(
                     "[HTTP] {} {} from {:?}",
-                    request.method,
-                    request.uri,
-                    request.header("user-agent")
+                    request.method, request.uri, request.header("user-agent")
                 );
             }
             ProtocolType::WebSocket => {
@@ -59,6 +61,13 @@ impl LoggingInterceptor {
                 println!(
                     "[WebSocket] event='{}' client={} message={:?}",
                     event, client.id, message
+                );
+            }
+            ProtocolType::Rpc => {
+                let (data, rpc_context) = context.switch_to_rpc().unwrap();
+                println!(
+                    "[RPC] pattern='{}' data={:?}",
+                    rpc_context.pattern, data
                 );
             }
         }
@@ -89,6 +98,13 @@ impl RateLimitGuard {
             ProtocolType::WebSocket => {
                 let (client, _, _) = context.switch_to_ws().expect("WebSocket context");
                 client.id.clone()
+            }
+            ProtocolType::Rpc => {
+                let (_, rpc_context) = context.switch_to_rpc().expect("RPC context");
+                rpc_context
+                    .get_metadata("client-id")
+                    .unwrap_or("anonymous")
+                    .to_string()
             }
         };
 
@@ -138,6 +154,17 @@ fn main() {
         "WebSocket Rate Limit: {}",
         rate_limiter.can_activate(&ws_context)
     );
+
+    println!("\n--- RPC Protocol ---");
+    let rpc_protocol = Protocol::rpc(
+        RpcData::json(serde_json::json!({"action": "process_order", "order_id": 123})),
+        create_mock_rpc_context(),
+    );
+    let rpc_context = create_mock_context(rpc_protocol);
+
+    println!("RPC Auth: {}", auth_guard.can_activate(&rpc_context));
+    logger.log_request(&rpc_context);
+    println!("RPC Rate Limit: {}", rate_limiter.can_activate(&rpc_context));
 }
 
 // ============================================================================
@@ -162,6 +189,12 @@ fn create_mock_ws_client() -> WsClient {
         },
         extensions: Default::default(),
     }
+}
+
+fn create_mock_rpc_context() -> RpcContext {
+    RpcContext::new("order.process")
+        .with_metadata("authorization", "valid-secret-token")
+        .with_metadata("client-id", "service-456")
 }
 
 fn create_mock_context(_protocol: Protocol) -> Context {

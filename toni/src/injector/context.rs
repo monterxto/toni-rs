@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     http_helpers::{HttpRequest, HttpResponse, RouteMetadata, ToResponse},
+    rpc::{RpcContext, RpcData},
     traits_helpers::validate::Validatable,
     websocket::{WsClient, WsMessage},
 };
@@ -77,6 +78,21 @@ impl Context {
         }
     }
 
+    /// RPC protocol access (returns None for other protocols)
+    pub fn switch_to_rpc(&self) -> Option<(&RpcData, &RpcContext)> {
+        match &self.protocol {
+            Protocol::Rpc { data, context } => Some((data, context)),
+            _ => None,
+        }
+    }
+
+    pub fn switch_to_rpc_mut(&mut self) -> Option<(&mut RpcData, &mut RpcContext)> {
+        match &mut self.protocol {
+            Protocol::Rpc { data, context } => Some((data, context)),
+            _ => None,
+        }
+    }
+
     // Metadata Methods
 
     /// Get route metadata
@@ -121,6 +137,9 @@ impl Context {
             }
             Protocol::WebSocket { .. } => {
                 panic!("get_response() only works for HTTP. Use switch_to_ws() for WebSocket.");
+            }
+            Protocol::Rpc { .. } => {
+                panic!("get_response() only works for HTTP. Use switch_to_rpc() for RPC.");
             }
         }
     }

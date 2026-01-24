@@ -4,6 +4,7 @@
 //! and RPC protocols through a unified context interface.
 
 use crate::http_helpers::{HttpRequest, HttpResponse};
+use crate::rpc::{RpcContext, RpcData};
 use crate::websocket::{WsClient, WsMessage};
 
 /// Protocol-specific data for execution context
@@ -20,7 +21,10 @@ pub enum Protocol {
         event: String,
     },
 
-    // Future: Rpc { data, context }
+    Rpc {
+        data: RpcData,
+        context: RpcContext,
+    },
 }
 
 /// Protocol type identifier for runtime detection in guards and interceptors
@@ -28,7 +32,7 @@ pub enum Protocol {
 pub enum ProtocolType {
     Http,
     WebSocket,
-    // Future: Rpc
+    Rpc,
 }
 
 impl Protocol {
@@ -47,10 +51,15 @@ impl Protocol {
         }
     }
 
+    pub fn rpc(data: RpcData, context: RpcContext) -> Self {
+        Self::Rpc { data, context }
+    }
+
     pub fn protocol_type(&self) -> ProtocolType {
         match self {
             Protocol::Http { .. } => ProtocolType::Http,
             Protocol::WebSocket { .. } => ProtocolType::WebSocket,
+            Protocol::Rpc { .. } => ProtocolType::Rpc,
         }
     }
 }
