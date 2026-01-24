@@ -7,7 +7,7 @@ use juniper::{
 use serde::Deserialize;
 use std::sync::Arc;
 use toni::traits_helpers::{Controller, ControllerTrait, Guard, Interceptor, Pipe, ProviderTrait};
-use toni::{Body, FxHashMap, HttpMethod, HttpRequest, HttpResponse, IntoResponse};
+use toni::{Body, FxHashMap, HttpMethod, HttpRequest, HttpResponse, ToResponse};
 
 /// GraphQL request payload
 #[derive(Debug, Deserialize)]
@@ -228,7 +228,7 @@ where
     async fn execute(
         &self,
         req: HttpRequest,
-    ) -> Box<dyn IntoResponse<Response = HttpResponse> + Send> {
+    ) -> Box<dyn ToResponse<Response = HttpResponse> + Send> {
         // Parse GraphQL request from body
         let gql_request: GraphQLRequest = match &req.body {
             Body::Json(json) => match serde_json::from_value(json.clone()) {
@@ -339,7 +339,7 @@ impl ControllerTrait for GraphQLPlaygroundController {
     async fn execute(
         &self,
         _req: HttpRequest,
-    ) -> Box<dyn IntoResponse<Response = HttpResponse> + Send> {
+    ) -> Box<dyn ToResponse<Response = HttpResponse> + Send> {
         Box::new(HttpResponse {
             status: 200,
             body: Some(Body::Text(self.playground_html.clone())),

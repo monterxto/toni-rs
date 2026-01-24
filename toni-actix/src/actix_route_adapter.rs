@@ -4,7 +4,7 @@ use actix_web::{web::Bytes, HttpRequest as ActixHttpRequest, HttpResponse as Act
 use anyhow::{anyhow, Result};
 use serde_json::Value;
 
-use toni::{http_helpers::Extensions, Body, HttpRequest, HttpResponse, IntoResponse, RouteAdapter};
+use toni::{http_helpers::Extensions, Body, HttpRequest, HttpResponse, RouteAdapter, ToResponse};
 
 pub struct ActixRouteAdapter;
 
@@ -83,7 +83,7 @@ impl ActixRouteAdapter {
     }
 
     fn adapt_actix_response(
-        response: Box<dyn IntoResponse<Response = HttpResponse>>,
+        response: Box<dyn ToResponse<Response = HttpResponse>>,
     ) -> Result<ActixHttpResponse> {
         let response = response.to_response();
 
@@ -132,7 +132,7 @@ impl RouteAdapter for ActixRouteAdapter {
     }
 
     fn adapt_response(
-        response: Box<dyn IntoResponse<Response = HttpResponse>>,
+        response: Box<dyn ToResponse<Response = HttpResponse>>,
     ) -> Result<Self::Response> {
         Self::adapt_actix_response(response)
     }

@@ -802,7 +802,7 @@ fn generate_singleton_controller_wrapper(
             async fn execute(
                 &self,
                 req: ::toni::http_helpers::HttpRequest,
-            ) -> Box<dyn ::toni::http_helpers::IntoResponse<Response = ::toni::http_helpers::HttpResponse> + Send> {
+            ) -> Box<dyn ::toni::http_helpers::ToResponse<Response = ::toni::http_helpers::HttpResponse> + Send> {
                 // NO dependency resolution here!
                 // NO controller instantiation here!
                 // Just extract parameters and call the handler
@@ -990,7 +990,7 @@ fn generate_request_controller_wrapper(
             async fn execute(
                 &self,
                 req: ::toni::http_helpers::HttpRequest,
-            ) -> Box<dyn ::toni::http_helpers::IntoResponse<Response = ::toni::http_helpers::HttpResponse> + Send> {
+            ) -> Box<dyn ::toni::http_helpers::ToResponse<Response = ::toni::http_helpers::HttpResponse> + Send> {
                 #(#field_resolutions)*
                 #(#marker_params_extraction)*
                 #struct_instantiation

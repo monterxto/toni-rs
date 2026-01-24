@@ -23,7 +23,7 @@ pub mod traits_helpers;
 pub use adapter::RouteAdapter;
 pub use http_adapter::HttpAdapter;
 pub use http_helpers::{
-    Body, HttpMethod, HttpRequest, HttpResponse, HttpResponseBuilder, IntoResponse, RouteMetadata,
+    Body, HttpMethod, HttpRequest, HttpResponse, HttpResponseBuilder, RouteMetadata, ToResponse,
 };
 pub use injector::InstanceWrapper;
 

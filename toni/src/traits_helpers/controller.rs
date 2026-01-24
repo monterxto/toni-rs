@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use rustc_hash::FxHashMap;
 
-use crate::http_helpers::{HttpMethod, HttpRequest, HttpResponse, IntoResponse, RouteMetadata};
+use crate::http_helpers::{HttpMethod, HttpRequest, HttpResponse, RouteMetadata, ToResponse};
 
 use super::{
     ErrorHandler, Guard, Interceptor, Pipe, provider::ProviderTrait, validate::Validatable,
@@ -15,7 +15,7 @@ pub trait ControllerTrait: Send + Sync {
     async fn execute(
         &self,
         req: HttpRequest,
-    ) -> Box<dyn IntoResponse<Response = HttpResponse> + Send>;
+    ) -> Box<dyn ToResponse<Response = HttpResponse> + Send>;
     fn get_path(&self) -> String;
     fn get_method(&self) -> HttpMethod;
 
