@@ -9,6 +9,7 @@ pub mod http_adapter;
 pub mod http_helpers;
 pub mod injector;
 pub mod middleware;
+pub mod websocket;
 pub mod module_helpers;
 pub mod provider_scope;
 mod request;
@@ -25,7 +26,8 @@ pub use http_adapter::HttpAdapter;
 pub use http_helpers::{
     Body, HttpMethod, HttpRequest, HttpResponse, HttpResponseBuilder, RouteMetadata, ToResponse,
 };
-pub use injector::InstanceWrapper;
+pub use injector::{InstanceWrapper, Protocol, ProtocolType};
+pub use websocket::{WsClient, WsHandshake, WsMessage};
 
 // Re-export built-in providers
 pub use request::{Request, RequestManager};

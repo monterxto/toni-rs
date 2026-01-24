@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::{
     http_helpers::{HttpRequest, HttpResponse, RouteMetadata, ToResponse},
     traits_helpers::validate::Validatable,
+    websocket::{WsClient, WsMessage},
 };
 
 use super::{Protocol, ProtocolType};
@@ -50,12 +51,29 @@ impl Context {
     pub fn switch_to_http(&self) -> Option<(&HttpRequest, &Option<HttpResponse>)> {
         match &self.protocol {
             Protocol::Http { request, response } => Some((request, response)),
+            _ => None,
         }
     }
 
     pub fn switch_to_http_mut(&mut self) -> Option<(&mut HttpRequest, &mut Option<HttpResponse>)> {
         match &mut self.protocol {
             Protocol::Http { request, response } => Some((request, response)),
+            _ => None,
+        }
+    }
+
+    /// WebSocket protocol access (returns None for other protocols)
+    pub fn switch_to_ws(&self) -> Option<(&WsClient, &WsMessage, &str)> {
+        match &self.protocol {
+            Protocol::WebSocket { client, message, event } => Some((client, message, event.as_str())),
+            _ => None,
+        }
+    }
+
+    pub fn switch_to_ws_mut(&mut self) -> Option<(&mut WsClient, &mut WsMessage, &str)> {
+        match &mut self.protocol {
+            Protocol::WebSocket { client, message, event } => Some((client, message, event.as_str())),
+            _ => None,
         }
     }
 
@@ -100,6 +118,9 @@ impl Context {
                 } else {
                     panic!("Response not set in context");
                 }
+            }
+            Protocol::WebSocket { .. } => {
+                panic!("get_response() only works for HTTP. Use switch_to_ws() for WebSocket.");
             }
         }
     }
