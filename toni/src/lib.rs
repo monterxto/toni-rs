@@ -23,14 +23,14 @@ pub mod toni_factory;
 pub mod traits_helpers;
 
 // Re-exports for adapter crates
-pub use adapter::RouteAdapter;
+pub use adapter::{RouteAdapter, WebSocketAdapter};
 pub use http_adapter::HttpAdapter;
 pub use http_helpers::{
     Body, HttpMethod, HttpRequest, HttpResponse, HttpResponseBuilder, RouteMetadata, ToResponse,
 };
 pub use injector::{InstanceWrapper, Protocol, ProtocolType};
 pub use rpc::{RpcContext, RpcData};
-pub use websocket::{WsClient, WsHandshake, WsMessage};
+pub use websocket::{DisconnectReason, GatewayTrait, GatewayWrapper, MessageHandlerTrait, WsClient, WsError, WsHandshake, WsMessage};
 
 // Re-export built-in providers
 pub use request::{Request, RequestManager};

@@ -22,9 +22,11 @@
 
 mod axum_adapter;
 mod axum_route_adapter;
+mod axum_websocket_adapter;
 
 pub use axum_adapter::AxumAdapter;
 pub use axum_route_adapter::AxumRouteAdapter;
+pub use axum_websocket_adapter::AxumWebSocketAdapter;
 
 // Re-export commonly used types from toni
-pub use toni::{HttpAdapter, RouteAdapter};
+pub use toni::{HttpAdapter, RouteAdapter, WebSocketAdapter};

@@ -42,6 +42,35 @@ impl Context {
         }
     }
 
+    /// Create WebSocket context
+    pub fn from_websocket(
+        client: WsClient,
+        message: WsMessage,
+        event: impl Into<String>,
+        route_metadata: Option<Arc<RouteMetadata>>,
+    ) -> Self {
+        Self {
+            protocol: Protocol::websocket(client, message, event),
+            route_metadata,
+            should_abort: false,
+            dto: None,
+        }
+    }
+
+    /// Create RPC context
+    pub fn from_rpc(
+        data: RpcData,
+        context: RpcContext,
+        route_metadata: Option<Arc<RouteMetadata>>,
+    ) -> Self {
+        Self {
+            protocol: Protocol::rpc(data, context),
+            route_metadata,
+            should_abort: false,
+            dto: None,
+        }
+    }
+
     // Protocol Methods
 
     pub fn protocol_type(&self) -> ProtocolType {

@@ -19,6 +19,7 @@ anyhow = "1.0.95"
 async-trait = "0.1.86"
 validator = "0.20.0"
 serde_urlencoded = "0.7"
+thiserror = "2.0"
 toni-macros = { path = "../toni-macros" }
 
 [dev-dependencies]
