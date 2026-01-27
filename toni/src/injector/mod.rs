@@ -25,3 +25,6 @@ pub use self::module_ref::ModuleRef;
 
 mod module_ref_provider;
 pub use self::module_ref_provider::ModuleRefProvider;
+
+mod gateway_resolver;
+pub use self::gateway_resolver::GatewayResolver;

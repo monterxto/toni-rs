@@ -46,3 +46,7 @@ path = "multi_protocol_context.rs"
 [[example]]
 name = "lifecycle_hooks"
 path = "lifecycle_hooks.rs"
+
+[[example]]
+name = "websocket_basic"
+path = "websocket_basic.rs"
