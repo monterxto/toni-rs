@@ -50,3 +50,7 @@ path = "lifecycle_hooks.rs"
 [[example]]
 name = "websocket_basic"
 path = "websocket_basic.rs"
+
+[[example]]
+name = "websocket_chat"
+path = "websocket_chat.rs"
