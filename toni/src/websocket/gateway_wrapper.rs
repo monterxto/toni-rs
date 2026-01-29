@@ -16,6 +16,7 @@ struct WsChainNext {
     gateway: Arc<Box<dyn GatewayTrait>>,
     event: String,
     pipes: Vec<Arc<dyn Pipe>>,
+    error_handlers: Vec<Arc<dyn ErrorHandler>>,
 }
 
 #[async_trait]
@@ -27,6 +28,7 @@ impl InterceptorNext for WsChainNext {
             &self.gateway,
             &self.event,
             &self.pipes,
+            &self.error_handlers,
         )
         .await;
     }
@@ -153,6 +155,7 @@ impl GatewayWrapper {
             &self.gateway,
             &event,
             &self.pipes,
+            &self.error_handlers,
         )
         .await;
 
@@ -174,16 +177,27 @@ impl GatewayWrapper {
     }
 
     /// Internal implementation of interceptor chain (recursive/onion pattern)
+    ///
+    /// This function stores the result in context (similar to HTTP's pattern).
+    /// The result should be retrieved via context.get_ws_response() after calling.
     async fn execute_with_interceptors_impl(
         context: &mut Context,
         interceptors: &[Arc<dyn Interceptor>],
         gateway: &Arc<Box<dyn GatewayTrait>>,
         event: &str,
         pipes: &[Arc<dyn Pipe>],
+        error_handlers: &[Arc<dyn ErrorHandler>],
     ) {
         // If no interceptors, execute handler directly
         if interceptors.is_empty() {
-            let _ = Self::execute_handler(context, gateway, event, pipes).await;
+            Self::execute_handler_with_error_handling(
+                context,
+                gateway,
+                event,
+                pipes,
+                error_handlers,
+            )
+            .await;
             return;
         }
 
@@ -196,10 +210,44 @@ impl GatewayWrapper {
             gateway: gateway.clone(),
             event: event.to_string(),
             pipes: pipes.to_vec(),
+            error_handlers: error_handlers.to_vec(),
         };
 
         // Execute this interceptor with the next chain
         first.intercept(context, Box::new(next)).await;
+    }
+
+    /// Execute handler with error handling support (similar to HTTP's implementation)
+    async fn execute_handler_with_error_handling(
+        context: &mut Context,
+        gateway: &Arc<Box<dyn GatewayTrait>>,
+        event: &str,
+        pipes: &[Arc<dyn Pipe>],
+        error_handlers: &[Arc<dyn ErrorHandler>],
+    ) {
+        // First, execute the handler
+        let _ = Self::execute_handler(context, gateway, event, pipes).await;
+
+        // TODO: Implement error handler execution for WebSocket
+        // Currently ErrorHandler trait is HTTP-specific (takes HttpRequest, returns HttpResponse)
+        // Need to either:
+        // 1. Make ErrorHandler protocol-agnostic (breaking change)
+        // 2. Create WsErrorHandler trait
+        // 3. Add handle_ws_error method to ErrorHandler trait
+        //
+        // For now, error_handlers are resolved and stored but not executed.
+        // When a WsError occurs, it's returned directly to the adapter.
+
+        if !error_handlers.is_empty() {
+            // Check if there's an error in the response
+            if let Some(result) = context.get_ws_response() {
+                if result.is_err() {
+                    // Error handlers are available but can't be executed yet
+                    // because ErrorHandler trait is HTTP-specific
+                    // This will be addressed when making traits protocol-agnostic
+                }
+            }
+        }
     }
 
     /// Execute the actual gateway handler (pipes + gateway.handle_event)
