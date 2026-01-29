@@ -24,9 +24,5 @@ pub trait WebSocketAdapter: Clone + Send + Sync + 'static {
     /// Start standalone WebSocket server
     ///
     /// This is used when WebSocket runs on a separate port from HTTP
-    fn listen(
-        self,
-        port: u16,
-        hostname: &str,
-    ) -> impl Future<Output = Result<()>> + Send;
+    fn listen(self, port: u16, hostname: &str) -> impl Future<Output = Result<()>> + Send;
 }

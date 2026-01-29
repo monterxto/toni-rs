@@ -10,17 +10,17 @@ pub mod http_adapter;
 pub mod http_helpers;
 pub mod injector;
 pub mod middleware;
-pub mod rpc;
-pub mod websocket;
 pub mod module_helpers;
 pub mod provider_scope;
 mod request;
 mod router;
+pub mod rpc;
 mod scanner;
 mod structs_helpers;
 mod toni_application;
 pub mod toni_factory;
 pub mod traits_helpers;
+pub mod websocket;
 
 // Re-exports for adapter crates
 pub use adapter::{RouteAdapter, WebSocketAdapter};
@@ -30,7 +30,9 @@ pub use http_helpers::{
 };
 pub use injector::{InstanceWrapper, Protocol, ProtocolType};
 pub use rpc::{RpcContext, RpcData};
-pub use websocket::{DisconnectReason, GatewayTrait, GatewayWrapper, WsClient, WsError, WsHandshake, WsMessage};
+pub use websocket::{
+    DisconnectReason, GatewayTrait, GatewayWrapper, WsClient, WsError, WsHandshake, WsMessage,
+};
 
 // Re-export built-in providers
 pub use request::{Request, RequestManager};

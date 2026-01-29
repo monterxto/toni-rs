@@ -43,10 +43,7 @@ impl GatewayTrait for ChatGateway {
                     println!("Message content: {}", text);
 
                     // Echo back the message
-                    Ok(Some(WsMessage::text(format!(
-                        "Echo: {}",
-                        text
-                    ))))
+                    Ok(Some(WsMessage::text(format!("Echo: {}", text))))
                 } else {
                     Err(WsError::InvalidMessage("Expected text message".into()))
                 }
@@ -55,9 +52,7 @@ impl GatewayTrait for ChatGateway {
                 // Respond to ping
                 Ok(Some(WsMessage::text("pong")))
             }
-            _ => {
-                Err(WsError::EventNotFound(format!("Unknown event: {}", event)))
-            }
+            _ => Err(WsError::EventNotFound(format!("Unknown event: {}", event))),
         }
     }
 }
@@ -78,10 +73,10 @@ async fn main() {
     let gateway = Arc::new(Box::new(ChatGateway) as Box<dyn GatewayTrait>);
     let wrapper = GatewayWrapper::new(
         gateway.clone(),
-        vec![],  // No guards
-        vec![],  // No interceptors
-        vec![],  // No pipes
-        vec![],  // No error handlers
+        vec![], // No guards
+        vec![], // No interceptors
+        vec![], // No pipes
+        vec![], // No error handlers
         Arc::new(RouteMetadata::new()),
     );
 

@@ -36,11 +36,7 @@ impl GatewayResolver {
         Ok(())
     }
 
-    fn register_gateways<W>(
-        &self,
-        module_token: &str,
-        ws_adapter: &mut W,
-    ) -> Result<()>
+    fn register_gateways<W>(&self, module_token: &str, ws_adapter: &mut W) -> Result<()>
     where
         W: crate::adapter::WebSocketAdapter,
     {
@@ -143,14 +139,15 @@ impl GatewayResolver {
         Ok(pipes)
     }
 
-    fn resolve_error_handlers(
-        &self,
-        tokens: Vec<String>,
-    ) -> Result<Vec<Arc<dyn ErrorHandler>>> {
+    fn resolve_error_handlers(&self, tokens: Vec<String>) -> Result<Vec<Arc<dyn ErrorHandler>>> {
         let mut error_handlers = Vec::new();
 
         // Add global error handlers first
-        let global_error_handlers = self.container.borrow().get_global_enhancers().error_handlers;
+        let global_error_handlers = self
+            .container
+            .borrow()
+            .get_global_enhancers()
+            .error_handlers;
         error_handlers.extend(global_error_handlers);
 
         // Resolve gateway-specific error handlers from tokens
@@ -215,10 +212,7 @@ impl GatewayResolver {
     }
 
     /// Resolve an error handler by its token from the DI container
-    fn resolve_error_handler_by_token(
-        &self,
-        token: &str,
-    ) -> Result<Option<Arc<dyn ErrorHandler>>> {
+    fn resolve_error_handler_by_token(&self, token: &str) -> Result<Option<Arc<dyn ErrorHandler>>> {
         let container = self.container.borrow();
         let modules_tokens = container.get_modules_token();
 

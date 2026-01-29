@@ -4,7 +4,9 @@
 //! and RPC protocols using Toni's unified Context.
 
 use std::collections::HashMap;
-use toni::{Context, Protocol, ProtocolType, RpcContext, RpcData, WsClient, WsHandshake, WsMessage};
+use toni::{
+    Context, Protocol, ProtocolType, RpcContext, RpcData, WsClient, WsHandshake, WsMessage,
+};
 
 // ============================================================================
 // Universal Guards
@@ -53,7 +55,9 @@ impl LoggingInterceptor {
                 let (request, _) = context.switch_to_http().unwrap();
                 println!(
                     "[HTTP] {} {} from {:?}",
-                    request.method, request.uri, request.header("user-agent")
+                    request.method,
+                    request.uri,
+                    request.header("user-agent")
                 );
             }
             ProtocolType::WebSocket => {
@@ -65,10 +69,7 @@ impl LoggingInterceptor {
             }
             ProtocolType::Rpc => {
                 let (data, rpc_context) = context.switch_to_rpc().unwrap();
-                println!(
-                    "[RPC] pattern='{}' data={:?}",
-                    rpc_context.pattern, data
-                );
+                println!("[RPC] pattern='{}' data={:?}", rpc_context.pattern, data);
             }
         }
     }
@@ -164,7 +165,10 @@ fn main() {
 
     println!("RPC Auth: {}", auth_guard.can_activate(&rpc_context));
     logger.log_request(&rpc_context);
-    println!("RPC Rate Limit: {}", rate_limiter.can_activate(&rpc_context));
+    println!(
+        "RPC Rate Limit: {}",
+        rate_limiter.can_activate(&rpc_context)
+    );
 }
 
 // ============================================================================

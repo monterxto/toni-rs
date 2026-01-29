@@ -8,9 +8,9 @@ impl ChatGateway {
         client: toni::WsClient,
         message: toni::WsMessage,
     ) -> Result<Option<toni::WsMessage>, toni::WsError> {
-        let text = message.as_text().ok_or_else(|| {
-            toni::WsError::InvalidMessage("Expected text message".into())
-        })?;
+        let text = message
+            .as_text()
+            .ok_or_else(|| toni::WsError::InvalidMessage("Expected text message".into()))?;
 
         println!("Received message from {}: {}", client.id, text);
 
@@ -32,9 +32,9 @@ impl ChatGateway {
         client: toni::WsClient,
         message: toni::WsMessage,
     ) -> Result<Option<toni::WsMessage>, toni::WsError> {
-        let username = message.as_text().ok_or_else(|| {
-            toni::WsError::InvalidMessage("Expected username".into())
-        })?;
+        let username = message
+            .as_text()
+            .ok_or_else(|| toni::WsError::InvalidMessage("Expected username".into()))?;
 
         println!("User {} joined as {}", client.id, username);
 
@@ -48,9 +48,9 @@ impl ChatGateway {
 #[tokio::main]
 async fn main() {
     use std::sync::Arc;
-    use toni::{GatewayWrapper, WsMessage, WebSocketAdapter};
-    use toni_axum::AxumWebSocketAdapter;
     use toni::http_helpers::RouteMetadata;
+    use toni::{GatewayWrapper, WebSocketAdapter, WsMessage};
+    use toni_axum::AxumWebSocketAdapter;
 
     println!("Starting WebSocket chat server with decorator-based gateway...");
 
