@@ -95,15 +95,61 @@ impl Context {
     /// WebSocket protocol access (returns None for other protocols)
     pub fn switch_to_ws(&self) -> Option<(&WsClient, &WsMessage, &str)> {
         match &self.protocol {
-            Protocol::WebSocket { client, message, event } => Some((client, message, event.as_str())),
+            Protocol::WebSocket {
+                client,
+                message,
+                event,
+                ..
+            } => Some((client, message, event.as_str())),
             _ => None,
         }
     }
 
     pub fn switch_to_ws_mut(&mut self) -> Option<(&mut WsClient, &mut WsMessage, &str)> {
         match &mut self.protocol {
-            Protocol::WebSocket { client, message, event } => Some((client, message, event.as_str())),
+            Protocol::WebSocket {
+                client,
+                message,
+                event,
+                ..
+            } => Some((client, message, event.as_str())),
             _ => None,
+        }
+    }
+
+    /// Set WebSocket response
+    pub fn set_ws_response(
+        &mut self,
+        response: Result<Option<WsMessage>, crate::websocket::WsError>,
+    ) {
+        if let Protocol::WebSocket {
+            response: response_slot,
+            ..
+        } = &mut self.protocol
+        {
+            *response_slot = Some(response);
+        } else {
+            panic!("Expected WebSocket context");
+        }
+    }
+
+    /// Get WebSocket response
+    pub fn get_ws_response(&self) -> Option<&Result<Option<WsMessage>, crate::websocket::WsError>> {
+        match &self.protocol {
+            Protocol::WebSocket { response, .. } => response.as_ref(),
+            _ => None,
+        }
+    }
+
+    /// Take WebSocket response (consumes the context)
+    pub fn take_ws_response(self) -> Result<Option<WsMessage>, crate::websocket::WsError> {
+        match self.protocol {
+            Protocol::WebSocket { response, .. } => response.unwrap_or_else(|| {
+                Err(crate::websocket::WsError::Internal(
+                    "Response not set in context".into(),
+                ))
+            }),
+            _ => panic!("take_ws_response() only works for WebSocket"),
         }
     }
 
