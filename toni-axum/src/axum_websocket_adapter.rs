@@ -4,6 +4,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use axum::{
     extract::ws::{Message, WebSocket, WebSocketUpgrade},
+    http::HeaderMap,
     routing::get,
     Router,
 };
@@ -11,7 +12,9 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 
-use toni::{WebSocketAdapter, WsClient, WsError, WsHandshake, WsMessage, DisconnectReason, GatewayWrapper};
+use toni::{
+    DisconnectReason, GatewayWrapper, WebSocketAdapter, WsClient, WsError, WsHandshake, WsMessage,
+};
 
 /// Axum WebSocket adapter with support for both same-port and separate-port deployment
 #[derive(Clone)]
@@ -52,8 +55,8 @@ impl WebSocketAdapter for AxumWebSocketAdapter {
             let gateway_for_route = gateway.clone();
             *router = router.clone().route(
                 path,
-                get(|ws: WebSocketUpgrade| async move {
-                    ws.on_upgrade(move |socket| handle_socket(socket, gateway_for_route))
+                get(|headers: HeaderMap, ws: WebSocketUpgrade| async move {
+                    ws.on_upgrade(move |socket| handle_socket(socket, gateway_for_route, headers))
                 }),
             );
         }
@@ -61,15 +64,14 @@ impl WebSocketAdapter for AxumWebSocketAdapter {
         // Store gateway for retrieval
         let gateways_clone = self.gateways.clone();
         tokio::spawn(async move {
-            gateways_clone
-                .write()
-                .await
-                .insert(path_clone, gateway);
+            gateways_clone.write().await.insert(path_clone, gateway);
         });
     }
 
     async fn listen(self, port: u16, hostname: &str) -> Result<()> {
-        let router = self.router.ok_or_else(|| anyhow::anyhow!("Router already consumed"))?;
+        let router = self
+            .router
+            .ok_or_else(|| anyhow::anyhow!("Router already consumed"))?;
         let addr = format!("{}:{}", hostname, port);
         let listener = TcpListener::bind(&addr).await?;
 
@@ -80,18 +82,26 @@ impl WebSocketAdapter for AxumWebSocketAdapter {
 }
 
 /// Handle WebSocket connection
-async fn handle_socket(socket: WebSocket, gateway: Arc<GatewayWrapper>) {
+async fn handle_socket(socket: WebSocket, gateway: Arc<GatewayWrapper>, headers: HeaderMap) {
     let (mut sender, mut receiver) = socket.split();
 
     // Generate client ID
     let client_id = uuid::Uuid::new_v4().to_string();
+
+    // Extract headers from HTTP handshake
+    let mut handshake_headers = HashMap::new();
+    for (name, value) in headers.iter() {
+        if let Ok(value_str) = value.to_str() {
+            handshake_headers.insert(name.as_str().to_lowercase(), value_str.to_string());
+        }
+    }
 
     // Create WsClient from socket
     let client = WsClient {
         id: client_id.clone(),
         handshake: WsHandshake {
             query: HashMap::new(),
-            headers: HashMap::new(),
+            headers: handshake_headers,
             remote_addr: None,
         },
         extensions: Default::default(),
@@ -157,7 +167,11 @@ async fn handle_socket(socket: WebSocket, gateway: Arc<GatewayWrapper>) {
     }
 
     // Handle disconnection
-    println!("Client {} disconnected from {}", client_id, gateway.get_path());
+    println!(
+        "Client {} disconnected from {}",
+        client_id,
+        gateway.get_path()
+    );
     gateway
         .handle_disconnect(client_id, DisconnectReason::ClientDisconnect)
         .await;
