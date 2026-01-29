@@ -33,6 +33,11 @@ pub trait ProviderTrait: Send + Sync {
     async fn on_module_destroy(&self) {}
     async fn before_application_shutdown(&self, _signal: Option<String>) {}
     async fn on_application_shutdown(&self, _signal: Option<String>) {}
+
+    /// Returns this provider as a Gateway if it implements the GatewayTrait
+    fn as_gateway(&self) -> Option<Arc<Box<dyn crate::websocket::GatewayTrait>>> {
+        None
+    }
 }
 
 #[async_trait]

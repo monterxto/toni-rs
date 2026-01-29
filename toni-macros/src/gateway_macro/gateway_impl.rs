@@ -176,6 +176,10 @@ fn generate_gateway_impl(
         }
     }
 
+    // Generate provider implementation for DI container integration
+    let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
+    let manager_name = Ident::new(&format!("{}Manager", struct_name), struct_name.span());
+
     Ok(quote! {
         #struct_with_clone
 
@@ -207,6 +211,68 @@ fn generate_gateway_impl(
         }
 
         #(#handler_structs)*
+
+        // Provider wrapper for DI container
+        struct #provider_name {
+            instance: ::std::sync::Arc<#struct_name>,
+        }
+
+        #[toni::async_trait]
+        impl toni::traits_helpers::ProviderTrait for #provider_name {
+            async fn execute(
+                &self,
+                _params: Vec<Box<dyn ::std::any::Any + Send>>,
+                _req: Option<&toni::http_helpers::HttpRequest>,
+            ) -> Box<dyn ::std::any::Any + Send> {
+                Box::new((*self.instance).clone())
+            }
+
+            fn get_token(&self) -> String {
+                #struct_token.to_string()
+            }
+
+            fn get_token_manager(&self) -> String {
+                concat!(#struct_token, "Manager").to_string()
+            }
+
+            fn get_scope(&self) -> toni::ProviderScope {
+                toni::ProviderScope::Singleton
+            }
+
+            // Override as_gateway to enable gateway detection
+            fn as_gateway(&self) -> Option<::std::sync::Arc<Box<dyn toni::GatewayTrait>>> {
+                Some(::std::sync::Arc::new(Box::new((*self.instance).clone()) as Box<dyn toni::GatewayTrait>))
+            }
+        }
+
+        // Provider manager for DI registration
+        struct #manager_name;
+
+        #[toni::async_trait]
+        impl toni::traits_helpers::Provider for #manager_name {
+            async fn get_all_providers(
+                &self,
+                _dependencies: &toni::FxHashMap<String, ::std::sync::Arc<Box<dyn toni::traits_helpers::ProviderTrait>>>,
+            ) -> toni::FxHashMap<String, ::std::sync::Arc<Box<dyn toni::traits_helpers::ProviderTrait>>> {
+                let mut providers = toni::FxHashMap::default();
+                let instance = ::std::sync::Arc::new(#struct_name {});
+                let provider = ::std::sync::Arc::new(Box::new(#provider_name { instance }) as Box<dyn toni::traits_helpers::ProviderTrait>);
+                providers.insert(#struct_token.to_string(), provider);
+                providers
+            }
+
+            fn get_name(&self) -> String {
+                #struct_token.to_string()
+            }
+
+            fn get_token(&self) -> String {
+                #struct_token.to_string()
+            }
+
+            fn get_dependencies(&self) -> Vec<String> {
+                vec![]
+            }
+        }
     })
 }
 
