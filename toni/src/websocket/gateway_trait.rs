@@ -49,11 +49,6 @@ pub trait GatewayTrait: Send + Sync {
         event: &str,
     ) -> Result<Option<WsMessage>, WsError>;
 
-    /// Get message handler instances (for macro-generated gateways)
-    fn get_message_handlers(&self) -> HashMap<String, Arc<Box<dyn MessageHandlerTrait>>> {
-        HashMap::new()
-    }
-
     /// Get guard tokens for DI resolution
     fn get_guard_tokens(&self) -> Vec<String> {
         vec![]
@@ -77,34 +72,5 @@ pub trait GatewayTrait: Send + Sync {
     /// Get route metadata (permissions, rate limits, etc.)
     fn get_route_metadata(&self) -> Arc<RouteMetadata> {
         Arc::new(RouteMetadata::new())
-    }
-}
-
-/// Individual message handler trait for specific events
-///
-/// Each #[subscribe_message("event")] method generates an implementation of this trait
-#[async_trait]
-pub trait MessageHandlerTrait: Send + Sync {
-    /// Handle specific event
-    ///
-    /// Returns Some(WsMessage) to send a response, or None for no response
-    async fn handle(&self, context: &mut Context) -> Result<Option<WsMessage>, WsError>;
-
-    /// Event name this handler responds to
-    fn event_name(&self) -> &str;
-
-    /// Method-level guards
-    fn get_guard_tokens(&self) -> Vec<String> {
-        vec![]
-    }
-
-    /// Method-level interceptors
-    fn get_interceptor_tokens(&self) -> Vec<String> {
-        vec![]
-    }
-
-    /// Method-level pipes
-    fn get_pipe_tokens(&self) -> Vec<String> {
-        vec![]
     }
 }

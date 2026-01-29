@@ -50,9 +50,6 @@ impl GatewayResolver {
 
         // Filter providers that implement GatewayTrait
         for (_token, provider) in providers {
-            // TODO: Try to downcast to GatewayTrait
-            // This is a simplified approach - in production, we'd want a marker trait
-            // or registry pattern to identify gateway providers
             if let Some(gateway) = self.try_get_gateway(&provider) {
                 // Get path before moving gateway
                 let path = gateway.get_path();

@@ -114,32 +114,6 @@ fn generate_gateway_impl(
         }
     }
 
-    // Generate message handler structs
-    let handler_structs: Vec<_> = message_handlers.iter().map(|(event, method)| {
-        let method_name = &method.sig.ident;
-        let method_pascal = to_pascal_case(&method_name.to_string());
-        let handler_name = Ident::new(
-            &format!("{}{}Handler", struct_name, method_pascal),
-            struct_name.span(),
-        );
-
-        quote! {
-            struct #handler_name;
-
-            #[toni::async_trait]
-            impl toni::MessageHandlerTrait for #handler_name {
-                async fn handle(&self, context: &mut toni::Context) -> Result<Option<toni::WsMessage>, toni::WsError> {
-                    // TODO: Extract gateway instance and call method
-                    Ok(None)
-                }
-
-                fn event_name(&self) -> &str {
-                    #event
-                }
-            }
-        }
-    }).collect();
-
     // Generate handle_event implementation
     let match_arms: Vec<_> = message_handlers
         .iter()
@@ -148,8 +122,7 @@ fn generate_gateway_impl(
 
             quote! {
                 #event => {
-                    let gateway_instance = self; // TODO: Resolve dependencies
-                    gateway_instance.#method_name(client, message).await
+                    self.#method_name(client, message).await
                 }
             }
         })
@@ -209,8 +182,6 @@ fn generate_gateway_impl(
                 }
             }
         }
-
-        #(#handler_structs)*
 
         // Provider wrapper for DI container
         struct #provider_name {

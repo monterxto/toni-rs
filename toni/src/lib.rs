@@ -30,7 +30,7 @@ pub use http_helpers::{
 };
 pub use injector::{InstanceWrapper, Protocol, ProtocolType};
 pub use rpc::{RpcContext, RpcData};
-pub use websocket::{DisconnectReason, GatewayTrait, GatewayWrapper, MessageHandlerTrait, WsClient, WsError, WsHandshake, WsMessage};
+pub use websocket::{DisconnectReason, GatewayTrait, GatewayWrapper, WsClient, WsError, WsHandshake, WsMessage};
 
 // Re-export built-in providers
 pub use request::{Request, RequestManager};

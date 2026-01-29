@@ -9,7 +9,7 @@ mod ws_client;
 mod ws_error;
 mod ws_message;
 
-pub use gateway_trait::{GatewayTrait, MessageHandlerTrait};
+pub use gateway_trait::GatewayTrait;
 pub use gateway_wrapper::GatewayWrapper;
 pub use ws_client::{WsClient, WsHandshake};
 pub use ws_error::{DisconnectReason, WsError};
