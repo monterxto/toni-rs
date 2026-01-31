@@ -163,16 +163,37 @@ pub fn generate_instance_provider_system(
     })
 }
 
+/// Adds Clone and Injectable derives to struct if needed
+///
+/// # Clone Detection
+/// This function checks for `#[derive(Clone)]` attribute on the struct.
+///
+/// # Limitation: Manual `impl Clone`
+/// This macro **cannot detect** manual `impl Clone` blocks that come after the macro invocation:
+///
+/// ```rust,ignore
+/// #[injectable(pub struct Foo { field: String })]
+/// impl Foo { /* ... */ }
+///
+/// // ❌ Macro cannot see this - will add #[derive(Clone)] and cause conflict
+/// impl Clone for Foo {
+///     fn clone(&self) -> Self { /* custom logic */ }
+/// }
+/// ```
+///
+/// This is an acceptable limitation because:
+/// - Macros process attributes linearly and cannot look ahead to future impl blocks
+/// - Compile errors are clear when conflicts occur
 fn add_clone_derive(struct_attrs: &ItemStruct) -> ItemStruct {
     let mut struct_def = struct_attrs.clone();
 
     let has_clone = struct_def.attrs.iter().any(|attr| {
         if attr.path().is_ident("derive") {
-            //TODO: Would probably need to parse derive contents properly
-            false
-        } else {
-            false
+            if let Ok(meta) = attr.parse_args::<syn::Meta>() {
+                return meta_contains_clone(&meta);
+            }
         }
+        false
     });
 
     if !has_clone {
@@ -191,6 +212,29 @@ fn add_clone_derive(struct_attrs: &ItemStruct) -> ItemStruct {
     }
 
     struct_def
+}
+
+/// Recursively check if a derive meta contains Clone
+fn meta_contains_clone(meta: &syn::Meta) -> bool {
+    match meta {
+        syn::Meta::Path(path) => path.is_ident("Clone"),
+        syn::Meta::List(list) => {
+            for nested in list
+                .parse_args_with(
+                    syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+                )
+                .ok()
+                .iter()
+                .flatten()
+            {
+                if meta_contains_clone(nested) {
+                    return true;
+                }
+            }
+            false
+        }
+        _ => false,
+    }
 }
 
 fn generate_provider_wrapper(
