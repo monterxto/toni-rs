@@ -14,6 +14,9 @@ pub enum WsMessage {
 
     /// Pong frame
     Pong(Vec<u8>),
+
+    /// Close frame
+    Close,
 }
 
 impl WsMessage {
@@ -23,6 +26,10 @@ impl WsMessage {
 
     pub fn binary(data: Vec<u8>) -> Self {
         Self::Binary(data)
+    }
+
+    pub fn close() -> Self {
+        Self::Close
     }
 
     pub fn as_text(&self) -> Option<&str> {
