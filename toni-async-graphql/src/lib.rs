@@ -43,7 +43,7 @@
 //!     // Create Toni app
 //!     let adapter = AxumAdapter::new();
 //!
-//!     let app = ToniFactory::create(
+//!     let mut app = ToniFactory::create(
 //!         AppModule {
 //!             imports: vec![graphql_module.into()],
 //!             ..Default::default()

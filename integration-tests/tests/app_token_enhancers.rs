@@ -179,7 +179,7 @@ async fn test_app_token_enhancers_with_di() {
     local.spawn_local(async move {
         // Create application (APP_* token enhancers will be resolved from DI)
         let axum_adapter = AxumAdapter::new();
-        let app = ToniFactory::create(TestModule, axum_adapter).await;
+        let mut app = ToniFactory::create(TestModule, axum_adapter).await;
 
         // Get the tracker from DI container to verify APP_* enhancers work
         let tracker = app

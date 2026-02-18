@@ -109,7 +109,7 @@ impl<H: HttpAdapter> ToniApplication<H> {
         }
     }
 
-    pub async fn listen(self, port: u16, hostname: &str) {
+    pub async fn listen(&mut self, port: u16, hostname: &str) {
         {
             let mut scanner = crate::scanner::ToniDependenciesScanner::new(
                 self.routes_resolver.container.clone(),

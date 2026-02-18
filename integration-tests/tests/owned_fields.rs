@@ -210,6 +210,6 @@ async fn test_owned_fields_runtime() {
     let _factory = ToniFactory::new();
 
     // TODO: Create the app and verify field values
-    // let app = ToniFactory::create(TestModule::module_definition(), adapter).await;
+    // let mut app = ToniFactory::create(TestModule::module_definition(), adapter).await;
     // ... test that services have correct default values ...
 }

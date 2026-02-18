@@ -407,7 +407,7 @@ async fn test_enhancers_execution_order() {
 
         // Create module with tracker injected into providers
         let module_def = EnhancerModule::module_definition();
-        let app = ToniFactory::create(module_def, adapter).await;
+        let mut app = ToniFactory::create(module_def, adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
@@ -560,7 +560,7 @@ async fn test_guard_authorization() {
         let adapter = AxumAdapter::new();
 
         let module_def = EnhancerModule::module_definition();
-        let app = ToniFactory::create(module_def, adapter).await;
+        let mut app = ToniFactory::create(module_def, adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
