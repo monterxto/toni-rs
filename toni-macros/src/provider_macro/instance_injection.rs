@@ -71,6 +71,7 @@ pub struct EnhancerTraits {
     pub is_pipe: bool,
     pub is_middleware: bool,
     pub is_error_handler: bool,
+    pub is_gateway: bool,
 }
 
 /// Detect which enhancer traits a struct implements.
@@ -127,6 +128,7 @@ pub fn generate_instance_provider_system(
     impl_block: &ItemImpl,
     dependencies: &DependencyInfo,
     scope: ProviderScope,
+    is_gateway: bool,
 ) -> Result<TokenStream> {
     let struct_name = &struct_attrs.ident;
 
@@ -143,8 +145,9 @@ pub fn generate_instance_provider_system(
     }
     let impl_def = strip_lifecycle_attrs(&impl_def);
 
-    let enhancer_traits = detect_enhancer_traits(struct_attrs, impl_block);
+    let mut enhancer_traits = detect_enhancer_traits(struct_attrs, impl_block);
     let lifecycle_hooks = detect_lifecycle_hooks(impl_block);
+    enhancer_traits.is_gateway = is_gateway;
 
     let provider_wrapper =
         generate_provider_wrapper(struct_name, dependencies, scope, &enhancer_traits, &lifecycle_hooks);
@@ -292,6 +295,14 @@ fn generate_enhancer_methods(traits: &EnhancerTraits) -> TokenStream {
         methods.push(quote! {
             fn as_error_handler(&self) -> Option<::std::sync::Arc<dyn ::toni::traits_helpers::ErrorHandler>> {
                 Some(::std::sync::Arc::new((*self.instance).clone()))
+            }
+        });
+    }
+
+    if traits.is_gateway {
+        methods.push(quote! {
+            fn as_gateway(&self) -> Option<::std::sync::Arc<Box<dyn ::toni::websocket::GatewayTrait>>> {
+                Some(::std::sync::Arc::new(Box::new((*self.instance).clone()) as Box<dyn ::toni::websocket::GatewayTrait>))
             }
         });
     }
