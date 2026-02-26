@@ -2,6 +2,10 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Attribute, Error, Ident, ItemImpl, ItemStruct, LitStr, Result, parse2};
 
+use crate::controller_macro::controller_struct::{extract_constructor_params, has_new_method};
+use crate::provider_macro::instance_injection::generate_instance_provider_system;
+use crate::shared::dependency_info::DependencySource;
+use crate::shared::scope_parser::ProviderScope;
 use crate::utils::extracts::extract_struct_dependencies;
 
 /// Parse WebSocket gateway arguments
@@ -22,24 +26,20 @@ impl syn::parse::Parse for GatewayArgs {
         let mut struct_def = None;
 
         while !input.is_empty() {
-            // Try to parse struct definition
             if input.peek(syn::Token![pub]) || input.peek(syn::Token![struct]) {
                 struct_def = Some(input.parse::<ItemStruct>()?);
                 break;
             }
 
-            // Try to parse path string
             if input.peek(syn::LitStr) && path.is_none() {
                 path = Some(input.parse::<LitStr>()?.value());
 
-                // Check for comma
                 if !input.is_empty() && input.peek(syn::Token![,]) {
                     input.parse::<syn::Token![,]>()?;
                 }
                 continue;
             }
 
-            // Try to parse named arguments (namespace = "...")
             if input.peek(syn::Ident) {
                 let ident: Ident = input.parse()?;
 
@@ -73,7 +73,6 @@ impl syn::parse::Parse for GatewayArgs {
     }
 }
 
-/// Handle websocket_gateway macro
 pub fn handle_websocket_gateway(attr: TokenStream, item: TokenStream) -> Result<TokenStream> {
     let args = parse2::<GatewayArgs>(attr)?;
     let impl_block = parse2::<ItemImpl>(item)?;
@@ -82,7 +81,20 @@ pub fn handle_websocket_gateway(attr: TokenStream, item: TokenStream) -> Result<
     let path = args.path;
     let namespace = args.namespace;
 
-    let dependencies = extract_struct_dependencies(&struct_def)?;
+    let mut dependencies = extract_struct_dependencies(&struct_def)?;
+
+    // DI Priority Order (same as #[injectable]):
+    // 1. new() method (auto-detected) → constructor injection
+    // 2. #[inject] fields → field injection
+    // 3. Default fallback (all fields use Default::default())
+    if has_new_method(&impl_block) {
+        // Auto-detect new() method and use constructor injection
+        let params = extract_constructor_params(&impl_block, "new")?;
+        dependencies.init_method = Some("new".to_string());
+        dependencies.constructor_params = params;
+        dependencies.source = DependencySource::Constructor("new".to_string());
+    }
+    // else: source stays as determined by extract_struct_dependencies (#[inject] fields or Default)
 
     generate_gateway_impl(
         &struct_def,
@@ -96,20 +108,25 @@ pub fn handle_websocket_gateway(attr: TokenStream, item: TokenStream) -> Result<
 fn generate_gateway_impl(
     struct_def: &ItemStruct,
     impl_block: &ItemImpl,
-    _dependencies: &crate::shared::dependency_info::DependencyInfo,
+    dependencies: &crate::shared::dependency_info::DependencyInfo,
     path: &str,
     namespace: Option<&str>,
 ) -> Result<TokenStream> {
     let struct_name = &struct_def.ident;
     let struct_token = struct_name.to_string();
 
-    // Extract message handlers from impl block
     let mut message_handlers = Vec::new();
+    let mut on_connect_method = None;
+    let mut on_disconnect_method = None;
 
     for item in &impl_block.items {
         if let syn::ImplItem::Fn(method) = item {
             if let Some(event_name) = extract_subscribe_message_event(&method.attrs) {
                 message_handlers.push((event_name, method.clone()));
+            } else if has_attribute(&method.attrs, "on_connect") {
+                on_connect_method = Some(method.clone());
+            } else if has_attribute(&method.attrs, "on_disconnect") {
+                on_disconnect_method = Some(method.clone());
             }
         }
     }
@@ -136,28 +153,54 @@ fn generate_gateway_impl(
         }
     });
 
-    // Add Clone derive to struct
-    let struct_with_clone = add_clone_derive(struct_def);
+    // Note: Clone derive is handled by generate_instance_provider_system()
+    let on_connect_impl = on_connect_method.as_ref().map(|method| {
+        let method_name = &method.sig.ident;
+        quote! {
+            async fn on_connect(
+                &self,
+                client: &toni::WsClient,
+                _context: &toni::Context,
+            ) -> Result<(), toni::WsError> {
+                self.#method_name(client).await
+            }
+        }
+    });
+
+    let on_disconnect_impl = on_disconnect_method.as_ref().map(|method| {
+        let method_name = &method.sig.ident;
+        quote! {
+            async fn on_disconnect(
+                &self,
+                client: &toni::WsClient,
+                _reason: toni::DisconnectReason,
+            ) {
+                self.#method_name(client).await;
+            }
+        }
+    });
 
     // Clean impl block (remove marker attributes)
     let mut impl_def = impl_block.clone();
     for item in impl_def.items.iter_mut() {
         if let syn::ImplItem::Fn(method) = item {
-            method
-                .attrs
-                .retain(|attr| !attr.path().is_ident("subscribe_message"));
+            method.attrs.retain(|attr| {
+                !attr.path().is_ident("subscribe_message")
+                    && !attr.path().is_ident("on_connect")
+                    && !attr.path().is_ident("on_disconnect")
+            });
         }
     }
 
-    // Generate provider implementation for DI container integration
-    let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
-    let manager_name = Ident::new(&format!("{}Manager", struct_name), struct_name.span());
+    // Adds Clone derive and DI wiring, same as #[injectable]; is_gateway=true ensures as_gateway() is included in the ProviderTrait impl
+    let provider_system = generate_instance_provider_system(
+        struct_def,
+        &impl_def,
+        &dependencies,
+        ProviderScope::Singleton,
+    )?;
 
-    Ok(quote! {
-        #struct_with_clone
-
-        #impl_def
-
+    let gateway_trait_impl = quote! {
         #[toni::async_trait]
         impl toni::GatewayTrait for #struct_name {
             fn get_token(&self) -> String {
@@ -169,6 +212,10 @@ fn generate_gateway_impl(
             }
 
             #namespace_impl
+
+            #on_connect_impl
+
+            #on_disconnect_impl
 
             async fn handle_event(
                 &self,
@@ -182,68 +229,12 @@ fn generate_gateway_impl(
                 }
             }
         }
+    };
 
-        // Provider wrapper for DI container
-        struct #provider_name {
-            instance: ::std::sync::Arc<#struct_name>,
-        }
+    Ok(quote! {
+        #provider_system
 
-        #[toni::async_trait]
-        impl toni::traits_helpers::ProviderTrait for #provider_name {
-            async fn execute(
-                &self,
-                _params: Vec<Box<dyn ::std::any::Any + Send>>,
-                _req: Option<&toni::http_helpers::HttpRequest>,
-            ) -> Box<dyn ::std::any::Any + Send> {
-                Box::new((*self.instance).clone())
-            }
-
-            fn get_token(&self) -> String {
-                #struct_token.to_string()
-            }
-
-            fn get_token_manager(&self) -> String {
-                concat!(#struct_token, "Manager").to_string()
-            }
-
-            fn get_scope(&self) -> toni::ProviderScope {
-                toni::ProviderScope::Singleton
-            }
-
-            // Override as_gateway to enable gateway detection
-            fn as_gateway(&self) -> Option<::std::sync::Arc<Box<dyn toni::GatewayTrait>>> {
-                Some(::std::sync::Arc::new(Box::new((*self.instance).clone()) as Box<dyn toni::GatewayTrait>))
-            }
-        }
-
-        // Provider manager for DI registration
-        struct #manager_name;
-
-        #[toni::async_trait]
-        impl toni::traits_helpers::Provider for #manager_name {
-            async fn get_all_providers(
-                &self,
-                _dependencies: &toni::FxHashMap<String, ::std::sync::Arc<Box<dyn toni::traits_helpers::ProviderTrait>>>,
-            ) -> toni::FxHashMap<String, ::std::sync::Arc<Box<dyn toni::traits_helpers::ProviderTrait>>> {
-                let mut providers = toni::FxHashMap::default();
-                let instance = ::std::sync::Arc::new(#struct_name {});
-                let provider = ::std::sync::Arc::new(Box::new(#provider_name { instance }) as Box<dyn toni::traits_helpers::ProviderTrait>);
-                providers.insert(#struct_token.to_string(), provider);
-                providers
-            }
-
-            fn get_name(&self) -> String {
-                #struct_token.to_string()
-            }
-
-            fn get_token(&self) -> String {
-                #struct_token.to_string()
-            }
-
-            fn get_dependencies(&self) -> Vec<String> {
-                vec![]
-            }
-        }
+        #gateway_trait_impl
     })
 }
 
@@ -258,57 +249,6 @@ fn extract_subscribe_message_event(attrs: &[Attribute]) -> Option<String> {
     None
 }
 
-fn add_clone_derive(struct_def: &ItemStruct) -> ItemStruct {
-    let mut new_struct = struct_def.clone();
-
-    let has_clone = struct_def.attrs.iter().any(|attr| {
-        if attr.path().is_ident("derive") {
-            if let Ok(meta) = attr.parse_args::<syn::Meta>() {
-                return meta_contains_clone(&meta);
-            }
-        }
-        false
-    });
-
-    if !has_clone {
-        let clone_derive: Attribute = syn::parse_quote! { #[derive(Clone)] };
-        new_struct.attrs.push(clone_derive);
-    }
-
-    new_struct
-}
-
-fn meta_contains_clone(meta: &syn::Meta) -> bool {
-    match meta {
-        syn::Meta::Path(path) => path.is_ident("Clone"),
-        syn::Meta::List(list) => {
-            for nested in list
-                .parse_args_with(
-                    syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
-                )
-                .ok()
-                .iter()
-                .flatten()
-            {
-                if meta_contains_clone(nested) {
-                    return true;
-                }
-            }
-            false
-        }
-        _ => false,
-    }
-}
-
-fn to_pascal_case(snake: &str) -> String {
-    snake
-        .split('_')
-        .map(|word| {
-            let mut chars = word.chars();
-            match chars.next() {
-                None => String::new(),
-                Some(first) => first.to_uppercase().chain(chars).collect(),
-            }
-        })
-        .collect()
+fn has_attribute(attrs: &[Attribute], name: &str) -> bool {
+    attrs.iter().any(|attr| attr.path().is_ident(name))
 }
