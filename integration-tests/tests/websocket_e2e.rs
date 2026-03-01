@@ -18,9 +18,9 @@
 //!    `complete_connect()` and is registered in `ConnectionManager`.
 //!
 //! 3. **Separate-port** — gateway declares `port = 19001` in the macro. Verifies the
-//!    full separate-port path: `get_port()` routes the gateway to `WebSocketAdapter`
-//!    rather than the HTTP adapter, `TestWsAdapter.listen()` starts a real TCP server,
-//!    and a client connecting to port 19001 gets its message handled correctly.
+//!    full separate-port path: `get_port()` routes the gateway to `TungsteniteAdapter`
+//!    rather than the HTTP adapter, and a client connecting to port 19001 gets its
+//!    message handled correctly.
 
 mod common;
 
@@ -28,13 +28,11 @@ use common::TestServer;
 use futures_util::{SinkExt, StreamExt};
 use serial_test::serial;
 use toni::module;
-use toni::websocket::{BroadcastModule, BroadcastService, GatewayWrapper, WsClient, WsError, WsMessage, WsSocket};
-use toni::WebSocketAdapter;
+use toni::websocket::{BroadcastModule, BroadcastService, WsClient, WsError, WsMessage};
 use toni_macros::websocket_gateway;
 use toni_axum::AxumAdapter;
 use toni::toni_factory::ToniFactory;
-use std::collections::HashMap;
-use std::sync::Arc;
+use toni_tungstenite::TungsteniteAdapter;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Echo gateway — simple request-response, no BroadcastModule
@@ -108,6 +106,29 @@ impl RoomGateway {
 struct RoomModule;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Separate-port gateway — `port = 19001` routes via TungsteniteAdapter, not HTTP
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[websocket_gateway("/ws", port = 19001, pub struct PingGateway {})]
+impl PingGateway {
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    #[subscribe_message("ping")]
+    async fn on_ping(
+        &self,
+        _client: WsClient,
+        _msg: WsMessage,
+    ) -> Result<Option<WsMessage>, WsError> {
+        Ok(Some(WsMessage::text("pong")))
+    }
+}
+
+#[module(providers: [PingGateway])]
+struct PingModule;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Tests
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -133,121 +154,6 @@ async fn websocket_echo_end_to_end() {
         r#"Echo: {"event": "message", "data": "hello"}"#,
     );
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Separate-port gateway — `port = 19001` routes via WebSocketAdapter, not HTTP
-// ─────────────────────────────────────────────────────────────────────────────
-
-#[websocket_gateway("/ws", port = 19001, pub struct PingGateway {})]
-impl PingGateway {
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    #[subscribe_message("ping")]
-    async fn on_ping(
-        &self,
-        _client: WsClient,
-        _msg: WsMessage,
-    ) -> Result<Option<WsMessage>, WsError> {
-        Ok(Some(WsMessage::text("pong")))
-    }
-}
-
-#[module(providers: [PingGateway])]
-struct PingModule;
-
-/// Real tokio-tungstenite TCP server used in the separate-port test.
-///
-/// `on_gateway()` stores path→gateway registrations from the framework.
-/// `listen()` binds a TCP port, upgrades each connection with tungstenite,
-/// then runs the connection through `WsSocket::handle_connection()`.
-struct TestWsAdapter {
-    gateways: HashMap<String, Arc<GatewayWrapper>>,
-}
-
-impl TestWsAdapter {
-    fn new() -> Self {
-        Self {
-            gateways: HashMap::new(),
-        }
-    }
-}
-
-#[toni::async_trait]
-impl WebSocketAdapter for TestWsAdapter {
-    fn on_gateway(&mut self, path: &str, gateway: Arc<GatewayWrapper>) -> anyhow::Result<()> {
-        self.gateways.insert(path.to_string(), gateway);
-        Ok(())
-    }
-
-    async fn listen(&mut self, port: u16, hostname: &str) -> anyhow::Result<()> {
-        let addr = format!("{}:{}", hostname, port);
-        let listener = tokio::net::TcpListener::bind(&addr).await?;
-        let gateways: Arc<HashMap<String, Arc<GatewayWrapper>>> =
-            Arc::new(self.gateways.clone());
-
-        loop {
-            let (stream, _) = listener.accept().await?;
-            let gateways = gateways.clone();
-            tokio::spawn(async move {
-                let ws_stream = match tokio_tungstenite::accept_async(stream).await {
-                    Ok(ws) => ws,
-                    Err(e) => {
-                        eprintln!("WS handshake error: {}", e);
-                        return;
-                    }
-                };
-                // Route to the only registered gateway on this port
-                if let Some(gateway) = gateways.values().next() {
-                    let gateway = gateway.clone();
-                    let mut socket = TungsteniteSocket { inner: ws_stream };
-                    socket.handle_connection(&gateway, HashMap::new()).await;
-                }
-            });
-        }
-    }
-}
-
-/// `WsSocket` impl backed by a tungstenite stream over a raw TCP connection.
-struct TungsteniteSocket {
-    inner: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
-}
-
-#[toni::async_trait]
-impl WsSocket for TungsteniteSocket {
-    async fn recv(&mut self) -> Option<Result<WsMessage, WsError>> {
-        use tokio_tungstenite::tungstenite::Message;
-        loop {
-            return match self.inner.next().await? {
-                Ok(Message::Text(t)) => Some(Ok(WsMessage::Text(t.to_string()))),
-                Ok(Message::Binary(b)) => Some(Ok(WsMessage::Binary(b.to_vec()))),
-                Ok(Message::Close(_)) => None,
-                Ok(Message::Ping(_)) | Ok(Message::Pong(_)) | Ok(Message::Frame(_)) => continue,
-                Err(e) => Some(Err(WsError::Internal(e.to_string()))),
-            };
-        }
-    }
-
-    async fn send(&mut self, msg: WsMessage) -> Result<(), WsError> {
-        use tokio_tungstenite::tungstenite::Message;
-        let m = match msg {
-            WsMessage::Text(t) => Message::Text(t.into()),
-            WsMessage::Binary(b) => Message::Binary(b.into()),
-            WsMessage::Ping(d) => Message::Ping(d.into()),
-            WsMessage::Pong(d) => Message::Pong(d.into()),
-            WsMessage::Close => Message::Close(None),
-        };
-        self.inner
-            .send(m)
-            .await
-            .map_err(|e| WsError::Internal(e.to_string()))
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Tests
-// ─────────────────────────────────────────────────────────────────────────────
 
 /// Full path: two real TCP clients, `handle_connection_with_broadcast()` path.
 /// Race-free: each client handshakes with ping/pong before the broadcast is sent,
@@ -296,10 +202,10 @@ async fn websocket_broadcast_end_to_end() {
 }
 
 /// Separate-port path: `PingGateway` declares `port = 19001`, so the framework routes it
-/// through `WebSocketAdapter` instead of the HTTP adapter. `TestWsAdapter.listen()` starts
-/// a real TCP server; a client connecting directly to port 19001 exercises the full chain:
+/// through `TungsteniteAdapter` instead of the HTTP adapter. A client connecting directly
+/// to port 19001 exercises the full chain:
 ///
-///   TCP connect → tungstenite handshake → TungsteniteSocket → GatewayWrapper → PingGateway
+///   TCP connect → tungstenite handshake → TungsteniteWsSocket → GatewayWrapper → PingGateway
 #[serial]
 #[tokio_localset_test::localset_test]
 async fn websocket_separate_port_end_to_end() {
@@ -313,7 +219,7 @@ async fn websocket_separate_port_end_to_end() {
     local.spawn_local(async move {
         let mut app =
             ToniFactory::create(PingModule::module_definition(), AxumAdapter::new()).await;
-        app.use_websocket_adapter(TestWsAdapter::new()).unwrap();
+        app.use_websocket_adapter(TungsteniteAdapter::new()).unwrap();
         app.listen(http_port, "127.0.0.1").await;
     });
     tokio::task::spawn_local(async move {

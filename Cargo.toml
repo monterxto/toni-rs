@@ -4,6 +4,7 @@ members = [
     "toni-macros",
     "toni-cli",
     "toni-axum",
+    "toni-tungstenite",
     "toni-actix",
     "toni-config",
     "toni-async-graphql",

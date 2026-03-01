@@ -1,0 +1,16 @@
+[package]
+name = "toni-tungstenite"
+version = "0.1.0"
+edition = "2021"
+description = "tokio-tungstenite adapter for separate-port WebSocket deployment with the Toni framework"
+license = "MIT"
+keywords = ["toni", "websocket", "tungstenite", "adapter"]
+categories = ["web-programming::websocket"]
+
+[dependencies]
+toni = { path = "../toni" }
+tokio = { version = "1", features = ["net", "sync", "rt"] }
+tokio-tungstenite = "0.28"
+futures-util = "0.3"
+anyhow = "1.0"
+async-trait = "0.1"
