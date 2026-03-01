@@ -1,82 +1,73 @@
-use toni_macros::websocket_gateway;
+//! Simple WebSocket echo/chat example
+//!
+//! The minimal WebSocket setup — no BroadcastService, no rooms.
+//! Each message is echoed back to the sender (request-response).
+//!
+//! BroadcastService is *optional*: when you don't inject it and don't import
+//! BroadcastModule, the framework uses the simple `handle_connection()` path
+//! automatically. No broadcast infrastructure is wired in.
+//!
+//! Compare with `websocket_di.rs` which adds DI, guards, and broadcasting.
+//!
+//! Run with:  cargo run --example websocket_chat
+//! Connect:   websocat ws://127.0.0.1:8080/chat
+//! Send:      {"event": "message", "data": "Hello"}
+//!            {"event": "ping"}
 
-#[websocket_gateway("/chat", pub struct ChatGateway {})]
-impl ChatGateway {
+use toni::*;
+use toni_axum::AxumWebSocketAdapter;
+use toni_macros::{module, websocket_gateway};
+
+#[websocket_gateway("/chat", pub struct EchoGateway {})]
+impl EchoGateway {
+    pub fn new() -> Self {
+        Self {}
+    }
+
     #[subscribe_message("message")]
     async fn handle_message(
         &self,
-        client: toni::WsClient,
-        message: toni::WsMessage,
-    ) -> Result<Option<toni::WsMessage>, toni::WsError> {
+        client: WsClient,
+        message: WsMessage,
+    ) -> Result<Option<WsMessage>, WsError> {
         let text = message
             .as_text()
-            .ok_or_else(|| toni::WsError::InvalidMessage("Expected text message".into()))?;
+            .ok_or_else(|| WsError::InvalidMessage("Expected text message".into()))?;
 
-        println!("Received message from {}: {}", client.id, text);
+        println!("[{}] {}", client.id, text);
 
-        Ok(Some(toni::WsMessage::text(format!("Echo: {}", text))))
+        Ok(Some(WsMessage::text(format!("Echo: {}", text))))
     }
 
     #[subscribe_message("ping")]
     async fn handle_ping(
         &self,
-        _client: toni::WsClient,
-        _message: toni::WsMessage,
-    ) -> Result<Option<toni::WsMessage>, toni::WsError> {
-        Ok(Some(toni::WsMessage::text("pong")))
-    }
-
-    #[subscribe_message("join")]
-    async fn handle_join(
-        &self,
-        client: toni::WsClient,
-        message: toni::WsMessage,
-    ) -> Result<Option<toni::WsMessage>, toni::WsError> {
-        let username = message
-            .as_text()
-            .ok_or_else(|| toni::WsError::InvalidMessage("Expected username".into()))?;
-
-        println!("User {} joined as {}", client.id, username);
-
-        Ok(Some(toni::WsMessage::text(format!(
-            "Welcome, {}! You are connected.",
-            username
-        ))))
+        _client: WsClient,
+        _message: WsMessage,
+    ) -> Result<Option<WsMessage>, WsError> {
+        Ok(Some(WsMessage::text("pong")))
     }
 }
 
+// No BroadcastModule — BroadcastService is not needed here.
+// The framework detects this and uses the simple request-response path.
+#[module(providers: [EchoGateway])]
+struct AppModule;
+
 #[tokio::main]
 async fn main() {
-    use std::sync::Arc;
-    use toni::http_helpers::RouteMetadata;
-    use toni::{GatewayWrapper, WebSocketAdapter, WsMessage};
-    use toni_axum::AxumWebSocketAdapter;
+    println!("🚀 Simple WebSocket echo server\n");
+    println!("Connect:  websocat ws://127.0.0.1:8080/chat");
+    println!(r#"Send:     {{"event": "message", "data": "Hello"}}"#);
+    println!(r#"          {{"event": "ping"}}"#);
+    println!();
 
-    println!("Starting WebSocket chat server with decorator-based gateway...");
+    let mut app = ToniFactory::new()
+        .create_with(AppModule, toni_axum::AxumAdapter::new())
+        .await;
 
-    let mut ws_adapter = AxumWebSocketAdapter::new();
+    app.use_websocket_adapter(AxumWebSocketAdapter::new())
+        .expect("Failed to register WebSocket adapter");
 
-    // Create gateway instance
-    let gateway = Arc::new(Box::new(ChatGateway {}) as Box<dyn toni::GatewayTrait>);
-
-    // Wrap with pipeline
-    let wrapper = GatewayWrapper::new(
-        gateway,
-        vec![],
-        vec![],
-        vec![],
-        vec![],
-        Arc::new(RouteMetadata::new()),
-    );
-
-    ws_adapter.add_gateway("/chat", Arc::new(wrapper));
-
-    println!("WebSocket server listening on ws://127.0.0.1:8080/chat");
-    println!("\nTest with wscat:");
-    println!("  wscat -c ws://127.0.0.1:8080/chat");
-    println!("  > {{\"event\": \"join\", \"data\": \"Alice\"}}");
-    println!("  > {{\"event\": \"message\", \"data\": \"Hello everyone!\"}}");
-    println!("  > {{\"event\": \"ping\"}}");
-
-    ws_adapter.listen(8080, "127.0.0.1").await.unwrap();
+    app.listen(8080, "127.0.0.1").await;
 }
