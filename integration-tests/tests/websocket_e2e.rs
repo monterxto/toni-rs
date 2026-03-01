@@ -27,7 +27,7 @@ mod common;
 use common::TestServer;
 use futures_util::{SinkExt, StreamExt};
 use serial_test::serial;
-use toni::module;
+use toni::{controller, module, post, Body as ToniBody};
 use toni::websocket::{BroadcastModule, BroadcastService, WsClient, WsError, WsMessage};
 use toni_macros::websocket_gateway;
 use toni_axum::AxumAdapter;
@@ -199,6 +199,95 @@ async fn websocket_broadcast_end_to_end() {
         recv_b.to_text().unwrap(),
         r#"{"event": "shout", "data": "hello room"}"#,
     );
+}
+
+#[websocket_gateway("/events", pub struct EventGateway {
+    #[inject] broadcast: BroadcastService,
+})]
+impl EventGateway {
+    pub fn new(broadcast: BroadcastService) -> Self {
+        Self { broadcast }
+    }
+
+    // Called by the REST controller to push a message to all connected WS clients.
+    pub async fn push(&self, msg: &str) {
+        self.broadcast
+            .to_all()
+            .send(WsMessage::text(msg.to_string()))
+            .await
+            .ok();
+    }
+
+    #[subscribe_message("ping")]
+    async fn on_ping(
+        &self,
+        _client: WsClient,
+        _msg: WsMessage,
+    ) -> Result<Option<WsMessage>, WsError> {
+        Ok(Some(WsMessage::text("pong")))
+    }
+}
+
+#[controller("/trigger", pub struct TriggerController {
+    #[inject] gateway: EventGateway,
+})]
+impl TriggerController {
+    #[post("/")]
+    async fn trigger(&self) -> ToniBody {
+        self.gateway.push("server_push").await;
+        ToniBody::Text("ok".to_string())
+    }
+}
+
+#[module(
+    providers: [EventGateway],
+    controllers: [TriggerController],
+    imports: [BroadcastModule::new()],
+)]
+struct GatewayInjectionModule;
+
+/// Gateway injected into a REST controller.
+///
+/// Verifies that a `#[websocket_gateway]` struct — which is also a DI provider — can be
+/// injected as a dependency into an HTTP controller, and that calling a method on the
+/// injected instance broadcasts to connected WebSocket clients via the shared
+/// `BroadcastService`.
+///
+/// Flow:
+///   1. WS client connects and handshakes (ping/pong) — proves it is registered in ConnectionManager.
+///   2. HTTP client POSTs to `/trigger` — controller calls `gateway.push("server_push")`.
+///   3. WS client receives `"server_push"` — proves the injected gateway shares the same
+///      `ConnectionManager` as the live gateway.
+#[serial]
+#[tokio_localset_test::localset_test]
+async fn gateway_injected_into_rest_controller() {
+    let server = TestServer::start(GatewayInjectionModule::module_definition()).await;
+    let ws_url = format!("ws://127.0.0.1:{}/events", server.port);
+
+    let (mut ws, _) = tokio_tungstenite::connect_async(&ws_url).await.unwrap();
+
+    // Handshake: receiving "pong" proves the client has passed complete_connect()
+    // and is registered in ConnectionManager.
+    ws.send(tokio_tungstenite::tungstenite::Message::Text(
+        r#"{"event": "ping"}"#.to_string().into(),
+    ))
+    .await
+    .unwrap();
+    let pong = ws.next().await.unwrap().unwrap();
+    assert_eq!(pong.to_text().unwrap(), "pong");
+
+    // Trigger broadcast from the REST handler.
+    let resp = server
+        .client()
+        .post(server.url("/trigger"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+
+    // The WS client must receive the message pushed by the controller.
+    let msg = ws.next().await.unwrap().unwrap();
+    assert_eq!(msg.to_text().unwrap(), "server_push");
 }
 
 /// Separate-port path: `PingGateway` declares `port = 19001`, so the framework routes it
