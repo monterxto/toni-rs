@@ -19,9 +19,9 @@ pub type RoomId = String;
 
 /// Trait for sending messages to clients (runtime-agnostic)
 ///
-/// Adapters provide concrete implementations (e.g., TokioSender, AsyncStdSender)
+/// Adapters provide concrete implementations (e.g., TokioSender, AsyncStdSender).
 #[async_trait]
-pub trait Sender: Send + Sync + Clone + 'static {
+pub trait Sender: Send + Sync + 'static {
     /// Send message asynchronously (may block if buffer is full)
     async fn send(&self, message: WsMessage) -> Result<(), SendError>;
 
@@ -92,20 +92,22 @@ impl From<SendError> for BroadcastError {
 ///
 /// Uses sync locks (parking_lot) for state management since room membership
 /// changes are infrequent and fast. Only async operations are channel sends.
-pub struct ConnectionManager<S: Sender> {
-    clients: Arc<RwLock<HashMap<ClientId, ClientState<S>>>>,
+///
+/// Runtime-agnostic: stores `Arc<dyn Sender>` so any framework adapter works.
+pub struct ConnectionManager {
+    clients: Arc<RwLock<HashMap<ClientId, ClientState>>>,
     rooms: Arc<RwLock<HashMap<RoomId, HashSet<ClientId>>>>,
     namespaces: Arc<RwLock<HashMap<String, HashSet<ClientId>>>>,
 }
 
-pub struct ClientState<S: Sender> {
+pub struct ClientState {
     pub client: WsClient,
-    pub sender: S,
+    pub sender: Arc<dyn Sender>,
     pub rooms: HashSet<RoomId>,
     pub namespace: Option<String>,
 }
 
-impl<S: Sender> ConnectionManager<S> {
+impl ConnectionManager {
     pub fn new() -> Self {
         Self {
             clients: Arc::new(RwLock::new(HashMap::new())),
@@ -118,7 +120,7 @@ impl<S: Sender> ConnectionManager<S> {
     ///
     /// Automatically joins a room named after the client ID (Socket.io pattern)
     /// for private messaging support.
-    pub fn register(&self, client: WsClient, sender: S, namespace: Option<String>) {
+    pub fn register(&self, client: WsClient, sender: Arc<dyn Sender>, namespace: Option<String>) {
         let client_id = client.id.clone();
 
         let state = ClientState {
@@ -142,7 +144,7 @@ impl<S: Sender> ConnectionManager<S> {
     }
 
     /// Removes client from all rooms and namespaces
-    pub fn unregister(&self, client_id: &str) -> Option<ClientState<S>> {
+    pub fn unregister(&self, client_id: &str) -> Option<ClientState> {
         let state = self.clients.write().remove(client_id)?;
 
         let mut rooms = self.rooms.write();
@@ -244,11 +246,11 @@ impl<S: Sender> ConnectionManager<S> {
         let clients = self.clients.read();
         let count = clients.len();
 
-        println!("🧹 Closing {} WebSocket connections...", count);
+        println!("Closing {} WebSocket connections...", count);
 
         for (client_id, state) in clients.iter() {
             let _ = state.sender.try_send(WsMessage::Close);
-            println!("  📴 Sent close frame to: {}", client_id);
+            println!("  Sent close frame to: {}", client_id);
         }
 
         drop(clients);
@@ -257,11 +259,11 @@ impl<S: Sender> ConnectionManager<S> {
         self.rooms.write().clear();
         self.namespaces.write().clear();
 
-        println!("  ✅ Closed {} connections", count);
+        println!("  Closed {} connections", count);
     }
 }
 
-impl<S: Sender> Default for ConnectionManager<S> {
+impl Default for ConnectionManager {
     fn default() -> Self {
         Self::new()
     }
@@ -291,12 +293,12 @@ impl<S: Sender> Default for ConnectionManager<S> {
 /// // Multi-room broadcast
 /// broadcast.to_room("r1").and_room("r2").send(msg).await?;
 /// ```
-pub struct BroadcastService<S: Sender> {
-    manager: Arc<ConnectionManager<S>>,
+pub struct BroadcastService {
+    manager: Arc<ConnectionManager>,
 }
 
-impl<S: Sender> BroadcastService<S> {
-    pub fn new(manager: Arc<ConnectionManager<S>>) -> Self {
+impl BroadcastService {
+    pub fn new(manager: Arc<ConnectionManager>) -> Self {
         Self { manager }
     }
 
@@ -305,25 +307,25 @@ impl<S: Sender> BroadcastService<S> {
     // ========================================================================
 
     /// Socket.io equivalent: `server.emit('event', data)`
-    pub fn to_all(&self) -> BroadcastTarget<S> {
+    pub fn to_all(&self) -> BroadcastTarget {
         BroadcastTarget::new(self.manager.clone(), TargetType::All)
     }
 
     /// Socket.io equivalent: `server.to('room1').emit('event', data)`
-    pub fn to_room(&self, room: impl Into<String>) -> BroadcastTarget<S> {
+    pub fn to_room(&self, room: impl Into<String>) -> BroadcastTarget {
         BroadcastTarget::new(self.manager.clone(), TargetType::Room(room.into()))
     }
 
     /// Uses auto-room pattern (each client has a room named after their ID)
     ///
     /// Socket.io equivalent: `server.to(clientId).emit('event', data)`
-    pub fn to_client(&self, client_id: impl Into<String>) -> BroadcastTarget<S> {
+    pub fn to_client(&self, client_id: impl Into<String>) -> BroadcastTarget {
         BroadcastTarget::new(self.manager.clone(), TargetType::Client(client_id.into()))
     }
 
     /// Socket.io equivalent: `server.except(clientId).emit('event', data)`
     /// or `client.broadcast.emit('event', data)`
-    pub fn except(&self, client_id: impl Into<String>) -> BroadcastTarget<S> {
+    pub fn except(&self, client_id: impl Into<String>) -> BroadcastTarget {
         BroadcastTarget::new(self.manager.clone(), TargetType::Except(client_id.into()))
     }
 
@@ -348,7 +350,7 @@ impl<S: Sender> BroadcastService<S> {
     }
 }
 
-impl<S: Sender> Clone for BroadcastService<S> {
+impl Clone for BroadcastService {
     fn clone(&self) -> Self {
         Self {
             manager: self.manager.clone(),
@@ -363,8 +365,8 @@ impl<S: Sender> Clone for BroadcastService<S> {
 /// Fluent API builder for broadcast targets
 ///
 /// Allows chaining multiple rooms and namespace filtering before sending
-pub struct BroadcastTarget<S: Sender> {
-    manager: Arc<ConnectionManager<S>>,
+pub struct BroadcastTarget {
+    manager: Arc<ConnectionManager>,
     target_type: TargetType,
     namespace: Option<String>,
 }
@@ -378,8 +380,8 @@ enum TargetType {
     Multiple(Vec<String>),
 }
 
-impl<S: Sender> BroadcastTarget<S> {
-    fn new(manager: Arc<ConnectionManager<S>>, target_type: TargetType) -> Self {
+impl BroadcastTarget {
+    fn new(manager: Arc<ConnectionManager>, target_type: TargetType) -> Self {
         Self {
             manager,
             target_type,
@@ -501,9 +503,9 @@ mod tests {
 
     #[test]
     fn test_register_and_unregister() {
-        let manager = ConnectionManager::<MockSender>::new();
+        let manager = ConnectionManager::new();
         let client = create_client("client1");
-        let sender = MockSender::new();
+        let sender: Arc<dyn Sender> = Arc::new(MockSender::new());
 
         manager.register(client.clone(), sender, None);
         assert_eq!(manager.get_all_clients().len(), 1);
@@ -514,9 +516,9 @@ mod tests {
 
     #[test]
     fn test_join_and_leave_room() {
-        let manager = ConnectionManager::<MockSender>::new();
+        let manager = ConnectionManager::new();
         let client = create_client("client1");
-        let sender = MockSender::new();
+        let sender: Arc<dyn Sender> = Arc::new(MockSender::new());
 
         manager.register(client.clone(), sender, None);
         manager.join_room(&client.id, "lobby").unwrap();
@@ -531,9 +533,9 @@ mod tests {
 
     #[test]
     fn test_auto_join_client_id_room() {
-        let manager = ConnectionManager::<MockSender>::new();
+        let manager = ConnectionManager::new();
         let client = create_client("client1");
-        let sender = MockSender::new();
+        let sender: Arc<dyn Sender> = Arc::new(MockSender::new());
 
         manager.register(client.clone(), sender, None);
 
@@ -544,12 +546,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_broadcast_to_room() {
-        let manager = Arc::new(ConnectionManager::<MockSender>::new());
+        let manager = Arc::new(ConnectionManager::new());
         let service = BroadcastService::new(manager.clone());
 
-        let sender1 = MockSender::new();
-        let sender2 = MockSender::new();
-        let sender3 = MockSender::new();
+        let sender1 = Arc::new(MockSender::new());
+        let sender2 = Arc::new(MockSender::new());
+        let sender3 = Arc::new(MockSender::new());
 
         manager.register(create_client("c1"), sender1.clone(), None);
         manager.register(create_client("c2"), sender2.clone(), None);
@@ -569,11 +571,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_broadcast_except() {
-        let manager = Arc::new(ConnectionManager::<MockSender>::new());
+        let manager = Arc::new(ConnectionManager::new());
         let service = BroadcastService::new(manager.clone());
 
-        let sender1 = MockSender::new();
-        let sender2 = MockSender::new();
+        let sender1 = Arc::new(MockSender::new());
+        let sender2 = Arc::new(MockSender::new());
 
         manager.register(create_client("c1"), sender1.clone(), None);
         manager.register(create_client("c2"), sender2.clone(), None);
@@ -587,11 +589,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_private_message_to_client() {
-        let manager = Arc::new(ConnectionManager::<MockSender>::new());
+        let manager = Arc::new(ConnectionManager::new());
         let service = BroadcastService::new(manager.clone());
 
-        let sender1 = MockSender::new();
-        let sender2 = MockSender::new();
+        let sender1 = Arc::new(MockSender::new());
+        let sender2 = Arc::new(MockSender::new());
 
         manager.register(create_client("c1"), sender1.clone(), None);
         manager.register(create_client("c2"), sender2.clone(), None);
@@ -605,12 +607,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_multi_room_broadcast() {
-        let manager = Arc::new(ConnectionManager::<MockSender>::new());
+        let manager = Arc::new(ConnectionManager::new());
         let service = BroadcastService::new(manager.clone());
 
-        let sender1 = MockSender::new();
-        let sender2 = MockSender::new();
-        let sender3 = MockSender::new();
+        let sender1 = Arc::new(MockSender::new());
+        let sender2 = Arc::new(MockSender::new());
+        let sender3 = Arc::new(MockSender::new());
 
         manager.register(create_client("c1"), sender1.clone(), None);
         manager.register(create_client("c2"), sender2.clone(), None);
