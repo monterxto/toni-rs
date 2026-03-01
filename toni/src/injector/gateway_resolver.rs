@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -9,10 +10,6 @@ use crate::websocket::{GatewayTrait, GatewayWrapper};
 
 use super::ToniContainer;
 
-/// Resolves WebSocket gateways from DI container
-///
-/// Similar to RoutesResolver for HTTP, this discovers gateway providers
-/// and wraps them with guards, interceptors, pipes, and error handlers.
 pub struct GatewayResolver {
     container: Rc<RefCell<ToniContainer>>,
 }
@@ -22,53 +19,39 @@ impl GatewayResolver {
         Self { container }
     }
 
-    /// Resolve gateways and register with WebSocket adapter
-    pub fn resolve<W>(&self, ws_adapter: &mut W) -> Result<()>
-    where
-        W: crate::adapter::WebSocketAdapter,
-    {
+    pub fn resolve(&self) -> Result<HashMap<String, Arc<GatewayWrapper>>> {
         let modules_tokens = self.container.borrow().get_modules_token();
+        let mut gateways = HashMap::new();
 
         for module_token in modules_tokens {
-            self.register_gateways(&module_token, ws_adapter)?;
+            self.collect_gateways(&module_token, &mut gateways)?;
         }
 
-        Ok(())
+        Ok(gateways)
     }
 
-    fn register_gateways<W>(&self, module_token: &str, ws_adapter: &mut W) -> Result<()>
-    where
-        W: crate::adapter::WebSocketAdapter,
-    {
-        // Get all providers from module
-        let container = self.container.borrow();
-        let providers = container.get_providers_instance(&module_token.to_string())?;
+    fn collect_gateways(
+        &self,
+        module_token: &str,
+        gateways: &mut HashMap<String, Arc<GatewayWrapper>>,
+    ) -> Result<()> {
+        let providers = {
+            let container = self.container.borrow();
+            container
+                .get_providers_instance(&module_token.to_string())?
+                .clone()
+        };
 
-        // Filter providers that implement GatewayTrait
         for (_token, provider) in providers {
-            if let Some(gateway) = self.try_get_gateway(&provider) {
-                // Get path before moving gateway
+            if let Some(gateway) = provider.as_gateway() {
                 let path = gateway.get_path();
-
-                // Wrap gateway with enhancers
                 let wrapper = self.wrap_gateway(gateway)?;
-
-                // Register with adapter
-                ws_adapter.add_gateway(&path, Arc::new(wrapper));
-
+                gateways.insert(path.clone(), Arc::new(wrapper));
                 println!("Registered WebSocket gateway at path: {}", path);
             }
         }
 
         Ok(())
-    }
-
-    /// Try to extract gateway from provider
-    fn try_get_gateway(
-        &self,
-        provider: &Arc<Box<dyn crate::traits_helpers::ProviderTrait>>,
-    ) -> Option<Arc<Box<dyn GatewayTrait>>> {
-        provider.as_gateway()
     }
 
     fn wrap_gateway(&self, gateway: Arc<Box<dyn GatewayTrait>>) -> Result<GatewayWrapper> {
@@ -90,141 +73,93 @@ impl GatewayResolver {
 
     fn resolve_guards(&self, tokens: Vec<String>) -> Result<Vec<Arc<dyn Guard>>> {
         let mut guards = Vec::new();
-
-        // Add global guards first
         let global_guards = self.container.borrow().get_global_enhancers().guards;
         guards.extend(global_guards);
-
-        // Resolve gateway-specific guards from tokens
         for token in tokens {
             if let Some(guard) = self.resolve_guard_by_token(&token)? {
                 guards.push(guard);
             }
         }
-
         Ok(guards)
     }
 
     fn resolve_interceptors(&self, tokens: Vec<String>) -> Result<Vec<Arc<dyn Interceptor>>> {
         let mut interceptors = Vec::new();
-
-        // Add global interceptors first
         let global_interceptors = self.container.borrow().get_global_enhancers().interceptors;
         interceptors.extend(global_interceptors);
-
-        // Resolve gateway-specific interceptors from tokens
         for token in tokens {
-            if let Some(interceptor) = self.resolve_interceptor_by_token(&token)? {
-                interceptors.push(interceptor);
+            if let Some(i) = self.resolve_interceptor_by_token(&token)? {
+                interceptors.push(i);
             }
         }
-
         Ok(interceptors)
     }
 
     fn resolve_pipes(&self, tokens: Vec<String>) -> Result<Vec<Arc<dyn Pipe>>> {
         let mut pipes = Vec::new();
-
-        // Add global pipes first
         let global_pipes = self.container.borrow().get_global_enhancers().pipes;
         pipes.extend(global_pipes);
-
-        // Resolve gateway-specific pipes from tokens
         for token in tokens {
             if let Some(pipe) = self.resolve_pipe_by_token(&token)? {
                 pipes.push(pipe);
             }
         }
-
         Ok(pipes)
     }
 
     fn resolve_error_handlers(&self, tokens: Vec<String>) -> Result<Vec<Arc<dyn ErrorHandler>>> {
         let mut error_handlers = Vec::new();
-
-        // Add global error handlers first
-        let global_error_handlers = self
-            .container
-            .borrow()
-            .get_global_enhancers()
-            .error_handlers;
+        let global_error_handlers = self.container.borrow().get_global_enhancers().error_handlers;
         error_handlers.extend(global_error_handlers);
-
-        // Resolve gateway-specific error handlers from tokens
         for token in tokens {
-            if let Some(error_handler) = self.resolve_error_handler_by_token(&token)? {
-                error_handlers.push(error_handler);
+            if let Some(eh) = self.resolve_error_handler_by_token(&token)? {
+                error_handlers.push(eh);
             }
         }
-
         Ok(error_handlers)
     }
 
-    /// Resolve a guard by its token from the DI container
     fn resolve_guard_by_token(&self, token: &str) -> Result<Option<Arc<dyn Guard>>> {
         let container = self.container.borrow();
-        let modules_tokens = container.get_modules_token();
-
-        for module_token in modules_tokens {
+        for module_token in container.get_modules_token() {
             let providers = container.get_providers_instance(&module_token)?;
-            if let Some(provider) = providers.get(token) {
-                if let Some(guard) = provider.as_guard() {
-                    return Ok(Some(guard));
-                }
+            if let Some(p) = providers.get(token) {
+                if let Some(g) = p.as_guard() { return Ok(Some(g)); }
             }
         }
-
         Ok(None)
     }
 
-    /// Resolve an interceptor by its token from the DI container
     fn resolve_interceptor_by_token(&self, token: &str) -> Result<Option<Arc<dyn Interceptor>>> {
         let container = self.container.borrow();
-        let modules_tokens = container.get_modules_token();
-
-        for module_token in modules_tokens {
+        for module_token in container.get_modules_token() {
             let providers = container.get_providers_instance(&module_token)?;
-            if let Some(provider) = providers.get(token) {
-                if let Some(interceptor) = provider.as_interceptor() {
-                    return Ok(Some(interceptor));
-                }
+            if let Some(p) = providers.get(token) {
+                if let Some(i) = p.as_interceptor() { return Ok(Some(i)); }
             }
         }
-
         Ok(None)
     }
 
-    /// Resolve a pipe by its token from the DI container
     fn resolve_pipe_by_token(&self, token: &str) -> Result<Option<Arc<dyn Pipe>>> {
         let container = self.container.borrow();
-        let modules_tokens = container.get_modules_token();
-
-        for module_token in modules_tokens {
+        for module_token in container.get_modules_token() {
             let providers = container.get_providers_instance(&module_token)?;
-            if let Some(provider) = providers.get(token) {
-                if let Some(pipe) = provider.as_pipe() {
-                    return Ok(Some(pipe));
-                }
+            if let Some(p) = providers.get(token) {
+                if let Some(pipe) = p.as_pipe() { return Ok(Some(pipe)); }
             }
         }
-
         Ok(None)
     }
 
-    /// Resolve an error handler by its token from the DI container
     fn resolve_error_handler_by_token(&self, token: &str) -> Result<Option<Arc<dyn ErrorHandler>>> {
         let container = self.container.borrow();
-        let modules_tokens = container.get_modules_token();
-
-        for module_token in modules_tokens {
+        for module_token in container.get_modules_token() {
             let providers = container.get_providers_instance(&module_token)?;
-            if let Some(provider) = providers.get(token) {
-                if let Some(error_handler) = provider.as_error_handler() {
-                    return Ok(Some(error_handler));
-                }
+            if let Some(p) = providers.get(token) {
+                if let Some(eh) = p.as_error_handler() { return Ok(Some(eh)); }
             }
         }
-
         Ok(None)
     }
 }
