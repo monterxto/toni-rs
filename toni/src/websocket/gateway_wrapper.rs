@@ -10,7 +10,6 @@ use crate::traits_helpers::{ErrorHandler, Guard, Interceptor, InterceptorNext, P
 
 use super::{DisconnectReason, GatewayTrait, WsClient, WsError, WsMessage};
 
-/// InterceptorNext implementation for WebSocket interceptor chain
 struct WsChainNext {
     interceptors: Vec<Arc<dyn Interceptor>>,
     gateway: Arc<Box<dyn GatewayTrait>>,
@@ -34,14 +33,8 @@ impl InterceptorNext for WsChainNext {
     }
 }
 
-/// Wrapper around gateway for execution pipeline (similar to InstanceWrapper for HTTP)
-///
-/// GatewayWrapper manages the complete WebSocket request lifecycle:
-/// - Connection management (track connected clients)
-/// - Guards execution (access control)
-/// - Interceptors (pre/post processing)
-/// - Pipes (data transformation)
-/// - Error handling
+/// Parallel to `InstanceWrapper` on the HTTP side — wraps a gateway with the full
+/// guard/interceptor/pipe pipeline and tracks its own connected clients.
 pub struct GatewayWrapper {
     gateway: Arc<Box<dyn GatewayTrait>>,
     guards: Vec<Arc<dyn Guard>>,
@@ -54,7 +47,6 @@ pub struct GatewayWrapper {
 }
 
 impl GatewayWrapper {
-    /// Create a new gateway wrapper
     pub fn new(
         gateway: Arc<Box<dyn GatewayTrait>>,
         guards: Vec<Arc<dyn Guard>>,
@@ -74,36 +66,66 @@ impl GatewayWrapper {
         }
     }
 
-    /// Handle new WebSocket connection
-    pub async fn handle_connect(&self, client: WsClient) -> Result<(), WsError> {
-        let mut context = Context::from_websocket(
+    /// Phase 1 of connection setup: run guards and store client.
+    ///
+    /// Does NOT fire `on_connect` — call `complete_connect` after any external
+    /// registration (e.g. `ConnectionManager`) so the hook fires when the client
+    /// is fully live everywhere.
+    pub async fn begin_connect(&self, client: WsClient) -> Result<(), WsError> {
+        let context = Context::from_websocket(
             client.clone(),
             WsMessage::text(""),
             "connect",
             Some(self.route_metadata.clone()),
         );
 
-        // Run guards for connection
         for guard in &self.guards {
             if !guard.can_activate(&context) {
                 return Err(WsError::AuthFailed("Guard rejected connection".into()));
             }
-
             if context.should_abort() {
                 return Err(WsError::AuthFailed("Connection aborted by guard".into()));
             }
         }
 
-        // Call lifecycle hook
-        self.gateway.on_connect(&client, &context).await?;
-
-        // Store client
         self.clients.write().await.insert(client.id.clone(), client);
-
         Ok(())
     }
 
-    /// Handle WebSocket message
+    /// Phase 2 of connection setup: fire the `on_connect` lifecycle hook.
+    ///
+    /// Must be called after `begin_connect` and after any external registration
+    /// (e.g. `ConnectionManager`). When this fires, the client is in both
+    /// `GatewayWrapper.clients` and `ConnectionManager`.
+    pub async fn complete_connect(&self, client_id: &str) -> Result<(), WsError> {
+        let client = self
+            .clients
+            .read()
+            .await
+            .get(client_id)
+            .cloned()
+            .ok_or_else(|| WsError::ConnectionClosed("Client not found".into()))?;
+
+        let context = Context::from_websocket(
+            client.clone(),
+            WsMessage::text(""),
+            "connect",
+            Some(self.route_metadata.clone()),
+        );
+
+        self.gateway.on_connect(&client, &context).await
+    }
+
+    /// Handle new WebSocket connection (simple path — no ConnectionManager).
+    ///
+    /// Composes `begin_connect` + `complete_connect` in sequence. Used by
+    /// `handle_connection()` where there is no broadcast infrastructure.
+    pub async fn handle_connect(&self, client: WsClient) -> Result<(), WsError> {
+        let client_id = client.id.clone();
+        self.begin_connect(client).await?;
+        self.complete_connect(&client_id).await
+    }
+
     pub async fn handle_message(
         &self,
         client_id: String,
@@ -117,10 +139,8 @@ impl GatewayWrapper {
             .cloned()
             .ok_or_else(|| WsError::ConnectionClosed("Client not found".into()))?;
 
-        // Extract event name from message
         let event = self.extract_event(&message)?;
 
-        // Create execution context
         let mut context = Context::from_websocket(
             client.clone(),
             message.clone(),
@@ -128,7 +148,6 @@ impl GatewayWrapper {
             Some(self.route_metadata.clone()),
         );
 
-        // Run guards
         for guard in &self.guards {
             if !guard.can_activate(&context) {
                 return Err(WsError::AuthFailed("Guard rejected message".into()));
@@ -139,11 +158,9 @@ impl GatewayWrapper {
             }
         }
 
-        // Execute with interceptors
         self.execute_with_interceptors(&mut context, event).await
     }
 
-    /// Execute handler with interceptor chain
     async fn execute_with_interceptors(
         &self,
         context: &mut Context,
@@ -159,7 +176,6 @@ impl GatewayWrapper {
         )
         .await;
 
-        // Check if interceptor aborted
         if context.should_abort() {
             if let Some(response) = context.get_ws_response() {
                 return response.clone();
@@ -176,10 +192,8 @@ impl GatewayWrapper {
         }
     }
 
-    /// Internal implementation of interceptor chain (recursive/onion pattern)
-    ///
-    /// This function stores the result in context (similar to HTTP's pattern).
-    /// The result should be retrieved via context.get_ws_response() after calling.
+    /// Stores the result in context rather than returning it directly (mirrors HTTP's pattern);
+    /// retrieve via `context.get_ws_response()` after calling.
     async fn execute_with_interceptors_impl(
         context: &mut Context,
         interceptors: &[Arc<dyn Interceptor>],
@@ -188,7 +202,6 @@ impl GatewayWrapper {
         pipes: &[Arc<dyn Pipe>],
         error_handlers: &[Arc<dyn ErrorHandler>],
     ) {
-        // If no interceptors, execute handler directly
         if interceptors.is_empty() {
             Self::execute_handler_with_error_handling(
                 context,
@@ -201,10 +214,8 @@ impl GatewayWrapper {
             return;
         }
 
-        // Get first interceptor and remaining
         let (first, rest) = interceptors.split_first().unwrap();
 
-        // Create the "next" handler that wraps the rest of the chain
         let next = WsChainNext {
             interceptors: rest.to_vec(),
             gateway: gateway.clone(),
@@ -213,11 +224,9 @@ impl GatewayWrapper {
             error_handlers: error_handlers.to_vec(),
         };
 
-        // Execute this interceptor with the next chain
         first.intercept(context, Box::new(next)).await;
     }
 
-    /// Execute handler with error handling support (similar to HTTP's implementation)
     async fn execute_handler_with_error_handling(
         context: &mut Context,
         gateway: &Arc<Box<dyn GatewayTrait>>,
@@ -225,7 +234,6 @@ impl GatewayWrapper {
         pipes: &[Arc<dyn Pipe>],
         error_handlers: &[Arc<dyn ErrorHandler>],
     ) {
-        // First, execute the handler
         let _ = Self::execute_handler(context, gateway, event, pipes).await;
 
         // TODO: Implement error handler execution for WebSocket
@@ -239,25 +247,18 @@ impl GatewayWrapper {
         // When a WsError occurs, it's returned directly to the adapter.
 
         if !error_handlers.is_empty() {
-            // Check if there's an error in the response
             if let Some(result) = context.get_ws_response() {
-                if result.is_err() {
-                    // Error handlers are available but can't be executed yet
-                    // because ErrorHandler trait is HTTP-specific
-                    // This will be addressed when making traits protocol-agnostic
-                }
+                if result.is_err() {}
             }
         }
     }
 
-    /// Execute the actual gateway handler (pipes + gateway.handle_event)
     async fn execute_handler(
         context: &mut Context,
         gateway: &Arc<Box<dyn GatewayTrait>>,
         event: &str,
         pipes: &[Arc<dyn Pipe>],
     ) -> Result<Option<WsMessage>, WsError> {
-        // Run pipes for data transformation/validation
         for pipe in pipes {
             pipe.process(context);
             if context.should_abort() {
@@ -267,12 +268,10 @@ impl GatewayWrapper {
             }
         }
 
-        // Get client and message from context
         let (client, message, _) = context
             .switch_to_ws()
             .ok_or_else(|| WsError::Internal("Expected WebSocket context".into()))?;
 
-        // Call gateway handler
         let result = gateway
             .handle_event(client.clone(), message.clone(), event)
             .await;
@@ -281,27 +280,22 @@ impl GatewayWrapper {
         result
     }
 
-    /// Handle disconnection
     pub async fn handle_disconnect(&self, client_id: String, reason: DisconnectReason) {
         if let Some(client) = self.clients.write().await.remove(&client_id) {
             self.gateway.on_disconnect(&client, reason).await;
         }
     }
 
-    /// Extract event name from message
-    ///
-    /// Supports JSON format: { "event": "message", "data": {...} }
+    /// Parses the event name from a message; expects JSON `{ "event": "...", ... }` format
     fn extract_event(&self, message: &WsMessage) -> Result<String, WsError> {
         match message {
             WsMessage::Text(text) => {
-                // Try to parse as JSON
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(text) {
                     if let Some(event) = parsed.get("event").and_then(|v| v.as_str()) {
                         return Ok(event.to_string());
                     }
                 }
 
-                // If no event field, treat the whole message as the event
                 Err(WsError::InvalidMessage(
                     "Missing 'event' field in JSON message".into(),
                 ))
@@ -309,28 +303,24 @@ impl GatewayWrapper {
             WsMessage::Binary(_) => Err(WsError::InvalidMessage(
                 "Binary messages not yet supported for event extraction".into(),
             )),
-            WsMessage::Ping(_) | WsMessage::Pong(_) => Err(WsError::InvalidMessage(
-                "Ping/Pong are control frames".into(),
-            )),
+            WsMessage::Ping(_) | WsMessage::Pong(_) | WsMessage::Close => Err(
+                WsError::InvalidMessage("Control frames don't have events".into()),
+            ),
         }
     }
 
-    /// Get all connected clients
     pub async fn get_clients(&self) -> Vec<WsClient> {
         self.clients.read().await.values().cloned().collect()
     }
 
-    /// Get specific client by ID
     pub async fn get_client(&self, client_id: &str) -> Option<WsClient> {
         self.clients.read().await.get(client_id).cloned()
     }
 
-    /// Get gateway path
     pub fn get_path(&self) -> String {
         self.gateway.get_path()
     }
 
-    /// Get gateway namespace
     pub fn get_namespace(&self) -> Option<String> {
         self.gateway.get_namespace()
     }
