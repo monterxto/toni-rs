@@ -1,6 +1,5 @@
 use thiserror::Error;
 
-/// WebSocket-specific errors
 #[derive(Debug, Error, Clone)]
 pub enum WsError {
     #[error("Connection closed: {0}")]
@@ -17,18 +16,23 @@ pub enum WsError {
 
     #[error("Internal error: {0}")]
     Internal(String),
+
+    #[error("Broadcast error: {0}")]
+    BroadcastError(String),
+}
+
+impl From<crate::websocket::BroadcastError> for WsError {
+    fn from(err: crate::websocket::BroadcastError) -> Self {
+        WsError::BroadcastError(err.to_string())
+    }
 }
 
 /// Reason for client disconnection
 #[derive(Debug, Clone)]
 pub enum DisconnectReason {
-    /// Client initiated disconnection
     ClientDisconnect,
-    /// Server is shutting down
     ServerShutdown,
-    /// Connection timeout
     Timeout,
-    /// Error occurred
     Error(String),
 }
 
