@@ -160,28 +160,78 @@ impl<H: HttpAdapter> ToniApplication<H> {
         // Resolve ConnectionManager if BroadcastModule is imported
         let connection_manager = self.get::<Arc<ConnectionManager>>().await.ok();
 
-        // Add WebSocket upgrade routes to HTTP adapter (same-port deployment)
+        // Register WebSocket gateways — route each gateway based on its declared port.
+        // No port (or same port as HTTP) → same-port HTTP upgrade.
+        // Different port → separate WebSocket server via ws_adapter.
+        let mut separate_port_gateways: Vec<(u16, Arc<GatewayWrapper>)> = Vec::new();
+
         if !self.ws_gateways.is_empty() {
             for (path, gateway) in &self.ws_gateways {
-                let result = if let Some(ref cm) = connection_manager {
-                    self.http_adapter
-                        .on_upgrade_with_broadcast(path, gateway.clone(), cm.clone())
+                let gateway_port = gateway.get_port();
+
+                if gateway_port.is_none() || gateway_port == Some(port) {
+                    // Same-port path: register as HTTP upgrade route
+                    let result = if let Some(ref cm) = connection_manager {
+                        self.http_adapter
+                            .on_upgrade_with_broadcast(path, gateway.clone(), cm.clone())
+                    } else {
+                        self.http_adapter.on_upgrade(path, gateway.clone())
+                    };
+                    if let Err(e) = result {
+                        eprintln!("Failed to add WebSocket route at {}: {}", path, e);
+                        eprintln!("This HTTP adapter may not support WebSocket upgrades");
+                    }
                 } else {
-                    self.http_adapter.on_upgrade(path, gateway.clone())
-                };
-                if let Err(e) = result {
-                    eprintln!("Failed to add WebSocket route at {}: {}", path, e);
-                    eprintln!("This HTTP adapter may not support WebSocket upgrades");
+                    // Separate-port path: collect and register with ws_adapter below
+                    let ws_port = gateway_port.unwrap();
+
+                    match &mut self.ws_adapter {
+                        None => {
+                            eprintln!(
+                                "Gateway at {} requests port {} but no WebSocketAdapter is registered. \
+                                 Call use_websocket_adapter() to enable separate-port WebSocket.",
+                                path, ws_port
+                            );
+                        }
+                        Some(ws) => {
+                            let result = if let Some(ref cm) = connection_manager {
+                                ws.on_gateway_with_broadcast(path, gateway.clone(), cm.clone())
+                            } else {
+                                ws.on_gateway(path, gateway.clone())
+                            };
+                            if let Err(e) = result {
+                                eprintln!("Failed to register gateway at {} with WS adapter: {}", path, e);
+                            } else {
+                                separate_port_gateways.push((ws_port, gateway.clone()));
+                            }
+                        }
+                    }
                 }
             }
         }
 
-        // Start unified server (HTTP + WebSocket on same port)
-        let server_type = if !self.ws_gateways.is_empty() {
-            "HTTP + WebSocket"
-        } else {
-            "HTTP"
-        };
+        // Start separate-port WebSocket servers for each unique port
+        if !separate_port_gateways.is_empty() {
+            let mut started_ports = std::collections::HashSet::new();
+            for (ws_port, _) in &separate_port_gateways {
+                if started_ports.insert(*ws_port) {
+                    if let Some(mut ws) = self.ws_adapter.take() {
+                        let ws_hostname = hostname.to_string();
+                        let p = *ws_port;
+                        tokio::spawn(async move {
+                            if let Err(e) = ws.listen(p, &ws_hostname).await {
+                                eprintln!("🚨 WebSocket server on port {} failed: {}", p, e);
+                            }
+                        });
+                    }
+                }
+            }
+        }
+
+        let has_same_port_ws = self.ws_gateways.values().any(|g| {
+            g.get_port().is_none() || g.get_port() == Some(port)
+        });
+        let server_type = if has_same_port_ws { "HTTP + WebSocket" } else { "HTTP" };
         println!(
             "🚀 Starting {} server on {}:{}",
             server_type, hostname, port

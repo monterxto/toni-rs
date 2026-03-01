@@ -324,6 +324,10 @@ impl GatewayWrapper {
     pub fn get_namespace(&self) -> Option<String> {
         self.gateway.get_namespace()
     }
+
+    pub fn get_port(&self) -> Option<u16> {
+        self.gateway.get_port()
+    }
 }
 
 #[cfg(test)]

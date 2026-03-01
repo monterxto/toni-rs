@@ -1,6 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Attribute, Error, Ident, ItemImpl, ItemStruct, LitStr, Result, parse2};
+use syn::{Attribute, Error, Ident, ItemImpl, ItemStruct, LitInt, LitStr, Result, parse2};
 
 use crate::controller_macro::controller_struct::{extract_constructor_params, has_new_method};
 use crate::provider_macro::instance_injection::generate_instance_provider_system;
@@ -13,9 +13,11 @@ use crate::utils::extracts::extract_struct_dependencies;
 /// - #[websocket_gateway(pub struct Foo { ... })]
 /// - #[websocket_gateway("/path", pub struct Foo { ... })]
 /// - #[websocket_gateway("/path", namespace = "chat", pub struct Foo { ... })]
+/// - #[websocket_gateway("/path", port = 3001, pub struct Foo { ... })]
 struct GatewayArgs {
     path: String,
     namespace: Option<String>,
+    port: Option<u16>,
     struct_def: ItemStruct,
 }
 
@@ -23,6 +25,7 @@ impl syn::parse::Parse for GatewayArgs {
     fn parse(input: syn::parse::ParseStream) -> Result<Self> {
         let mut path = None;
         let mut namespace = None;
+        let mut port = None;
         let mut struct_def = None;
 
         while !input.is_empty() {
@@ -53,11 +56,24 @@ impl syn::parse::Parse for GatewayArgs {
                     continue;
                 }
 
+                if ident == "port" {
+                    input.parse::<syn::Token![=]>()?;
+                    let lit = input.parse::<LitInt>()?;
+                    port = Some(lit.base10_parse::<u16>().map_err(|e| {
+                        Error::new(lit.span(), format!("port must be a valid u16: {}", e))
+                    })?);
+
+                    if !input.is_empty() && input.peek(syn::Token![,]) {
+                        input.parse::<syn::Token![,]>()?;
+                    }
+                    continue;
+                }
+
                 return Err(Error::new(ident.span(), "Unknown argument"));
             }
 
             return Err(
-                input.error("Expected path string, namespace argument, or struct definition")
+                input.error("Expected path string, namespace argument, port argument, or struct definition")
             );
         }
 
@@ -68,6 +84,7 @@ impl syn::parse::Parse for GatewayArgs {
         Ok(GatewayArgs {
             path: path.unwrap_or_else(|| "/".to_string()),
             namespace,
+            port,
             struct_def,
         })
     }
@@ -80,6 +97,7 @@ pub fn handle_websocket_gateway(attr: TokenStream, item: TokenStream) -> Result<
     let struct_def = args.struct_def;
     let path = args.path;
     let namespace = args.namespace;
+    let port = args.port;
 
     let mut dependencies = extract_struct_dependencies(&struct_def)?;
 
@@ -102,6 +120,7 @@ pub fn handle_websocket_gateway(attr: TokenStream, item: TokenStream) -> Result<
         &dependencies,
         &path,
         namespace.as_deref(),
+        port,
     )
 }
 
@@ -111,6 +130,7 @@ fn generate_gateway_impl(
     dependencies: &crate::shared::dependency_info::DependencyInfo,
     path: &str,
     namespace: Option<&str>,
+    port: Option<u16>,
 ) -> Result<TokenStream> {
     let struct_name = &struct_def.ident;
     let struct_token = struct_name.to_string();
@@ -149,6 +169,14 @@ fn generate_gateway_impl(
         quote! {
             fn get_namespace(&self) -> Option<String> {
                 Some(#ns.to_string())
+            }
+        }
+    });
+
+    let port_impl = port.map(|p| {
+        quote! {
+            fn get_port(&self) -> Option<u16> {
+                Some(#p)
             }
         }
     });
@@ -213,6 +241,8 @@ fn generate_gateway_impl(
             }
 
             #namespace_impl
+
+            #port_impl
 
             #on_connect_impl
 

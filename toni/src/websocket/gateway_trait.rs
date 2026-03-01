@@ -26,6 +26,15 @@ pub trait GatewayTrait: Send + Sync {
         None
     }
 
+    /// Get the port this gateway listens on.
+    ///
+    /// `None` (default) means same port as the HTTP server.
+    /// `Some(port)` triggers a separate WebSocket server on that port — requires a
+    /// `WebSocketAdapter` to be registered via `ToniApplication::use_websocket_adapter()`.
+    fn get_port(&self) -> Option<u16> {
+        None
+    }
+
     /// Connection lifecycle: called when a client connects
     async fn on_connect(&self, client: &WsClient, context: &Context) -> Result<(), WsError> {
         // Default implementation: allow all connections
