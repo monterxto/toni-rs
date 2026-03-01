@@ -4,14 +4,17 @@ use tokio::net::TcpListener;
 
 use axum::{
     body::Body,
-    http::Request,
+    extract::ws::WebSocketUpgrade,
+    http::{HeaderMap, Request},
     routing::{connect, delete, get, head, options, patch, post, put, trace},
     Router,
 };
-use toni::{HttpAdapter, HttpMethod, InstanceWrapper};
+use toni::{HttpAdapter, HttpMethod, InstanceWrapper, RouteAdapter};
 
 use super::AxumRouteAdapter;
-use toni::RouteAdapter;
+use toni::websocket::{ConnectionManager, GatewayWrapper, WsSocket};
+
+use crate::axum_websocket_adapter::{extract_headers, AxumWsSocket};
 
 #[derive(Clone)]
 pub struct AxumAdapter {
@@ -60,6 +63,57 @@ impl HttpAdapter for AxumAdapter {
         axum::serve(listener, self.instance)
             .await
             .with_context(|| "Axum server encountered an error")?;
+        Ok(())
+    }
+
+    fn on_upgrade(&mut self, path: &str, gateway: Arc<GatewayWrapper>) -> Result<()> {
+        let gateway_clone = gateway.clone();
+
+        self.instance = self.instance.clone().route(
+            path,
+            get(move |headers: HeaderMap, ws: WebSocketUpgrade| {
+                let gateway = gateway_clone.clone();
+                async move {
+                    ws.on_upgrade(move |socket| async move {
+                        let headers = extract_headers(&headers);
+                        let mut ws_socket = AxumWsSocket::new(socket);
+                        ws_socket.handle_connection(&gateway, headers).await;
+                    })
+                }
+            }),
+        );
+
+        println!("✓ WebSocket route added: {}", path);
+        Ok(())
+    }
+
+    fn on_upgrade_with_broadcast(
+        &mut self,
+        path: &str,
+        gateway: Arc<GatewayWrapper>,
+        connection_manager: Arc<ConnectionManager>,
+    ) -> Result<()> {
+        let gateway_clone = gateway.clone();
+        let cm = connection_manager.clone();
+
+        self.instance = self.instance.clone().route(
+            path,
+            get(move |headers: HeaderMap, ws: WebSocketUpgrade| {
+                let gateway = gateway_clone.clone();
+                let cm = cm.clone();
+                async move {
+                    ws.on_upgrade(move |socket| async move {
+                        let headers = extract_headers(&headers);
+                        let ws_socket = AxumWsSocket::new(socket);
+                        ws_socket
+                            .handle_connection_with_broadcast(&gateway, headers, &cm)
+                            .await;
+                    })
+                }
+            }),
+        );
+
+        println!("✓ WebSocket route added (broadcast): {}", path);
         Ok(())
     }
 }

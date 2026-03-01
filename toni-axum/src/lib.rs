@@ -23,10 +23,12 @@
 mod axum_adapter;
 mod axum_route_adapter;
 mod axum_websocket_adapter;
+mod tokio_sender;
 
 pub use axum_adapter::AxumAdapter;
 pub use axum_route_adapter::AxumRouteAdapter;
-pub use axum_websocket_adapter::AxumWebSocketAdapter;
+pub use axum_websocket_adapter::{extract_headers, AxumWebSocketAdapter, AxumWsSocket};
+pub use tokio_sender::TokioSender;
 
 // Re-export commonly used types from toni
 pub use toni::{HttpAdapter, RouteAdapter, WebSocketAdapter};
