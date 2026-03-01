@@ -1,18 +1,24 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 use anyhow::Result;
 
 use crate::{
     application_context::ToniApplicationContext,
+    adapter::WebSocketAdapter,
     http_adapter::HttpAdapter,
-    injector::{IntoToken, ToniContainer},
+    injector::{GatewayResolver, IntoToken, ToniContainer},
     router::RoutesResolver,
+    websocket::{ConnectionManager, GatewayWrapper},
 };
 
 pub struct ToniApplication<H: HttpAdapter> {
     http_adapter: H,
     routes_resolver: RoutesResolver,
     context: ToniApplicationContext,
+    /// Discovered WebSocket gateways (path -> gateway)
+    ws_gateways: HashMap<String, Arc<GatewayWrapper>>,
+    /// WebSocket adapter (for separate port support)
+    ws_adapter: Option<Box<dyn WebSocketAdapter>>,
 }
 
 impl<H: HttpAdapter> ToniApplication<H> {
@@ -21,11 +27,39 @@ impl<H: HttpAdapter> ToniApplication<H> {
             http_adapter,
             context: ToniApplicationContext::new(container.clone()),
             routes_resolver: RoutesResolver::new(container),
+            ws_gateways: HashMap::new(),
+            ws_adapter: None,
         }
     }
 
     pub fn init(&mut self) -> Result<()> {
         self.routes_resolver.resolve(&mut self.http_adapter)?;
+        Ok(())
+    }
+
+    /// Gateway discovery is deferred to `listen()` to allow adapter configuration beforehand
+    pub fn use_websocket_adapter<A>(&mut self, adapter: A) -> Result<&mut Self>
+    where
+        A: WebSocketAdapter,
+    {
+        self.ws_adapter = Some(Box::new(adapter));
+
+        println!("✓ WebSocket adapter registered");
+
+        Ok(self)
+    }
+
+    fn discover_gateways(&mut self) -> Result<()> {
+        let resolver = GatewayResolver::new(self.routes_resolver.container.clone());
+        self.ws_gateways = resolver.resolve()?;
+
+        if !self.ws_gateways.is_empty() {
+            println!(
+                "✓ Discovered {} WebSocket gateway(s)",
+                self.ws_gateways.len()
+            );
+        }
+
         Ok(())
     }
 
@@ -119,6 +153,42 @@ impl<H: HttpAdapter> ToniApplication<H> {
             }
         }
 
+        if let Err(e) = self.discover_gateways() {
+            eprintln!("Error discovering WebSocket gateways: {}", e);
+        }
+
+        // Resolve ConnectionManager if BroadcastModule is imported
+        let connection_manager = self.get::<Arc<ConnectionManager>>().await.ok();
+
+        // Add WebSocket upgrade routes to HTTP adapter (same-port deployment)
+        if !self.ws_gateways.is_empty() {
+            for (path, gateway) in &self.ws_gateways {
+                let result = if let Some(ref cm) = connection_manager {
+                    self.http_adapter
+                        .on_upgrade_with_broadcast(path, gateway.clone(), cm.clone())
+                } else {
+                    self.http_adapter.on_upgrade(path, gateway.clone())
+                };
+                if let Err(e) = result {
+                    eprintln!("Failed to add WebSocket route at {}: {}", path, e);
+                    eprintln!("This HTTP adapter may not support WebSocket upgrades");
+                }
+            }
+        }
+
+        // Start unified server (HTTP + WebSocket on same port)
+        let server_type = if !self.ws_gateways.is_empty() {
+            "HTTP + WebSocket"
+        } else {
+            "HTTP"
+        };
+        println!(
+            "🚀 Starting {} server on {}:{}",
+            server_type, hostname, port
+        );
+
+        // Clone adapter since listen() takes self by value
+        //TODO: consider if `HttpAdapter::listen` should take only mut self
         if let Err(e) = self.http_adapter.clone().listen(port, hostname).await {
             eprintln!("Failed to start server: {}", e);
             std::process::exit(1);
