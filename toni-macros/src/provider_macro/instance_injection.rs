@@ -57,7 +57,10 @@ use quote::quote;
 use syn::{Ident, ItemImpl, ItemStruct, Result, Type};
 
 use crate::shared::{
-    dependency_info::DependencyInfo, enhancer_markers::EnhancerMarkers, scope_parser::ProviderScope,
+    dependency_info::DependencyInfo,
+    enhancer_markers::EnhancerMarkers,
+    lifecycle_hooks::{LifecycleHooks, detect_lifecycle_hooks, strip_lifecycle_attrs},
+    scope_parser::ProviderScope,
 };
 
 /// Detected enhancer traits that a struct implements
@@ -70,35 +73,23 @@ pub struct EnhancerTraits {
     pub is_error_handler: bool,
 }
 
-/// Detect which enhancer traits are implemented
+/// Detect which enhancer traits a struct implements.
 ///
-/// Supports three patterns:
-///
-/// 1. New syntax with marker on struct (field injection, no new() needed):
-///    #[injectable] #[guard] pub struct AdminGuard { #[inject] auth: AuthService }
-///
-/// 2. Old syntax with marker on impl (constructor injection with new()):
-///    #[middleware] #[injectable(pub struct Foo { ... })] impl Foo { fn new() }
-///
-/// 3. Trait impl detection (when injectable is on trait impl):
-///    #[injectable] impl Guard for AdminGuard { fn can_activate() }
+/// Checks marker attributes on the struct (`#[guard]`, `#[interceptor]`, etc.) and on the
+/// impl block, as well as trait impl blocks for backwards compatibility.
 fn detect_enhancer_traits(struct_attrs: &ItemStruct, impl_block: &ItemImpl) -> EnhancerTraits {
     let mut traits = EnhancerTraits::default();
 
-    // Check for marker attributes on the struct
     let markers = EnhancerMarkers::detect(struct_attrs);
-    traits.is_guard = traits.is_guard || markers.is_guard;
-    traits.is_interceptor = traits.is_interceptor || markers.is_interceptor;
-    traits.is_middleware = traits.is_middleware || markers.is_middleware;
-    traits.is_pipe = traits.is_pipe || markers.is_pipe;
-    traits.is_error_handler = traits.is_error_handler || markers.is_error_handler;
+    traits.is_guard = markers.is_guard;
+    traits.is_interceptor = markers.is_interceptor;
+    traits.is_middleware = markers.is_middleware;
+    traits.is_pipe = markers.is_pipe;
+    traits.is_error_handler = markers.is_error_handler;
 
-    // Check for marker attributes on the impl block
-    // Pattern: #[injectable(pub struct Foo { ... })] #[middleware] impl Foo { ... }
     for attr in &impl_block.attrs {
         if let Some(ident) = attr.path().get_ident() {
-            let attr_name = ident.to_string();
-            match attr_name.as_str() {
+            match ident.to_string().as_str() {
                 "guard" => traits.is_guard = true,
                 "interceptor" => traits.is_interceptor = true,
                 "middleware" => traits.is_middleware = true,
@@ -109,7 +100,6 @@ fn detect_enhancer_traits(struct_attrs: &ItemStruct, impl_block: &ItemImpl) -> E
         }
     }
 
-    // Check if this is a trait impl block (backwards compatibility)
     if let Some((_, path, _)) = &impl_block.trait_ {
         let trait_name = path
             .segments
@@ -130,6 +120,8 @@ fn detect_enhancer_traits(struct_attrs: &ItemStruct, impl_block: &ItemImpl) -> E
     traits
 }
 
+/// Detect lifecycle hooks by scanning for method-level attributes in the impl block.
+///
 pub fn generate_instance_provider_system(
     struct_attrs: &ItemStruct,
     impl_block: &ItemImpl,
@@ -140,7 +132,7 @@ pub fn generate_instance_provider_system(
 
     let struct_with_clone = add_clone_derive(struct_attrs);
 
-    // Clone impl block and remove marker attributes (#[inject]) from constructor parameters
+    // Remove #[inject] from constructor parameters, then strip lifecycle attributes
     let mut impl_def = impl_block.clone();
     for item in impl_def.items.iter_mut() {
         if let syn::ImplItem::Fn(method) = item {
@@ -149,13 +141,13 @@ pub fn generate_instance_provider_system(
             );
         }
     }
+    let impl_def = strip_lifecycle_attrs(&impl_def);
 
-    // Detect which enhancer traits this struct implements
-    // Checks both marker attributes (#[guard], etc.) and trait impl blocks
     let enhancer_traits = detect_enhancer_traits(struct_attrs, impl_block);
+    let lifecycle_hooks = detect_lifecycle_hooks(impl_block);
 
     let provider_wrapper =
-        generate_provider_wrapper(struct_name, dependencies, scope, &enhancer_traits);
+        generate_provider_wrapper(struct_name, dependencies, scope, &enhancer_traits, &lifecycle_hooks);
 
     let manager = generate_manager(struct_name, dependencies, scope);
 
@@ -206,9 +198,12 @@ fn generate_provider_wrapper(
     dependencies: &DependencyInfo,
     scope: ProviderScope,
     enhancer_traits: &EnhancerTraits,
+    lifecycle_hooks: &LifecycleHooks,
 ) -> TokenStream {
     match scope {
-        ProviderScope::Singleton => generate_singleton_provider(struct_name, enhancer_traits),
+        ProviderScope::Singleton => {
+            generate_singleton_provider(struct_name, enhancer_traits, lifecycle_hooks)
+        }
         ProviderScope::Request => {
             generate_request_provider(struct_name, dependencies, enhancer_traits)
         }
@@ -218,15 +213,9 @@ fn generate_provider_wrapper(
     }
 }
 
-/// Generate enhancer method overrides for ProviderTrait implementation
-///
-/// For enhancers (Guards, Interceptors, Pipes, Middleware), this generates
-/// the method overrides to return Some(...) instead of the default None.
-/// For regular providers, returns an empty TokenStream (uses defaults).
 fn generate_enhancer_methods(traits: &EnhancerTraits) -> TokenStream {
     let mut methods = Vec::new();
 
-    // Only override methods for actual enhancer traits
     if traits.is_guard {
         methods.push(quote! {
             fn as_guard(&self) -> Option<::std::sync::Arc<dyn ::toni::traits_helpers::Guard>> {
@@ -234,7 +223,6 @@ fn generate_enhancer_methods(traits: &EnhancerTraits) -> TokenStream {
             }
         });
     }
-
     if traits.is_interceptor {
         methods.push(quote! {
             fn as_interceptor(&self) -> Option<::std::sync::Arc<dyn ::toni::traits_helpers::Interceptor>> {
@@ -242,7 +230,6 @@ fn generate_enhancer_methods(traits: &EnhancerTraits) -> TokenStream {
             }
         });
     }
-
     if traits.is_pipe {
         methods.push(quote! {
             fn as_pipe(&self) -> Option<::std::sync::Arc<dyn ::toni::traits_helpers::Pipe>> {
@@ -250,7 +237,6 @@ fn generate_enhancer_methods(traits: &EnhancerTraits) -> TokenStream {
             }
         });
     }
-
     if traits.is_middleware {
         methods.push(quote! {
             fn as_middleware(&self) -> Option<::std::sync::Arc<dyn ::toni::traits_helpers::middleware::Middleware>> {
@@ -258,7 +244,6 @@ fn generate_enhancer_methods(traits: &EnhancerTraits) -> TokenStream {
             }
         });
     }
-
     if traits.is_error_handler {
         methods.push(quote! {
             fn as_error_handler(&self) -> Option<::std::sync::Arc<dyn ::toni::traits_helpers::ErrorHandler>> {
@@ -267,17 +252,63 @@ fn generate_enhancer_methods(traits: &EnhancerTraits) -> TokenStream {
         });
     }
 
-    quote! {
-        #(#methods)*
+    quote! { #(#methods)* }
+}
+
+/// Generate direct lifecycle method overrides on `ProviderTrait` for singleton providers.
+///
+/// Each override delegates to the user's annotated method on `self.instance`.
+/// Signal-bearing hooks receive the signal as the second argument.
+fn generate_lifecycle_direct_methods(hooks: &LifecycleHooks) -> TokenStream {
+    let mut methods = Vec::new();
+
+    if let Some(method) = &hooks.on_module_init {
+        methods.push(quote! {
+            async fn on_module_init(&self) {
+                self.instance.#method().await;
+            }
+        });
     }
+    if let Some(method) = &hooks.on_application_bootstrap {
+        methods.push(quote! {
+            async fn on_application_bootstrap(&self) {
+                self.instance.#method().await;
+            }
+        });
+    }
+    if let Some(method) = &hooks.on_module_destroy {
+        methods.push(quote! {
+            async fn on_module_destroy(&self) {
+                self.instance.#method().await;
+            }
+        });
+    }
+    if let Some(method) = &hooks.before_application_shutdown {
+        methods.push(quote! {
+            async fn before_application_shutdown(&self, signal: Option<String>) {
+                self.instance.#method(signal).await;
+            }
+        });
+    }
+    if let Some(method) = &hooks.on_application_shutdown {
+        methods.push(quote! {
+            async fn on_application_shutdown(&self, signal: Option<String>) {
+                self.instance.#method(signal).await;
+            }
+        });
+    }
+
+    quote! { #(#methods)* }
 }
 
 fn generate_singleton_provider(
     struct_name: &Ident,
     enhancer_traits: &EnhancerTraits,
+    lifecycle_hooks: &LifecycleHooks,
 ) -> TokenStream {
     let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
     let enhancer_methods = generate_enhancer_methods(enhancer_traits);
+    let lifecycle_methods = generate_lifecycle_direct_methods(lifecycle_hooks);
 
     quote! {
         struct #provider_name {
@@ -307,6 +338,7 @@ fn generate_singleton_provider(
             }
 
             #enhancer_methods
+            #lifecycle_methods
         }
     }
 }

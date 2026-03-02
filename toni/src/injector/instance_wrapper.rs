@@ -95,6 +95,11 @@ impl InstanceWrapper {
         }
     }
 
+    /// Get the controller instance for lifecycle hook checks
+    pub fn get_instance(&self) -> Arc<Box<dyn ControllerTrait>> {
+        self.instance.clone()
+    }
+
     pub async fn handle_request(
         &self,
         req: HttpRequest,

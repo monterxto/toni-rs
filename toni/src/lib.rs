@@ -1,5 +1,6 @@
 #[path = "adapter/mod.rs"]
 pub mod adapter;
+mod application_context;
 pub mod builtin_module;
 pub mod di;
 pub mod errors;
@@ -36,6 +37,8 @@ pub use request::{Request, RequestManager};
 
 // Re-export ModuleRef for dynamic DI resolution
 pub use injector::{Context, IntoToken, ModuleRef};
+
+pub use application_context::ToniApplicationContext;
 
 // Re-export dependencies used in macro-generated code
 // This allows users to only depend on `toni` without needing to add these explicitly

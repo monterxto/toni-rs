@@ -13,6 +13,7 @@ serde_json = "1.0"
 validator = { version = "0.20.0", features = ["derive"] }
 toni-axum = { path = "../toni-axum" }
 chrono = "0.4"
+anyhow = "1.0"
 
 [[example]]
 name = "pipes_complete_guide"
@@ -41,3 +42,7 @@ path = "provider_patterns.rs"
 [[example]]
 name = "multi_protocol_context"
 path = "multi_protocol_context.rs"
+
+[[example]]
+name = "lifecycle_hooks"
+path = "lifecycle_hooks.rs"

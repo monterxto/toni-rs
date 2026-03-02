@@ -48,7 +48,6 @@ pub trait ControllerTrait: Send + Sync {
         vec![]
     }
 
-    /// Get error handler instances
     fn get_error_handlers(&self) -> Vec<Arc<dyn ErrorHandler>> {
         vec![]
     }
@@ -59,6 +58,36 @@ pub trait ControllerTrait: Send + Sync {
     }
 
     fn get_body_dto(&self, req: &HttpRequest) -> Option<Box<dyn Validatable>>;
+
+    // Lifecycle Hooks
+
+    /// Returns the controller struct's type name, used to deduplicate lifecycle hook calls
+    /// across per-route wrapper structs that share the same underlying controller instance.
+    /// Returns an empty string for wrappers that have no lifecycle hooks.
+    fn get_controller_type_name(&self) -> &'static str {
+        ""
+    }
+
+    /// Called after dependency injection is complete.
+    ///
+    /// Use when initialization requires injected dependencies.
+    async fn on_module_init(&self) {}
+
+    /// Called after the application is fully initialized but before it starts listening.
+    ///
+    /// This is the last hook before the server begins accepting connections.
+    async fn on_application_bootstrap(&self) {}
+
+    /// Called before application shutdown begins.
+    ///
+    /// Use to stop accepting new work and prepare for shutdown.
+    async fn before_application_shutdown(&self, _signal: Option<String>) {}
+
+    /// Called during module destruction.
+    async fn on_module_destroy(&self) {}
+
+    /// Called during application shutdown.
+    async fn on_application_shutdown(&self, _signal: Option<String>) {}
 }
 #[async_trait]
 pub trait Controller {

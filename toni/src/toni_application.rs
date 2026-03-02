@@ -3,6 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use anyhow::Result;
 
 use crate::{
+    application_context::ToniApplicationContext,
     http_adapter::HttpAdapter,
     injector::{IntoToken, ToniContainer},
     router::RoutesResolver,
@@ -11,13 +12,15 @@ use crate::{
 pub struct ToniApplication<H: HttpAdapter> {
     http_adapter: H,
     routes_resolver: RoutesResolver,
+    context: ToniApplicationContext,
 }
 
 impl<H: HttpAdapter> ToniApplication<H> {
     pub fn new(http_adapter: H, container: Rc<RefCell<ToniContainer>>) -> Self {
         Self {
             http_adapter,
-            routes_resolver: RoutesResolver::new(container.clone()),
+            context: ToniApplicationContext::new(container.clone()),
+            routes_resolver: RoutesResolver::new(container),
         }
     }
 
@@ -26,175 +29,98 @@ impl<H: HttpAdapter> ToniApplication<H> {
         Ok(())
     }
 
-    /// Get a provider instance from the DI container by its type (searches all modules)
-    ///
-    /// # Example
-    /// ```ignore
-    /// // Get by type
-    /// let my_service = app.get::<MyService>().await?;
-    ///
-    /// // Get with strict mode (only search specific module)
-    /// let my_service = app.get_from::<MyService>("ModuleName").await?;
-    /// ```
+    /// Returns an instance of `T` from the DI container, searching across all modules
     pub async fn get<T: 'static>(&self) -> Result<T> {
-        let provider_token = std::any::type_name::<T>().to_string();
-
-        // Search all modules for the provider
-        let provider_instance = {
-            let container = self.routes_resolver.container.borrow();
-            let modules = container.get_modules_token();
-
-            let mut found_instance = None;
-            for module_token in modules {
-                if let Ok(Some(instance)) =
-                    container.get_provider_instance_by_token(&module_token, &provider_token)
-                {
-                    found_instance = Some(instance.clone());
-                    break;
-                }
-            }
-
-            found_instance.ok_or_else(|| {
-                anyhow::anyhow!("Provider '{}' not found in any module", provider_token)
-            })?
-        };
-
-        // Execute the provider to get the instance
-        let instance_any = provider_instance.execute(vec![], None).await;
-
-        // Downcast to the requested type
-        instance_any
-            .downcast::<T>()
-            .map(|boxed| *boxed)
-            .map_err(|_| {
-                anyhow::anyhow!(
-                    "Failed to downcast provider '{}' to requested type",
-                    provider_token
-                )
-            })
+        self.context.get::<T>().await
     }
 
-    /// Get a provider instance from a specific module
-    ///
-    /// # Example
-    /// ```ignore
-    /// let my_service = app.get_from::<MyService>("ModuleName").await?;
-    /// ```
+    /// Returns an instance of `T` from a specific module's scope in the DI container
     pub async fn get_from<T: 'static>(&self, module_token: &str) -> Result<T> {
-        let container = self.routes_resolver.container.borrow();
-        let provider_token = std::any::type_name::<T>().to_string();
-
-        let provider_instance = container
-            .get_provider_instance_by_token(&module_token.to_string(), &provider_token)?
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Provider '{}' not found in module '{}'",
-                    provider_token,
-                    module_token,
-                )
-            })?;
-
-        // Execute the provider to get the instance
-        let instance_any = provider_instance.execute(vec![], None).await;
-
-        // Downcast to the requested type
-        instance_any
-            .downcast::<T>()
-            .map(|boxed| *boxed)
-            .map_err(|_| {
-                anyhow::anyhow!(
-                    "Failed to downcast provider '{}' to requested type",
-                    provider_token
-                )
-            })
+        self.context.get_from::<T>(module_token).await
     }
 
-    /// Get a provider instance by token (searches all modules)
-    ///
-    /// # Example
-    /// ```ignore
-    /// let api_key: String = app.get_by_token("API_KEY").await?;
-    /// ```
+    /// Returns an instance from the DI container by token rather than type; use when providers are registered with a custom token
     pub async fn get_by_token<T: 'static>(&self, token: impl IntoToken) -> Result<T> {
-        let token_str = token.into_token();
-
-        // Search all modules for the provider
-        let provider_instance = {
-            let container = self.routes_resolver.container.borrow();
-            let modules = container.get_modules_token();
-
-            let mut found_instance = None;
-            for module_token in modules {
-                if let Ok(Some(instance)) =
-                    container.get_provider_instance_by_token(&module_token, &token_str)
-                {
-                    found_instance = Some(instance.clone());
-                    break;
-                }
-            }
-
-            found_instance.ok_or_else(|| {
-                anyhow::anyhow!("Provider '{}' not found in any module", token_str)
-            })?
-        };
-
-        // Execute the provider to get the instance
-        let instance_any = provider_instance.execute(vec![], None).await;
-
-        // Downcast to the requested type
-        instance_any
-            .downcast::<T>()
-            .map(|boxed| *boxed)
-            .map_err(|_| {
-                anyhow::anyhow!(
-                    "Failed to downcast provider '{}' to requested type",
-                    token_str
-                )
-            })
+        self.context.get_by_token::<T>(token).await
     }
 
-    /// Get a provider instance by token from a specific module
-    ///
-    /// # Example
-    /// ```ignore
-    /// let config: Config = app.get_from_by_token("ConfigModule", "APP_CONFIG").await?;
-    /// ```
+    /// Returns an instance by token from a specific module's scope in the DI container
     pub async fn get_from_by_token<T: 'static>(
         &self,
         module_token: &str,
         token: impl IntoToken,
     ) -> Result<T> {
+        self.context.get_from_by_token::<T>(module_token, token).await
+    }
+
+    pub async fn close(&mut self) -> Result<()> {
+        self.call_module_destroy_hooks().await;
+        self.call_before_shutdown_hooks(None).await;
+        self.call_shutdown_hooks(None).await;
+        let _ = self.http_adapter.close().await;
+        Ok(())
+    }
+
+    async fn call_before_shutdown_hooks(&self, signal: Option<String>) {
+        self.context.call_before_shutdown_hooks(signal.clone()).await;
+
         let container = self.routes_resolver.container.borrow();
-        let token_str = token.into_token();
+        let modules = container.get_modules_token();
+        for module_token in modules {
+            if let Some(module) = container.get_module_by_token(&module_token) {
+                let controllers = module._get_controllers_instances();
+                for (_token, wrapper) in controllers.iter() {
+                    let controller = wrapper.get_instance();
+                    controller.before_application_shutdown(signal.clone()).await;
+                }
+            }
+        }
+    }
 
-        let provider_instance = container
-            .get_provider_instance_by_token(&module_token.to_string(), &token_str)?
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Provider '{}' not found in module '{}'",
-                    token_str,
-                    module_token,
-                )
-            })?;
+    async fn call_module_destroy_hooks(&self) {
+        self.context.call_module_destroy_hooks().await;
 
-        // Execute the provider to get the instance
-        let instance_any = provider_instance.execute(vec![], None).await;
+        let container = self.routes_resolver.container.borrow();
+        let modules = container.get_modules_token();
+        for module_token in modules {
+            if let Some(module) = container.get_module_by_token(&module_token) {
+                let controllers = module._get_controllers_instances();
+                for (_token, wrapper) in controllers.iter() {
+                    let controller = wrapper.get_instance();
+                    controller.on_module_destroy().await;
+                }
+            }
+        }
+    }
 
-        // Downcast to the requested type
-        instance_any
-            .downcast::<T>()
-            .map(|boxed| *boxed)
-            .map_err(|_| {
-                anyhow::anyhow!(
-                    "Failed to downcast provider '{}' to requested type",
-                    token_str
-                )
-            })
+    async fn call_shutdown_hooks(&self, signal: Option<String>) {
+        self.context.call_shutdown_hooks(signal.clone()).await;
+
+        let container = self.routes_resolver.container.borrow();
+        let modules = container.get_modules_token();
+        for module_token in modules {
+            if let Some(module) = container.get_module_by_token(&module_token) {
+                let controllers = module._get_controllers_instances();
+                for (_token, wrapper) in controllers.iter() {
+                    let controller = wrapper.get_instance();
+                    controller.on_application_shutdown(signal.clone()).await;
+                }
+            }
+        }
     }
 
     pub async fn listen(self, port: u16, hostname: &str) {
-        if let Err(e) = self.http_adapter.listen(port, hostname).await {
-            eprintln!("🚨 Failed to start server: {}", e);
+        {
+            let mut scanner = crate::scanner::ToniDependenciesScanner::new(
+                self.routes_resolver.container.clone(),
+            );
+            if let Err(e) = scanner.call_bootstrap_hooks().await {
+                eprintln!("Error during bootstrap hooks: {}", e);
+            }
+        }
+
+        if let Err(e) = self.http_adapter.clone().listen(port, hostname).await {
+            eprintln!("Failed to start server: {}", e);
             std::process::exit(1);
         }
     }
