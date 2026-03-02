@@ -61,6 +61,13 @@ pub trait ControllerTrait: Send + Sync {
 
     // Lifecycle Hooks
 
+    /// Returns the controller struct's type name, used to deduplicate lifecycle hook calls
+    /// across per-route wrapper structs that share the same underlying controller instance.
+    /// Returns an empty string for wrappers that have no lifecycle hooks.
+    fn get_controller_type_name(&self) -> &'static str {
+        ""
+    }
+
     /// Called after dependency injection is complete.
     ///
     /// Use when initialization requires injected dependencies.

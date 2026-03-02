@@ -57,7 +57,10 @@ use quote::quote;
 use syn::{Ident, ItemImpl, ItemStruct, Result, Type};
 
 use crate::shared::{
-    dependency_info::DependencyInfo, enhancer_markers::EnhancerMarkers, scope_parser::ProviderScope,
+    dependency_info::DependencyInfo,
+    enhancer_markers::EnhancerMarkers,
+    lifecycle_hooks::{LifecycleHooks, detect_lifecycle_hooks, strip_lifecycle_attrs},
+    scope_parser::ProviderScope,
 };
 
 /// Detected enhancer traits that a struct implements
@@ -68,19 +71,6 @@ pub struct EnhancerTraits {
     pub is_pipe: bool,
     pub is_middleware: bool,
     pub is_error_handler: bool,
-}
-
-/// Lifecycle hook methods detected via method-level attributes in the impl block.
-///
-/// Each field holds the name of the user's method annotated with the corresponding
-/// attribute (`#[on_module_init]`, `#[on_module_destroy]`, etc.), or `None` if not used.
-#[derive(Debug, Clone, Default)]
-pub struct LifecycleHooks {
-    pub on_module_init: Option<Ident>,
-    pub on_application_bootstrap: Option<Ident>,
-    pub on_module_destroy: Option<Ident>,
-    pub before_application_shutdown: Option<Ident>,
-    pub on_application_shutdown: Option<Ident>,
 }
 
 /// Detect which enhancer traits a struct implements.
@@ -132,72 +122,6 @@ fn detect_enhancer_traits(struct_attrs: &ItemStruct, impl_block: &ItemImpl) -> E
 
 /// Detect lifecycle hooks by scanning for method-level attributes in the impl block.
 ///
-/// Each lifecycle attribute (`#[on_module_init]`, `#[on_module_destroy]`,
-/// `#[before_application_shutdown]`, `#[on_application_shutdown]`,
-/// `#[on_application_bootstrap]`) maps to the method it annotates. The macro
-/// generates the corresponding trait impl that delegates to that method.
-///
-/// Signal-bearing hooks (`before_application_shutdown`, `on_application_shutdown`)
-/// must have the signature `async fn name(&self, signal: Option<String>)`.
-fn detect_lifecycle_hooks(impl_block: &ItemImpl) -> LifecycleHooks {
-    let mut hooks = LifecycleHooks::default();
-
-    for item in &impl_block.items {
-        if let syn::ImplItem::Fn(method) = item {
-            for attr in &method.attrs {
-                if let Some(ident) = attr.path().get_ident() {
-                    let method_name = method.sig.ident.clone();
-                    match ident.to_string().as_str() {
-                        "on_module_init" => hooks.on_module_init = Some(method_name),
-                        "on_application_bootstrap" => {
-                            hooks.on_application_bootstrap = Some(method_name)
-                        }
-                        "on_module_destroy" => hooks.on_module_destroy = Some(method_name),
-                        "before_application_shutdown" => {
-                            hooks.before_application_shutdown = Some(method_name)
-                        }
-                        "on_application_shutdown" => {
-                            hooks.on_application_shutdown = Some(method_name)
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        }
-    }
-
-    hooks
-}
-
-/// Strip lifecycle hook attributes from methods in an impl block before emitting.
-///
-/// These attributes are consumed by the macro; they must not appear in the final output
-/// or the compiler will reject them as unknown attributes.
-fn strip_lifecycle_attrs(impl_block: &ItemImpl) -> ItemImpl {
-    const LIFECYCLE_ATTRS: &[&str] = &[
-        "on_module_init",
-        "on_application_bootstrap",
-        "on_module_destroy",
-        "before_application_shutdown",
-        "on_application_shutdown",
-    ];
-
-    let mut cleaned = impl_block.clone();
-    for item in &mut cleaned.items {
-        if let syn::ImplItem::Fn(method) = item {
-            method.attrs.retain(|attr| {
-                !attr
-                    .path()
-                    .get_ident()
-                    .map(|id| LIFECYCLE_ATTRS.contains(&id.to_string().as_str()))
-                    .unwrap_or(false)
-            });
-        }
-    }
-    cleaned
-}
-
-
 pub fn generate_instance_provider_system(
     struct_attrs: &ItemStruct,
     impl_block: &ItemImpl,

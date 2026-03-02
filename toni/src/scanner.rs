@@ -259,14 +259,20 @@ impl ToniDependenciesScanner {
                 }
             }
 
-            // Controllers use ControllerTrait lifecycle methods directly, not the provider dispatch path
+            // Deduplicate by type name: each controller struct has N per-route wrappers; we only
+            // call lifecycle hooks once per underlying controller type, not once per route.
             {
                 let container = self.container.borrow();
                 if let Some(module) = container.get_module_by_token(module_token) {
                     let controllers = module._get_controllers_instances();
+                    let mut seen: std::collections::HashSet<&'static str> =
+                        std::collections::HashSet::new();
                     for (_token, wrapper) in controllers.iter() {
                         let controller = wrapper.get_instance();
-                        controller.on_application_bootstrap().await;
+                        let type_name = controller.get_controller_type_name();
+                        if type_name.is_empty() || seen.insert(type_name) {
+                            controller.on_application_bootstrap().await;
+                        }
                     }
                 }
             }
@@ -305,14 +311,20 @@ impl ToniDependenciesScanner {
                 }
             }
 
-            // Controllers use ControllerTrait lifecycle methods directly, not the provider dispatch path
+            // Deduplicate by type name: each controller struct has N per-route wrappers; we only
+            // call lifecycle hooks once per underlying controller type, not once per route.
             {
                 let container = self.container.borrow();
                 if let Some(module) = container.get_module_by_token(module_token) {
                     let controllers = module._get_controllers_instances();
+                    let mut seen: std::collections::HashSet<&'static str> =
+                        std::collections::HashSet::new();
                     for (_token, wrapper) in controllers.iter() {
                         let controller = wrapper.get_instance();
-                        controller.on_module_init().await;
+                        let type_name = controller.get_controller_type_name();
+                        if type_name.is_empty() || seen.insert(type_name) {
+                            controller.on_module_init().await;
+                        }
                     }
                 }
             }

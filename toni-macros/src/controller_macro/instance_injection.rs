@@ -67,7 +67,11 @@ use crate::{
         },
         get_marker_params::MarkerParam,
     },
-    shared::{dependency_info::DependencyInfo, metadata_info::MetadataInfo},
+    shared::{
+        dependency_info::DependencyInfo,
+        lifecycle_hooks::{LifecycleHooks, detect_lifecycle_hooks, strip_lifecycle_attrs},
+        metadata_info::MetadataInfo,
+    },
     utils::controller_utils::attr_to_string,
 };
 
@@ -84,6 +88,9 @@ pub fn generate_instance_controller_system(
     // Add Clone derive to struct (required for creating instances)
     let struct_with_clone = add_clone_derive(struct_attrs);
 
+    // Detect lifecycle hooks before stripping attributes
+    let lifecycle_hooks = detect_lifecycle_hooks(impl_block);
+
     // Clone impl block and remove marker attributes from all methods
     let mut impl_def = impl_block.clone();
     for item in impl_def.items.iter_mut() {
@@ -93,6 +100,8 @@ pub fn generate_instance_controller_system(
             );
         }
     }
+    // Strip lifecycle attributes so the compiler doesn't reject them as unknown
+    let impl_def = strip_lifecycle_attrs(&impl_def);
 
     // OPTIMIZATION: Conditionally generate wrappers based on scope and dependencies
     // Goal: Only generate wrappers that could actually be used
@@ -108,6 +117,7 @@ pub fn generate_instance_controller_system(
                     dependencies,
                     route_prefix,
                     crate::shared::scope_parser::ControllerScope::Request,
+                    &LifecycleHooks::default(),
                 )?;
                 (vec![], vec![], req_wrappers, req_meta) // Skip Singleton wrappers!
             }
@@ -120,6 +130,7 @@ pub fn generate_instance_controller_system(
                     dependencies,
                     route_prefix,
                     crate::shared::scope_parser::ControllerScope::Singleton,
+                    &lifecycle_hooks,
                 )?;
 
                 // Sub-optimization: Skip Request wrappers if no dependencies
@@ -132,6 +143,7 @@ pub fn generate_instance_controller_system(
                         dependencies,
                         route_prefix,
                         crate::shared::scope_parser::ControllerScope::Request,
+                        &LifecycleHooks::default(),
                     )?
                 };
 
@@ -201,6 +213,7 @@ fn generate_controller_wrappers(
     dependencies: &DependencyInfo,
     route_prefix: &str,
     scope: crate::shared::scope_parser::ControllerScope,
+    lifecycle_hooks: &LifecycleHooks,
 ) -> Result<(Vec<TokenStream>, Vec<MetadataInfo>)> {
     let mut wrappers = Vec::new();
     let mut metadata_list = Vec::new();
@@ -225,6 +238,7 @@ fn generate_controller_wrappers(
                     method_enhancers_attr,
                     marker_params,
                     scope,
+                    lifecycle_hooks,
                 )?;
 
                 wrappers.push(wrapper);
@@ -282,6 +296,7 @@ fn generate_controller_wrapper(
     method_enhancers_attr: HashMap<&Ident, &Attribute>,
     marker_params: Vec<MarkerParam>,
     scope: crate::shared::scope_parser::ControllerScope,
+    lifecycle_hooks: &LifecycleHooks,
 ) -> Result<(TokenStream, MetadataInfo)> {
     let http_method = attr_to_string(http_method_attr)
         .map_err(|_| Error::new(http_method_attr.span(), "Invalid attribute format"))?;
@@ -401,8 +416,9 @@ fn generate_controller_wrapper(
         &body_dto_token_stream,
         &metadata_exprs,
         scope,
-        struct_name, // Pass struct_name for downcast in singleton wrapper
+        struct_name,
         is_static_method,
+        lifecycle_hooks,
     );
 
     let controller_dependencies: Vec<(Ident, TokenStream)> = dependencies
@@ -643,6 +659,7 @@ fn generate_controller_wrapper_code(
     scope: crate::shared::scope_parser::ControllerScope,
     struct_name: &Ident,
     is_static_method: bool,
+    lifecycle_hooks: &LifecycleHooks,
 ) -> TokenStream {
     use crate::shared::scope_parser::ControllerScope;
 
@@ -659,6 +676,7 @@ fn generate_controller_wrapper_code(
             metadata_exprs,
             struct_name,
             is_static_method,
+            lifecycle_hooks,
         ),
         ControllerScope::Request => generate_request_controller_wrapper(
             controller_name,
@@ -690,6 +708,7 @@ fn generate_singleton_controller_wrapper(
     metadata_exprs: &[TokenStream],
     struct_name: &Ident,
     is_static_method: bool,
+    lifecycle_hooks: &LifecycleHooks,
 ) -> TokenStream {
     let binding = Vec::new();
 
@@ -770,26 +789,89 @@ fn generate_singleton_controller_wrapper(
     // For static methods, we don't need to store or downcast the instance
     let (struct_fields, instance_downcast) = if is_static_method {
         (
-            quote! {
-                // Static method: no instance needed
-            },
-            quote! {
-                // Static method: call directly on struct type, no instance needed
-            },
+            quote! {},
+            quote! {},
         )
     } else {
         (
             quote! {
-                // Singleton: Store the pre-created controller instance!
                 instance: ::std::sync::Arc<dyn ::std::any::Any + Send + Sync>,
             },
             quote! {
-                // Downcast the Arc<dyn Any> to the actual controller type
                 let controller = self.instance
                     .downcast_ref::<#struct_name>()
                     .expect("Failed to downcast controller instance");
             },
         )
+    };
+
+    // Generate lifecycle hook method overrides for non-static singleton wrappers.
+    // The scanner deduplicates calls across wrappers using get_controller_type_name().
+    let lifecycle_methods = if !is_static_method && lifecycle_hooks.has_any() {
+        let mut methods = Vec::new();
+
+        if let Some(method) = &lifecycle_hooks.on_module_init {
+            methods.push(quote! {
+                async fn on_module_init(&self) {
+                    let controller = self.instance
+                        .downcast_ref::<#struct_name>()
+                        .expect("Failed to downcast controller instance");
+                    controller.#method().await;
+                }
+            });
+        }
+        if let Some(method) = &lifecycle_hooks.on_application_bootstrap {
+            methods.push(quote! {
+                async fn on_application_bootstrap(&self) {
+                    let controller = self.instance
+                        .downcast_ref::<#struct_name>()
+                        .expect("Failed to downcast controller instance");
+                    controller.#method().await;
+                }
+            });
+        }
+        if let Some(method) = &lifecycle_hooks.on_module_destroy {
+            methods.push(quote! {
+                async fn on_module_destroy(&self) {
+                    let controller = self.instance
+                        .downcast_ref::<#struct_name>()
+                        .expect("Failed to downcast controller instance");
+                    controller.#method().await;
+                }
+            });
+        }
+        if let Some(method) = &lifecycle_hooks.before_application_shutdown {
+            methods.push(quote! {
+                async fn before_application_shutdown(&self, signal: Option<String>) {
+                    let controller = self.instance
+                        .downcast_ref::<#struct_name>()
+                        .expect("Failed to downcast controller instance");
+                    controller.#method(signal).await;
+                }
+            });
+        }
+        if let Some(method) = &lifecycle_hooks.on_application_shutdown {
+            methods.push(quote! {
+                async fn on_application_shutdown(&self, signal: Option<String>) {
+                    let controller = self.instance
+                        .downcast_ref::<#struct_name>()
+                        .expect("Failed to downcast controller instance");
+                    controller.#method(signal).await;
+                }
+            });
+        }
+
+        // Return the struct type name so the scanner can deduplicate hook calls
+        // across the N per-route wrappers that share the same underlying instance.
+        methods.push(quote! {
+            fn get_controller_type_name(&self) -> &'static str {
+                ::std::any::type_name::<#struct_name>()
+            }
+        });
+
+        quote! { #(#methods)* }
+    } else {
+        quote! {}
     };
 
     quote! {
@@ -803,10 +885,6 @@ fn generate_singleton_controller_wrapper(
                 &self,
                 req: ::toni::http_helpers::HttpRequest,
             ) -> Box<dyn ::toni::http_helpers::ToResponse<Response = ::toni::http_helpers::HttpResponse> + Send> {
-                // NO dependency resolution here!
-                // NO controller instantiation here!
-                // Just extract parameters and call the handler
-
                 #(#marker_params_extraction)*
 
                 #instance_downcast
@@ -828,17 +906,14 @@ fn generate_singleton_controller_wrapper(
             }
 
             fn get_guards(&self) -> Vec<::std::sync::Arc<dyn ::toni::traits_helpers::Guard>> {
-                // Direct instantiation fallback for enhancers not in DI
                 vec![#(::std::sync::Arc::new(#guard_instances)),*]
             }
 
             fn get_interceptors(&self) -> Vec<::std::sync::Arc<dyn ::toni::traits_helpers::Interceptor>> {
-                // Direct instantiation fallback for enhancers not in DI
                 vec![#(::std::sync::Arc::new(#interceptor_instances)),*]
             }
 
             fn get_pipes(&self) -> Vec<::std::sync::Arc<dyn ::toni::traits_helpers::Pipe>> {
-                // Direct instantiation fallback for enhancers not in DI
                 vec![#(::std::sync::Arc::new(#pipe_instances)),*]
             }
 
@@ -871,6 +946,8 @@ fn generate_singleton_controller_wrapper(
             fn get_body_dto(&self, _req: &::toni::http_helpers::HttpRequest) -> Option<Box<dyn ::toni::traits_helpers::validate::Validatable>> {
                 #body_dto_stream
             }
+
+            #lifecycle_methods
         }
     }
 }

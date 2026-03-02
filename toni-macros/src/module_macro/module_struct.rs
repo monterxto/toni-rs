@@ -7,6 +7,8 @@ use syn::{
     punctuated::Punctuated,
 };
 
+use crate::shared::lifecycle_hooks::{detect_lifecycle_hooks, strip_lifecycle_attrs};
+
 #[derive(Default)]
 struct ModuleConfig {
     imports: Vec<syn::Expr>,
@@ -252,8 +254,66 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         middleware_impl
     };
 
-    // Debug: uncomment to see what was extracted
-    // eprintln!("configure_middleware_impl (len={}): {}", configure_middleware_impl.to_string().len(), configure_middleware_impl);
+    // Detect lifecycle hooks from impl items and generate ModuleMetadata overrides.
+    // Module hooks are sync (unlike provider/controller hooks which are async).
+    let module_lifecycle_impl = if let ModuleInput::Impl(impl_block) = &input {
+        let hooks = detect_lifecycle_hooks(impl_block);
+        let mut methods = Vec::new();
+
+        if let Some(method) = hooks.on_module_init {
+            methods.push(quote! {
+                fn on_module_init(&self, _container: ::std::rc::Rc<::std::cell::RefCell<::toni::injector::ToniContainer>>) -> anyhow::Result<()> {
+                    self.#method();
+                    Ok(())
+                }
+            });
+        }
+        if let Some(method) = hooks.on_application_bootstrap {
+            methods.push(quote! {
+                fn on_application_bootstrap(&self, _container: ::std::rc::Rc<::std::cell::RefCell<::toni::injector::ToniContainer>>) -> anyhow::Result<()> {
+                    self.#method();
+                    Ok(())
+                }
+            });
+        }
+        if let Some(method) = hooks.on_module_destroy {
+            methods.push(quote! {
+                fn on_module_destroy(&self, _container: ::std::rc::Rc<::std::cell::RefCell<::toni::injector::ToniContainer>>) -> anyhow::Result<()> {
+                    self.#method();
+                    Ok(())
+                }
+            });
+        }
+        if let Some(method) = hooks.before_application_shutdown {
+            methods.push(quote! {
+                fn before_application_shutdown(&self, signal: Option<String>, _container: ::std::rc::Rc<::std::cell::RefCell<::toni::injector::ToniContainer>>) -> anyhow::Result<()> {
+                    self.#method(signal);
+                    Ok(())
+                }
+            });
+        }
+        if let Some(method) = hooks.on_application_shutdown {
+            methods.push(quote! {
+                fn on_application_shutdown(&self, signal: Option<String>, _container: ::std::rc::Rc<::std::cell::RefCell<::toni::injector::ToniContainer>>) -> anyhow::Result<()> {
+                    self.#method(signal);
+                    Ok(())
+                }
+            });
+        }
+
+        quote! { #(#methods)* }
+    } else {
+        quote! {}
+    };
+
+    // Emit user's impl block (minus lifecycle attrs) so methods are available on the struct.
+    // Only needed when the user provided an impl block (as opposed to a plain struct).
+    let user_impl_block = if let ModuleInput::Impl(impl_block) = &input {
+        let cleaned = strip_lifecycle_attrs(impl_block);
+        quote! { #cleaned }
+    } else {
+        quote! {}
+    };
 
     // Generate a unique ModuleRefManager for this module
     let module_ref_manager_name = Ident::new(
@@ -263,6 +323,8 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let generated = quote! {
         #visibility struct #input_ident;
+
+        #user_impl_block
 
         // Generate unique ModuleRefManager for this module
         pub struct #module_ref_manager_name {
@@ -362,6 +424,9 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             // Include user-defined configure_middleware if present
             #configure_middleware_impl
+
+            // Include user-defined lifecycle hooks if present
+            #module_lifecycle_impl
         }
     };
 

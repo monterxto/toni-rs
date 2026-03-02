@@ -1,11 +1,21 @@
 //! Lifecycle hooks example
 //!
-//! Demonstrates all 5 provider lifecycle hooks:
+//! Demonstrates lifecycle hooks for providers and modules:
+//!
+//! Provider hooks (async):
 //! - #[on_module_init]              — runs after DI resolution, before the app starts
 //! - #[on_application_bootstrap]    — runs after all modules init, just before listening
 //! - #[on_module_destroy]           — runs first during shutdown (release module resources)
 //! - #[before_application_shutdown] — runs second during shutdown (stop accepting work)
 //! - #[on_application_shutdown]     — runs last during shutdown (final cleanup)
+//!
+//! Module hooks (sync):
+//! - Same attribute names, declared inside `impl ModuleName { ... }` passed to #[module]
+//! - Run before provider hooks of the same phase
+//!
+//! Controller hooks (async, demonstrated in HTTP examples):
+//! - Same attribute names, declared inside the controller's impl block
+//! - Only called for singleton-scoped controllers; deduplicated across per-route wrappers
 //!
 //! Run with: cargo run --example lifecycle_hooks
 
@@ -118,11 +128,30 @@ impl UserService {
 }
 
 // ============================================================================
-// Module Setup
+// Module with Lifecycle Hooks
+//
+// Use `impl ModuleName { ... }` instead of `struct ModuleName;` to add
+// module-level lifecycle hooks. Module hooks are sync and run before the
+// provider hooks of the same phase.
 // ============================================================================
 
 #[module(providers: [DatabaseService, LoggerService, UserService])]
-struct AppModule;
+impl AppModule {
+    #[on_module_init]
+    fn on_init(&self) {
+        println!("AppModule::on_module_init() - Module initializing");
+    }
+
+    #[on_application_bootstrap]
+    fn on_bootstrap(&self) {
+        println!("AppModule::on_application_bootstrap() - Application bootstrapped");
+    }
+
+    #[on_module_destroy]
+    fn on_destroy(&self) {
+        println!("AppModule::on_module_destroy() - Module destroying");
+    }
+}
 
 // ============================================================================
 // Main - Standalone Context Example
@@ -154,12 +183,14 @@ async fn main() -> anyhow::Result<()> {
     println!("\nProgram complete!");
     println!("\nHook execution order:");
     println!("  Startup:");
-    println!("    1. on_module_init           (connect, warm caches)");
-    println!("    2. on_application_bootstrap (ready to serve)");
+    println!("    1. on_module_init           (module-level, sync, all modules first)");
+    println!("    2. on_module_init           (provider-level, async)");
+    println!("    3. on_application_bootstrap (module-level, sync, all modules first)");
+    println!("    4. on_application_bootstrap (provider-level, async)");
     println!("  Shutdown:");
-    println!("    3. on_module_destroy        (release module resources)");
-    println!("    4. before_application_shutdown (stop accepting work)");
-    println!("    5. on_application_shutdown  (final cleanup)");
+    println!("    5. on_module_destroy        (release module resources)");
+    println!("    6. before_application_shutdown (stop accepting work)");
+    println!("    7. on_application_shutdown  (final cleanup)");
 
     Ok(())
 }

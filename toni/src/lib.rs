@@ -9,7 +9,6 @@ pub mod extractors;
 pub mod http_adapter;
 pub mod http_helpers;
 pub mod injector;
-pub mod lifecycle_hooks;
 pub mod middleware;
 pub mod rpc;
 pub mod websocket;
@@ -38,9 +37,6 @@ pub use request::{Request, RequestManager};
 
 // Re-export ModuleRef for dynamic DI resolution
 pub use injector::{Context, IntoToken, ModuleRef};
-
-// lifecycle_hooks traits remain pub for macro-generated impls in user crates,
-// but are not re-exported here — users interact via #[on_module_init] etc. instead.
 
 pub use application_context::ToniApplicationContext;
 
