@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
+use crate::application_context::ToniApplicationContext;
 use crate::middleware::Middleware;
 use crate::module_helpers::module_enum::ModuleDefinition;
 use crate::toni_application::ToniApplication;
@@ -55,18 +56,7 @@ impl ToniFactory {
         self
     }
 
-    /// Register a global error handler for all controllers
-    ///
-    /// The global error handler will be used to handle errors from all controllers
-    /// unless a controller specifies its own error handler.
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// let mut factory = ToniFactory::new();
-    /// factory.use_global_error_handler(Arc::new(CustomErrorHandler));
-    /// let app = factory.create_with(AppModule, AxumAdapter::new()).await;
-    /// ```
+    /// Overridden per-controller if a controller registers its own error handler
     pub fn use_global_error_handler(
         &mut self,
         handler: Arc<dyn crate::traits_helpers::ErrorHandler>,
@@ -75,16 +65,7 @@ impl ToniFactory {
         self
     }
 
-    /// Create a new HTTP application with the specified adapter.
-    ///
-    /// # Example
-    /// ```ignore
-    /// use toni::ToniFactory;
-    /// use toni_axum::AxumAdapter;
-    ///
-    /// let app = ToniFactory::create(AppModule, AxumAdapter::new()).await;
-    /// app.listen(3000, "127.0.0.1").await;
-    /// ```
+    /// Shorthand for `ToniFactory::new().create_with(...)` when no factory config is needed
     pub async fn create<A>(module: impl Into<ModuleDefinition>, adapter: A) -> ToniApplication<A>
     where
         A: HttpAdapter,
@@ -92,18 +73,6 @@ impl ToniFactory {
         Self::new().create_with(module, adapter).await
     }
 
-    /// Create a new HTTP application with custom factory configuration.
-    ///
-    /// # Example
-    /// ```ignore
-    /// use toni::ToniFactory;
-    /// use toni_axum::AxumAdapter;
-    ///
-    /// let mut factory = ToniFactory::new();
-    /// factory.use_global_guards(Arc::new(AuthGuard));
-    /// let app = factory.create_with(AppModule, AxumAdapter::new()).await;
-    /// app.listen(3000, "127.0.0.1").await;
-    /// ```
     pub async fn create_with<A>(
         &self,
         module: impl Into<ModuleDefinition>,
@@ -135,38 +104,17 @@ impl ToniFactory {
         app
     }
 
-    /// Create a standalone DI container without an HTTP server.
-    ///
-    /// Useful for CLI tools, CRON jobs, and background tasks.
-    ///
-    /// # Example
-    /// ```ignore
-    /// use toni::ToniFactory;
-    ///
-    /// let ctx = ToniFactory::create_application_context(AppModule).await;
-    /// let service = ctx.borrow().get::<MyService>().await?;
-    /// service.do_work();
-    /// ```
+    /// Standalone DI container for CLI tools, cron jobs, and background workers
     pub async fn create_application_context(
         module: impl Into<ModuleDefinition>,
-    ) -> Rc<RefCell<ToniContainer>> {
+    ) -> ToniApplicationContext {
         Self::new().create_application_context_with(module).await
     }
 
-    /// Create a standalone DI container with custom factory configuration.
-    ///
-    /// # Example
-    /// ```ignore
-    /// use toni::ToniFactory;
-    ///
-    /// let mut factory = ToniFactory::new();
-    /// factory.use_global_guards(Arc::new(AuthGuard));
-    /// let ctx = factory.create_application_context_with(AppModule).await;
-    /// ```
     pub async fn create_application_context_with(
         &self,
         module: impl Into<ModuleDefinition>,
-    ) -> Rc<RefCell<ToniContainer>> {
+    ) -> ToniApplicationContext {
         let container = Rc::new(RefCell::new(ToniContainer::new()));
 
         match self.initialize(module.into(), container.clone()).await {
@@ -177,7 +125,15 @@ impl ToniFactory {
             }
         };
 
-        container
+        // HTTP adapters trigger bootstrap through their own init; standalone needs it explicitly
+        {
+            let mut scanner = crate::scanner::ToniDependenciesScanner::new(container.clone());
+            if let Err(e) = scanner.call_bootstrap_hooks().await {
+                eprintln!("⚠️  Error during bootstrap hooks: {}", e);
+            }
+        }
+
+        ToniApplicationContext::new(container)
     }
 
     async fn initialize(
@@ -226,6 +182,9 @@ impl ToniFactory {
         ToniInstanceLoader::new(container.clone())
             .create_instances_of_dependencies()
             .await?;
+
+        // Hooks run after all providers are instantiated, not during scanning
+        scanner.call_lifecycle_hooks().await?;
 
         Ok(())
     }

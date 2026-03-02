@@ -343,6 +343,39 @@ pub fn set_metadata(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
 }
 
+// ============================================================================
+// LIFECYCLE HOOK ATTRIBUTES
+// ============================================================================
+// These attributes mark methods inside #[injectable] impl blocks as lifecycle hooks.
+// The #[injectable] macro detects and strips them, generating the corresponding
+// trait impls. They are registered here as no-ops so they can also appear on their own
+// without causing "unknown attribute" errors.
+
+#[proc_macro_attribute]
+pub fn on_module_init(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+
+#[proc_macro_attribute]
+pub fn on_application_bootstrap(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+
+#[proc_macro_attribute]
+pub fn on_module_destroy(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+
+#[proc_macro_attribute]
+pub fn before_application_shutdown(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+
+#[proc_macro_attribute]
+pub fn on_application_shutdown(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+
 // Helper derive to register #[inject] and #[default] as valid attributes
 // This allows them to be used on struct fields in injectable/controller_struct
 #[proc_macro_derive(Injectable, attributes(inject, default))]

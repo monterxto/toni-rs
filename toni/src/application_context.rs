@@ -1,47 +1,30 @@
+//! Standalone application context for non-HTTP scenarios
+//!
+//! Use this for CLI tools, CRON jobs, background workers, and other
+//! scenarios where you need dependency injection without an HTTP server.
+
 use std::{cell::RefCell, rc::Rc};
 
 use anyhow::Result;
 
-use crate::{
-    http_adapter::HttpAdapter,
-    injector::{IntoToken, ToniContainer},
-    router::RoutesResolver,
-};
+use crate::injector::{IntoToken, ToniContainer};
 
-pub struct ToniApplication<H: HttpAdapter> {
-    http_adapter: H,
-    routes_resolver: RoutesResolver,
+/// Full DI container without an HTTP server
+pub struct ToniApplicationContext {
+    container: Rc<RefCell<ToniContainer>>,
 }
 
-impl<H: HttpAdapter> ToniApplication<H> {
-    pub fn new(http_adapter: H, container: Rc<RefCell<ToniContainer>>) -> Self {
-        Self {
-            http_adapter,
-            routes_resolver: RoutesResolver::new(container.clone()),
-        }
+impl ToniApplicationContext {
+    pub(crate) fn new(container: Rc<RefCell<ToniContainer>>) -> Self {
+        Self { container }
     }
 
-    pub fn init(&mut self) -> Result<()> {
-        self.routes_resolver.resolve(&mut self.http_adapter)?;
-        Ok(())
-    }
-
-    /// Get a provider instance from the DI container by its type (searches all modules)
-    ///
-    /// # Example
-    /// ```ignore
-    /// // Get by type
-    /// let my_service = app.get::<MyService>().await?;
-    ///
-    /// // Get with strict mode (only search specific module)
-    /// let my_service = app.get_from::<MyService>("ModuleName").await?;
-    /// ```
+    /// Returns an instance of `T` from the DI container, searching across all modules
     pub async fn get<T: 'static>(&self) -> Result<T> {
         let provider_token = std::any::type_name::<T>().to_string();
 
-        // Search all modules for the provider
         let provider_instance = {
-            let container = self.routes_resolver.container.borrow();
+            let container = self.container.borrow();
             let modules = container.get_modules_token();
 
             let mut found_instance = None;
@@ -59,10 +42,8 @@ impl<H: HttpAdapter> ToniApplication<H> {
             })?
         };
 
-        // Execute the provider to get the instance
         let instance_any = provider_instance.execute(vec![], None).await;
 
-        // Downcast to the requested type
         instance_any
             .downcast::<T>()
             .map(|boxed| *boxed)
@@ -74,14 +55,9 @@ impl<H: HttpAdapter> ToniApplication<H> {
             })
     }
 
-    /// Get a provider instance from a specific module
-    ///
-    /// # Example
-    /// ```ignore
-    /// let my_service = app.get_from::<MyService>("ModuleName").await?;
-    /// ```
+    /// Returns an instance of `T` from a specific module's scope in the DI container
     pub async fn get_from<T: 'static>(&self, module_token: &str) -> Result<T> {
-        let container = self.routes_resolver.container.borrow();
+        let container = self.container.borrow();
         let provider_token = std::any::type_name::<T>().to_string();
 
         let provider_instance = container
@@ -94,10 +70,8 @@ impl<H: HttpAdapter> ToniApplication<H> {
                 )
             })?;
 
-        // Execute the provider to get the instance
         let instance_any = provider_instance.execute(vec![], None).await;
 
-        // Downcast to the requested type
         instance_any
             .downcast::<T>()
             .map(|boxed| *boxed)
@@ -109,18 +83,12 @@ impl<H: HttpAdapter> ToniApplication<H> {
             })
     }
 
-    /// Get a provider instance by token (searches all modules)
-    ///
-    /// # Example
-    /// ```ignore
-    /// let api_key: String = app.get_by_token("API_KEY").await?;
-    /// ```
+    /// Returns an instance from the DI container by token rather than type; use when providers are registered with a custom token
     pub async fn get_by_token<T: 'static>(&self, token: impl IntoToken) -> Result<T> {
         let token_str = token.into_token();
 
-        // Search all modules for the provider
         let provider_instance = {
-            let container = self.routes_resolver.container.borrow();
+            let container = self.container.borrow();
             let modules = container.get_modules_token();
 
             let mut found_instance = None;
@@ -138,10 +106,8 @@ impl<H: HttpAdapter> ToniApplication<H> {
             })?
         };
 
-        // Execute the provider to get the instance
         let instance_any = provider_instance.execute(vec![], None).await;
 
-        // Downcast to the requested type
         instance_any
             .downcast::<T>()
             .map(|boxed| *boxed)
@@ -153,18 +119,13 @@ impl<H: HttpAdapter> ToniApplication<H> {
             })
     }
 
-    /// Get a provider instance by token from a specific module
-    ///
-    /// # Example
-    /// ```ignore
-    /// let config: Config = app.get_from_by_token("ConfigModule", "APP_CONFIG").await?;
-    /// ```
+    /// Returns an instance by token from a specific module's scope in the DI container
     pub async fn get_from_by_token<T: 'static>(
         &self,
         module_token: &str,
         token: impl IntoToken,
     ) -> Result<T> {
-        let container = self.routes_resolver.container.borrow();
+        let container = self.container.borrow();
         let token_str = token.into_token();
 
         let provider_instance = container
@@ -177,10 +138,8 @@ impl<H: HttpAdapter> ToniApplication<H> {
                 )
             })?;
 
-        // Execute the provider to get the instance
         let instance_any = provider_instance.execute(vec![], None).await;
 
-        // Downcast to the requested type
         instance_any
             .downcast::<T>()
             .map(|boxed| *boxed)
@@ -196,24 +155,22 @@ impl<H: HttpAdapter> ToniApplication<H> {
         self.call_module_destroy_hooks().await;
         self.call_before_shutdown_hooks(None).await;
         self.call_shutdown_hooks(None).await;
-        let _ = self.http_adapter.close().await;
         Ok(())
     }
 
     async fn call_before_shutdown_hooks(&self, signal: Option<String>) {
-        let container = self.routes_resolver.container.borrow();
+        let container = self.container.borrow();
         let modules = container.get_modules_token();
 
         for module_token in modules.clone() {
             if let Some(module_ref) = container.get_module_by_token(&module_token) {
-                let _ = module_ref.get_metadata().before_application_shutdown(
-                    signal.clone(),
-                    self.routes_resolver.container.clone(),
-                );
+                let _ = module_ref
+                    .get_metadata()
+                    .before_application_shutdown(signal.clone(), self.container.clone());
             }
         }
 
-        for module_token in modules.clone() {
+        for module_token in modules {
             if let Ok(providers) = container.get_providers_instance(&module_token) {
                 for (_token, provider) in providers.iter() {
                     if provider.get_scope() == crate::ProviderScope::Request {
@@ -223,32 +180,21 @@ impl<H: HttpAdapter> ToniApplication<H> {
                 }
             }
         }
-
-        // Controllers are dispatched via ControllerTrait, not the provider instance mechanism
-        for module_token in modules {
-            if let Some(module) = container.get_module_by_token(&module_token) {
-                let controllers = module._get_controllers_instances();
-                for (_token, wrapper) in controllers.iter() {
-                    let controller = wrapper.get_instance();
-                    controller.before_application_shutdown(signal.clone()).await;
-                }
-            }
-        }
     }
 
     async fn call_module_destroy_hooks(&self) {
-        let container = self.routes_resolver.container.borrow();
+        let container = self.container.borrow();
         let modules = container.get_modules_token();
 
         for module_token in modules.clone() {
             if let Some(module_ref) = container.get_module_by_token(&module_token) {
                 let _ = module_ref
                     .get_metadata()
-                    .on_module_destroy(self.routes_resolver.container.clone());
+                    .on_module_destroy(self.container.clone());
             }
         }
 
-        for module_token in modules.clone() {
+        for module_token in modules {
             if let Ok(providers) = container.get_providers_instance(&module_token) {
                 for (_token, provider) in providers.iter() {
                     if provider.get_scope() == crate::ProviderScope::Request {
@@ -258,33 +204,21 @@ impl<H: HttpAdapter> ToniApplication<H> {
                 }
             }
         }
-
-        // Controllers are dispatched via ControllerTrait, not the provider instance mechanism
-        for module_token in modules {
-            if let Some(module) = container.get_module_by_token(&module_token) {
-                let controllers = module._get_controllers_instances();
-                for (_token, wrapper) in controllers.iter() {
-                    let controller = wrapper.get_instance();
-                    controller.on_module_destroy().await;
-                }
-            }
-        }
     }
 
     async fn call_shutdown_hooks(&self, signal: Option<String>) {
-        let container = self.routes_resolver.container.borrow();
+        let container = self.container.borrow();
         let modules = container.get_modules_token();
 
         for module_token in modules.clone() {
             if let Some(module_ref) = container.get_module_by_token(&module_token) {
-                let _ = module_ref.get_metadata().on_application_shutdown(
-                    signal.clone(),
-                    self.routes_resolver.container.clone(),
-                );
+                let _ = module_ref
+                    .get_metadata()
+                    .on_application_shutdown(signal.clone(), self.container.clone());
             }
         }
 
-        for module_token in modules.clone() {
+        for module_token in modules {
             if let Ok(providers) = container.get_providers_instance(&module_token) {
                 for (_token, provider) in providers.iter() {
                     if provider.get_scope() == crate::ProviderScope::Request {
@@ -293,34 +227,6 @@ impl<H: HttpAdapter> ToniApplication<H> {
                     provider.on_application_shutdown(signal.clone()).await;
                 }
             }
-        }
-
-        // Controllers are dispatched via ControllerTrait, not the provider instance mechanism
-        for module_token in modules {
-            if let Some(module) = container.get_module_by_token(&module_token) {
-                let controllers = module._get_controllers_instances();
-                for (_token, wrapper) in controllers.iter() {
-                    let controller = wrapper.get_instance();
-                    controller.on_application_shutdown(signal.clone()).await;
-                }
-            }
-        }
-    }
-
-    pub async fn listen(self, port: u16, hostname: &str) {
-        // 2. Call onApplicationBootstrap hooks before starting the server (NestJS-style)
-        {
-            let mut scanner = crate::scanner::ToniDependenciesScanner::new(
-                self.routes_resolver.container.clone(),
-            );
-            if let Err(e) = scanner.call_bootstrap_hooks().await {
-                eprintln!("⚠️  Error during bootstrap hooks: {}", e);
-            }
-        }
-
-        if let Err(e) = self.http_adapter.clone().listen(port, hostname).await {
-            eprintln!("🚨 Failed to start server: {}", e);
-            std::process::exit(1);
         }
     }
 }

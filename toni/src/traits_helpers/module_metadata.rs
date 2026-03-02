@@ -1,6 +1,8 @@
 use super::{Controller, Provider};
 use crate::middleware::{IntoRoutePattern, RoutePattern};
 use crate::traits_helpers::middleware::{Middleware, MiddlewareConfiguration};
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::Arc;
 
 pub trait ModuleMetadata {
@@ -13,12 +15,125 @@ pub trait ModuleMetadata {
 
     /// Returns true if this module is global (exports available everywhere)
     fn is_global(&self) -> bool {
-        false // Default: non-global
+        false
     }
 
-    /// Configure middleware for this module
-    fn configure_middleware(&self, _consumer: &mut MiddlewareConsumer) {
-        // Default: do nothing
+    fn configure_middleware(&self, _consumer: &mut MiddlewareConsumer) {}
+
+    /// Called after the DI container is fully initialized
+    ///
+    /// This hook allows modules to perform initialization logic that requires
+    /// access to the fully-built container (e.g., setting up event listeners, etc.)
+    fn on_module_init(
+        &self,
+        _container: Rc<RefCell<crate::injector::ToniContainer>>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    /// Called after the application is fully initialized but before it starts listening
+    ///
+    /// This is the last hook before the server begins accepting connections.
+    /// Use this for final setup tasks that depend on all modules being initialized.
+    ///
+    /// # Example
+    /// ```ignore
+    /// impl ModuleMetadata for MyModule {
+    ///     fn on_application_bootstrap(
+    ///         &self,
+    ///         _container: Rc<RefCell<ToniContainer>>,
+    ///     ) -> anyhow::Result<()> {
+    ///         println!("Application is ready to start");
+    ///         // Send startup notifications, warm caches, etc.
+    ///         Ok(())
+    ///     }
+    /// }
+    /// ```
+    fn on_application_bootstrap(
+        &self,
+        _container: Rc<RefCell<crate::injector::ToniContainer>>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    // Shutdown lifecycle hooks
+
+    /// Called before application shutdown begins
+    ///
+    /// This hook allows modules to stop accepting new work and prepare for shutdown.
+    /// Receives an optional signal name (e.g., "SIGTERM", "SIGINT").
+    ///
+    /// # Example
+    /// ```ignore
+    /// impl ModuleMetadata for MyModule {
+    ///     fn before_application_shutdown(
+    ///         &self,
+    ///         signal: Option<String>,
+    ///         _container: Rc<RefCell<ToniContainer>>,
+    ///     ) -> anyhow::Result<()> {
+    ///         println!("Module preparing for shutdown (signal: {:?})", signal);
+    ///         // Stop accepting new connections, finish current requests, etc.
+    ///         Ok(())
+    ///     }
+    /// }
+    /// ```
+    fn before_application_shutdown(
+        &self,
+        _signal: Option<String>,
+        _container: Rc<RefCell<crate::injector::ToniContainer>>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    /// Called during module destruction
+    ///
+    /// This hook allows modules to cleanup module-specific resources.
+    ///
+    /// # Example
+    /// ```ignore
+    /// impl ModuleMetadata for MyModule {
+    ///     fn on_module_destroy(
+    ///         &self,
+    ///         _container: Rc<RefCell<ToniContainer>>,
+    ///     ) -> anyhow::Result<()> {
+    ///         println!("Cleaning up module resources");
+    ///         // Close connections, flush buffers, etc.
+    ///         Ok(())
+    ///     }
+    /// }
+    /// ```
+    fn on_module_destroy(
+        &self,
+        _container: Rc<RefCell<crate::injector::ToniContainer>>,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    /// Called during application shutdown
+    ///
+    /// This hook allows modules to perform final cleanup tasks.
+    /// Receives an optional signal name (e.g., "SIGTERM", "SIGINT").
+    ///
+    /// # Example
+    /// ```ignore
+    /// impl ModuleMetadata for MyModule {
+    ///     fn on_application_shutdown(
+    ///         &self,
+    ///         signal: Option<String>,
+    ///         _container: Rc<RefCell<ToniContainer>>,
+    ///     ) -> anyhow::Result<()> {
+    ///         println!("Module final cleanup (signal: {:?})", signal);
+    ///         // Final cleanup, logging, etc.
+    ///         Ok(())
+    ///     }
+    /// }
+    /// ```
+    fn on_application_shutdown(
+        &self,
+        _signal: Option<String>,
+        _container: Rc<RefCell<crate::injector::ToniContainer>>,
+    ) -> anyhow::Result<()> {
+        Ok(())
     }
 
     /// Mark this module as global, making its exports available everywhere
@@ -45,7 +160,7 @@ impl<T: ModuleMetadata> ModuleMetadata for GlobalModuleWrapper<T> {
     }
 
     fn is_global(&self) -> bool {
-        true // Always return true for global wrapper
+        true
     }
 
     fn imports(&self) -> Option<Vec<Box<dyn ModuleMetadata>>> {
@@ -67,12 +182,46 @@ impl<T: ModuleMetadata> ModuleMetadata for GlobalModuleWrapper<T> {
     fn configure_middleware(&self, consumer: &mut MiddlewareConsumer) {
         self.inner.configure_middleware(consumer)
     }
+
+    fn on_module_init(
+        &self,
+        container: std::rc::Rc<std::cell::RefCell<crate::injector::ToniContainer>>,
+    ) -> anyhow::Result<()> {
+        self.inner.on_module_init(container)
+    }
+
+    fn on_application_bootstrap(
+        &self,
+        container: std::rc::Rc<std::cell::RefCell<crate::injector::ToniContainer>>,
+    ) -> anyhow::Result<()> {
+        self.inner.on_application_bootstrap(container)
+    }
+
+    fn before_application_shutdown(
+        &self,
+        signal: Option<String>,
+        container: std::rc::Rc<std::cell::RefCell<crate::injector::ToniContainer>>,
+    ) -> anyhow::Result<()> {
+        self.inner.before_application_shutdown(signal, container)
+    }
+
+    fn on_module_destroy(
+        &self,
+        container: std::rc::Rc<std::cell::RefCell<crate::injector::ToniContainer>>,
+    ) -> anyhow::Result<()> {
+        self.inner.on_module_destroy(container)
+    }
+
+    fn on_application_shutdown(
+        &self,
+        signal: Option<String>,
+        container: std::rc::Rc<std::cell::RefCell<crate::injector::ToniContainer>>,
+    ) -> anyhow::Result<()> {
+        self.inner.on_application_shutdown(signal, container)
+    }
 }
 
-/// Builder for configuring middleware in modules
-///
-/// This provides a fluent API for configuring middleware with route patterns.
-/// Used within the `configure_middleware` method of your modules.
+/// Used within the `configure_middleware` method of a module.
 ///
 /// # Example
 /// ```ignore
@@ -124,8 +273,6 @@ impl MiddlewareConsumer {
         }
     }
 
-    /// Apply middleware to routes
-    ///
     /// Returns a proxy that requires you to specify routes via `.for_routes()` or `.for_route()`.
     ///
     /// # Example
@@ -176,7 +323,6 @@ impl MiddlewareConsumer {
         MiddlewareConfigProxy { consumer: self }
     }
 
-    /// Finalize current middleware configuration
     fn finalize_current(&mut self) {
         if !self.current_middleware.is_empty() || !self.current_middleware_tokens.is_empty() {
             let config = MiddlewareConfiguration {
@@ -189,7 +335,6 @@ impl MiddlewareConsumer {
         }
     }
 
-    /// Get all configurations
     pub fn build(mut self) -> Vec<MiddlewareConfiguration> {
         self.finalize_current();
         self.configurations
@@ -355,8 +500,6 @@ impl<'a> MiddlewareConfigProxy<'a> {
             .collect();
 
         self.consumer.current_includes.append(&mut new_patterns);
-
-        // Finalize the configuration now that routes are specified
         self.consumer.finalize_current();
         self.consumer
     }
@@ -442,11 +585,7 @@ impl<'a> MiddlewareConfigProxy<'a> {
         self
     }
 
-    /// Finalize the middleware configuration
-    ///
-    /// This method finalizes the current middleware configuration and returns the consumer,
-    /// allowing you to chain another `.apply()` call. Use this when you've built up routes
-    /// using `.for_route()` and `.exclude_route()` chains.
+    /// Finalizes a `.for_route()` / `.exclude_route()` chain when you don't want to call `.for_routes()`.
     ///
     /// # Example
     /// ```ignore

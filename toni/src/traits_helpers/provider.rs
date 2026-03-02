@@ -16,36 +16,23 @@ pub trait ProviderTrait: Send + Sync {
     ) -> Box<dyn Any + Send>;
     fn get_token_manager(&self) -> String;
     fn get_scope(&self) -> ProviderScope {
-        ProviderScope::Singleton // Default to singleton
+        ProviderScope::Singleton
     }
 
-    // Enhancer detection methods - return None by default
-    // These are overridden by the #[injectable] macro for actual enhancers
+    // Enhancer detection — overridden by the macro for guards, interceptors, etc.
+    fn as_guard(&self) -> Option<Arc<dyn Guard>> { None }
+    fn as_interceptor(&self) -> Option<Arc<dyn Interceptor>> { None }
+    fn as_pipe(&self) -> Option<Arc<dyn Pipe>> { None }
+    fn as_middleware(&self) -> Option<Arc<dyn Middleware>> { None }
+    fn as_error_handler(&self) -> Option<Arc<dyn ErrorHandler>> { None }
 
-    /// Returns this provider as a Guard if it implements the Guard trait
-    fn as_guard(&self) -> Option<Arc<dyn Guard>> {
-        None
-    }
-
-    /// Returns this provider as an Interceptor if it implements the Interceptor trait
-    fn as_interceptor(&self) -> Option<Arc<dyn Interceptor>> {
-        None
-    }
-
-    /// Returns this provider as a Pipe if it implements the Pipe trait
-    fn as_pipe(&self) -> Option<Arc<dyn Pipe>> {
-        None
-    }
-
-    /// Returns this provider as Middleware if it implements the Middleware trait
-    fn as_middleware(&self) -> Option<Arc<dyn Middleware>> {
-        None
-    }
-
-    /// Returns this provider as an ErrorHandler if it implements the ErrorHandler trait
-    fn as_error_handler(&self) -> Option<Arc<dyn ErrorHandler>> {
-        None
-    }
+    // Lifecycle hooks — overridden by the macro when the user annotates a method.
+    // Default implementations are no-ops so providers without hooks incur no overhead.
+    async fn on_module_init(&self) {}
+    async fn on_application_bootstrap(&self) {}
+    async fn on_module_destroy(&self) {}
+    async fn before_application_shutdown(&self, _signal: Option<String>) {}
+    async fn on_application_shutdown(&self, _signal: Option<String>) {}
 }
 
 #[async_trait]

@@ -202,4 +202,120 @@ impl ToniDependenciesScanner {
 
         Ok(())
     }
+
+    pub async fn call_lifecycle_hooks(&mut self) -> Result<()> {
+        let modules_token = self.container.borrow().get_modules_token();
+
+        for module_token in &modules_token {
+            self.call_module_init_hook(module_token)?;
+        }
+
+        self.call_provider_init_hooks(&modules_token).await;
+
+        Ok(())
+    }
+
+    /// Runs after `call_lifecycle_hooks` (OnModuleInit) but before the application starts listening.
+    pub async fn call_bootstrap_hooks(&mut self) -> Result<()> {
+        let modules_token = self.container.borrow().get_modules_token();
+
+        for module_token in &modules_token {
+            self.call_module_bootstrap_hook(module_token)?;
+        }
+
+        self.call_provider_bootstrap_hooks(&modules_token).await;
+
+        Ok(())
+    }
+
+    fn call_module_bootstrap_hook(&mut self, module_token: &str) -> Result<()> {
+        {
+            let container = self.container.borrow();
+            let module_ref = container
+                .get_module_by_token(&module_token.to_string())
+                .ok_or_else(|| anyhow!("Module not found: {}", module_token))?;
+
+            module_ref
+                .get_metadata()
+                .on_application_bootstrap(self.container.clone())?;
+        }
+
+        Ok(())
+    }
+
+    async fn call_provider_bootstrap_hooks(&self, modules_token: &[String]) {
+        for module_token in modules_token {
+            {
+                let container = self.container.borrow();
+                if let Ok(providers) = container.get_providers_instance(module_token) {
+                    for (_token, provider) in providers.iter() {
+                        // Skip request-scoped providers - they require an active HTTP request
+                        if provider.get_scope() == crate::ProviderScope::Request {
+                            continue;
+                        }
+
+                        provider.on_application_bootstrap().await;
+                    }
+                }
+            }
+
+            // Controllers use ControllerTrait lifecycle methods directly, not the provider dispatch path
+            {
+                let container = self.container.borrow();
+                if let Some(module) = container.get_module_by_token(module_token) {
+                    let controllers = module._get_controllers_instances();
+                    for (_token, wrapper) in controllers.iter() {
+                        let controller = wrapper.get_instance();
+                        controller.on_application_bootstrap().await;
+                    }
+                }
+            }
+        }
+    }
+
+    fn call_module_init_hook(&mut self, module_token: &str) -> Result<()> {
+        {
+            let container = self.container.borrow();
+            let module_ref = container
+                .get_module_by_token(&module_token.to_string())
+                .ok_or_else(|| anyhow!("Module not found: {}", module_token))?;
+
+            module_ref
+                .get_metadata()
+                .on_module_init(self.container.clone())?;
+        }
+
+        Ok(())
+    }
+
+    async fn call_provider_init_hooks(&self, modules_token: &[String]) {
+        for module_token in modules_token {
+            {
+                let container = self.container.borrow();
+                if let Ok(providers) = container.get_providers_instance(module_token) {
+                    for (_token, provider) in providers.iter() {
+                        // Skip request-scoped providers - they require an active HTTP request
+                        // and cannot be executed during module initialization
+                        if provider.get_scope() == crate::ProviderScope::Request {
+                            continue;
+                        }
+
+                        provider.on_module_init().await;
+                    }
+                }
+            }
+
+            // Controllers use ControllerTrait lifecycle methods directly, not the provider dispatch path
+            {
+                let container = self.container.borrow();
+                if let Some(module) = container.get_module_by_token(module_token) {
+                    let controllers = module._get_controllers_instances();
+                    for (_token, wrapper) in controllers.iter() {
+                        let controller = wrapper.get_instance();
+                        controller.on_module_init().await;
+                    }
+                }
+            }
+        }
+    }
 }
