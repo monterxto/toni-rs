@@ -158,7 +158,7 @@ impl ToniApplicationContext {
         Ok(())
     }
 
-    async fn call_before_shutdown_hooks(&self, signal: Option<String>) {
+    pub(crate) async fn call_before_shutdown_hooks(&self, signal: Option<String>) {
         let container = self.container.borrow();
         let modules = container.get_modules_token();
 
@@ -182,7 +182,7 @@ impl ToniApplicationContext {
         }
     }
 
-    async fn call_module_destroy_hooks(&self) {
+    pub(crate) async fn call_module_destroy_hooks(&self) {
         let container = self.container.borrow();
         let modules = container.get_modules_token();
 
@@ -206,7 +206,7 @@ impl ToniApplicationContext {
         }
     }
 
-    async fn call_shutdown_hooks(&self, signal: Option<String>) {
+    pub(crate) async fn call_shutdown_hooks(&self, signal: Option<String>) {
         let container = self.container.borrow();
         let modules = container.get_modules_token();
 
