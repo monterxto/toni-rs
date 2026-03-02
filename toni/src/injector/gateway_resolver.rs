@@ -20,38 +20,13 @@ impl GatewayResolver {
     }
 
     pub fn resolve(&self) -> Result<HashMap<String, Arc<GatewayWrapper>>> {
-        let modules_tokens = self.container.borrow().get_modules_token();
-        let mut gateways = HashMap::new();
-
-        for module_token in modules_tokens {
-            self.collect_gateways(&module_token, &mut gateways)?;
-        }
-
-        Ok(gateways)
-    }
-
-    fn collect_gateways(
-        &self,
-        module_token: &str,
-        gateways: &mut HashMap<String, Arc<GatewayWrapper>>,
-    ) -> Result<()> {
-        let providers = {
-            let container = self.container.borrow();
-            container
-                .get_providers_instance(&module_token.to_string())?
-                .clone()
-        };
-
-        for (_token, provider) in providers {
-            if let Some(gateway) = provider.as_gateway() {
-                let path = gateway.get_path();
+        let raw = self.container.borrow().get_gateways().clone();
+        raw.into_iter()
+            .map(|(path, gateway)| {
                 let wrapper = self.wrap_gateway(gateway)?;
-                gateways.insert(path.clone(), Arc::new(wrapper));
-                println!("Registered WebSocket gateway at path: {}", path);
-            }
-        }
-
-        Ok(())
+                Ok((path, Arc::new(wrapper)))
+            })
+            .collect()
     }
 
     fn wrap_gateway(&self, gateway: Arc<Box<dyn GatewayTrait>>) -> Result<GatewayWrapper> {
