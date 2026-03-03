@@ -15,7 +15,6 @@
 //!            {"event": "ping"}
 
 use toni::*;
-use toni_axum::AxumWebSocketAdapter;
 use toni_macros::{module, websocket_gateway};
 
 #[websocket_gateway("/chat", pub struct EchoGateway {})]
@@ -65,9 +64,6 @@ async fn main() {
     let mut app = ToniFactory::new()
         .create_with(AppModule, toni_axum::AxumAdapter::new())
         .await;
-
-    app.use_websocket_adapter(AxumWebSocketAdapter::new())
-        .expect("Failed to register WebSocket adapter");
 
     app.listen(8080, "127.0.0.1").await;
 }

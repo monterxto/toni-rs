@@ -13,7 +13,6 @@
 use serde::{Deserialize, Serialize};
 use toni::websocket::{BroadcastModule, BroadcastService, WsClient, WsError, WsMessage};
 use toni::*;
-use toni_axum::AxumWebSocketAdapter;
 use toni_macros::{module, websocket_gateway};
 
 // Message types
@@ -321,9 +320,6 @@ async fn main() {
         .await;
 
     // Adapter auto-discovers and registers all gateways from the container
-    app.use_websocket_adapter(AxumWebSocketAdapter::new())
-        .expect("Failed to register WebSocket adapter");
-
     println!("📡 WebSocket server running on ws://localhost:3000/chat");
     println!("\nTry these commands with websocat:");
     println!("  websocat ws://localhost:3000/chat");

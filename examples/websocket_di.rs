@@ -10,7 +10,6 @@ use std::sync::Arc;
 use toni::traits_helpers::{Guard, Interceptor, InterceptorNext};
 use toni::websocket::{BroadcastModule, BroadcastService};
 use toni::*;
-use toni_axum::AxumWebSocketAdapter;
 use toni_macros::{injectable, module, websocket_gateway};
 
 #[injectable]
@@ -135,9 +134,6 @@ async fn main() {
     let mut app = factory
         .create_with(ChatModule, toni_axum::AxumAdapter::new())
         .await;
-
-    app.use_websocket_adapter(AxumWebSocketAdapter::new())
-        .expect("Failed to register WebSocket adapter");
 
     println!("✅ Server ready - guards and interceptors active!\n");
 
