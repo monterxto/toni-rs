@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use std::sync::Arc;
 use tokio::net::TcpListener;
+use tokio::sync::watch;
 
 use axum::{
     body::Body,
@@ -19,12 +20,15 @@ use crate::axum_websocket_adapter::{extract_headers, AxumWsSocket};
 #[derive(Clone)]
 pub struct AxumAdapter {
     instance: Router,
+    shutdown_tx: Arc<watch::Sender<bool>>,
 }
 
 impl AxumAdapter {
     pub fn new() -> Self {
+        let (tx, _) = watch::channel(false);
         Self {
             instance: Router::new(),
+            shutdown_tx: Arc::new(tx),
         }
     }
 }
@@ -60,10 +64,22 @@ impl HttpAdapter for AxumAdapter {
 
         println!("Listening on {}", addr);
 
+        let mut shutdown_rx = self.shutdown_tx.subscribe();
         axum::serve(listener, self.instance)
+            .with_graceful_shutdown(async move {
+                let _ = shutdown_rx.wait_for(|v| *v).await;
+            })
             .await
             .with_context(|| "Axum server encountered an error")?;
         Ok(())
+    }
+
+    fn close(&mut self) -> impl std::future::Future<Output = Result<()>> + Send {
+        let tx = self.shutdown_tx.clone();
+        async move {
+            let _ = tx.send(true);
+            Ok(())
+        }
     }
 
     fn on_upgrade(&mut self, path: &str, gateway: Arc<GatewayWrapper>) -> Result<()> {

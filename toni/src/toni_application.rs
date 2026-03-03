@@ -3,8 +3,8 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 use anyhow::Result;
 
 use crate::{
-    application_context::ToniApplicationContext,
     adapter::WebSocketAdapter,
+    application_context::ToniApplicationContext,
     http_adapter::HttpAdapter,
     injector::{GatewayResolver, IntoToken, ToniContainer},
     router::RoutesResolver,
@@ -84,19 +84,36 @@ impl<H: HttpAdapter> ToniApplication<H> {
         module_token: &str,
         token: impl IntoToken,
     ) -> Result<T> {
-        self.context.get_from_by_token::<T>(module_token, token).await
+        self.context
+            .get_from_by_token::<T>(module_token, token)
+            .await
     }
 
     pub async fn close(&mut self) -> Result<()> {
         self.call_module_destroy_hooks().await;
         self.call_before_shutdown_hooks(None).await;
         self.call_shutdown_hooks(None).await;
+
+        if let Ok(cm) = self.get::<Arc<ConnectionManager>>().await {
+            cm.close_all().await;
+        }
+
         let _ = self.http_adapter.close().await;
+
+        // TODO: for separate-port gateways ws_adapter is moved into a spawned task via
+        // take() in listen(), so self.ws_adapter is None here. A shared shutdown channel
+        // (like the watch::Sender used for HTTP) is needed to signal the spawned server.
+        if let Some(ref mut ws) = self.ws_adapter {
+            let _ = ws.close().await;
+        }
+
         Ok(())
     }
 
     async fn call_before_shutdown_hooks(&self, signal: Option<String>) {
-        self.context.call_before_shutdown_hooks(signal.clone()).await;
+        self.context
+            .call_before_shutdown_hooks(signal.clone())
+            .await;
 
         let container = self.routes_resolver.container.borrow();
         let modules = container.get_modules_token();
@@ -172,8 +189,11 @@ impl<H: HttpAdapter> ToniApplication<H> {
                 if gateway_port.is_none() || gateway_port == Some(port) {
                     // Same-port path: register as HTTP upgrade route
                     let result = if let Some(ref cm) = connection_manager {
-                        self.http_adapter
-                            .on_upgrade_with_broadcast(path, gateway.clone(), cm.clone())
+                        self.http_adapter.on_upgrade_with_broadcast(
+                            path,
+                            gateway.clone(),
+                            cm.clone(),
+                        )
                     } else {
                         self.http_adapter.on_upgrade(path, gateway.clone())
                     };
@@ -200,7 +220,10 @@ impl<H: HttpAdapter> ToniApplication<H> {
                                 ws.on_gateway(path, gateway.clone())
                             };
                             if let Err(e) = result {
-                                eprintln!("Failed to register gateway at {} with WS adapter: {}", path, e);
+                                eprintln!(
+                                    "Failed to register gateway at {} with WS adapter: {}",
+                                    path, e
+                                );
                             } else {
                                 separate_port_gateways.push((ws_port, gateway.clone()));
                             }
@@ -228,10 +251,15 @@ impl<H: HttpAdapter> ToniApplication<H> {
             }
         }
 
-        let has_same_port_ws = self.ws_gateways.values().any(|g| {
-            g.get_port().is_none() || g.get_port() == Some(port)
-        });
-        let server_type = if has_same_port_ws { "HTTP + WebSocket" } else { "HTTP" };
+        let has_same_port_ws = self
+            .ws_gateways
+            .values()
+            .any(|g| g.get_port().is_none() || g.get_port() == Some(port));
+        let server_type = if has_same_port_ws {
+            "HTTP + WebSocket"
+        } else {
+            "HTTP"
+        };
         println!(
             "🚀 Starting {} server on {}:{}",
             server_type, hostname, port
