@@ -189,13 +189,13 @@ impl<H: HttpAdapter> ToniApplication<H> {
                 if gateway_port.is_none() || gateway_port == Some(port) {
                     // Same-port path: register as HTTP upgrade route
                     let result = if let Some(ref cm) = connection_manager {
-                        self.http_adapter.on_upgrade_with_broadcast(
+                        self.http_adapter.bind_gateway_with_broadcast(
                             path,
                             gateway.clone(),
                             cm.clone(),
                         )
                     } else {
-                        self.http_adapter.on_upgrade(path, gateway.clone())
+                        self.http_adapter.bind_gateway(path, gateway.clone())
                     };
                     if let Err(e) = result {
                         eprintln!("Failed to add WebSocket route at {}: {}", path, e);

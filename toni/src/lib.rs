@@ -23,7 +23,7 @@ pub mod traits_helpers;
 pub mod websocket;
 
 // Re-exports for adapter crates
-pub use adapter::{RouteAdapter, WebSocketAdapter};
+pub use adapter::WebSocketAdapter;
 pub use http_adapter::HttpAdapter;
 pub use http_helpers::{
     Body, HttpMethod, HttpRequest, HttpResponse, HttpResponseBuilder, RouteMetadata, ToResponse,
