@@ -13,7 +13,5 @@
 //! ```
 
 mod adapter;
-mod ws_socket;
 
-pub use adapter::TungsteniteAdapter;
-pub use ws_socket::{TokioSender, TungsteniteWsSocket};
+pub use adapter::{TokioSender, TungsteniteAdapter, TungsteniteWsConnection};
