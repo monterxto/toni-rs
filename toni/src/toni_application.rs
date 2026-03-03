@@ -233,23 +233,9 @@ impl<H: HttpAdapter> ToniApplication<H> {
             }
         }
 
-        // Start separate-port WebSocket servers for each unique port
-        if !separate_port_gateways.is_empty() {
-            let mut started_ports = std::collections::HashSet::new();
-            for (ws_port, _) in &separate_port_gateways {
-                if started_ports.insert(*ws_port) {
-                    if let Some(mut ws) = self.ws_adapter.take() {
-                        let ws_hostname = hostname.to_string();
-                        let p = *ws_port;
-                        tokio::spawn(async move {
-                            if let Err(e) = ws.listen(p, &ws_hostname).await {
-                                eprintln!("🚨 WebSocket server on port {} failed: {}", p, e);
-                            }
-                        });
-                    }
-                }
-            }
-        }
+        let ws_server = separate_port_gateways
+            .first()
+            .and_then(|(ws_port, _)| self.ws_adapter.take().map(|ws| (ws, *ws_port)));
 
         let has_same_port_ws = self
             .ws_gateways
@@ -265,9 +251,26 @@ impl<H: HttpAdapter> ToniApplication<H> {
             server_type, hostname, port
         );
 
-        // Clone adapter since listen() takes self by value
-        //TODO: consider if `HttpAdapter::listen` should take only mut self
-        if let Err(e) = self.http_adapter.clone().listen(port, hostname).await {
+        let http_clone = self.http_adapter.clone();
+        let http_hostname = hostname.to_string();
+
+        if let Some((mut ws, ws_port)) = ws_server {
+            let ws_hostname = hostname.to_string();
+            futures::future::join(
+                async move {
+                    if let Err(e) = ws.listen(ws_port, &ws_hostname).await {
+                        eprintln!("WS server on port {} failed: {}", ws_port, e);
+                    }
+                },
+                async move {
+                    if let Err(e) = http_clone.listen(port, &http_hostname).await {
+                        eprintln!("Failed to start server: {}", e);
+                        std::process::exit(1);
+                    }
+                },
+            )
+            .await;
+        } else if let Err(e) = http_clone.listen(port, &http_hostname).await {
             eprintln!("Failed to start server: {}", e);
             std::process::exit(1);
         }
