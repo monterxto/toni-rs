@@ -44,6 +44,7 @@ impl Sender for TokioSender {
     }
 }
 
+#[derive(Clone)]
 pub struct TungsteniteAdapter {
     gateways: HashMap<String, Arc<GatewayWrapper>>,
     broadcast_gateways: HashMap<String, (Arc<GatewayWrapper>, Arc<ConnectionManager>)>,

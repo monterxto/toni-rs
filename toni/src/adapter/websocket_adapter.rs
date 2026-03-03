@@ -230,6 +230,7 @@ pub trait WebSocketAdapter: Send + Sync + 'static {
 /// storage site. Users never interact with this trait directly.
 #[async_trait]
 pub(crate) trait ErasedWebSocketAdapter: Send + Sync + 'static {
+    fn clone_box(&self) -> Box<dyn ErasedWebSocketAdapter>;
     fn bind_gateway(&mut self, path: &str, gateway: Arc<GatewayWrapper>) -> Result<()>;
     fn bind_gateway_with_broadcast(
         &mut self,
@@ -242,7 +243,11 @@ pub(crate) trait ErasedWebSocketAdapter: Send + Sync + 'static {
 }
 
 #[async_trait]
-impl<W: WebSocketAdapter> ErasedWebSocketAdapter for W {
+impl<W: WebSocketAdapter + Clone> ErasedWebSocketAdapter for W {
+    fn clone_box(&self) -> Box<dyn ErasedWebSocketAdapter> {
+        Box::new(self.clone())
+    }
+
     fn bind_gateway(&mut self, path: &str, gateway: Arc<GatewayWrapper>) -> Result<()> {
         <W as WebSocketAdapter>::bind_gateway(self, path, gateway)
     }

@@ -40,12 +40,10 @@ impl<H: HttpAdapter> ToniApplication<H> {
     /// Gateway discovery is deferred to `listen()` to allow adapter configuration beforehand
     pub fn use_websocket_adapter<A>(&mut self, adapter: A) -> Result<&mut Self>
     where
-        A: WebSocketAdapter,
+        A: WebSocketAdapter + Clone,
     {
         self.ws_adapter = Some(Box::new(adapter) as Box<dyn ErasedWebSocketAdapter>);
-
         println!("✓ WebSocket adapter registered");
-
         Ok(self)
     }
 
@@ -103,7 +101,7 @@ impl<H: HttpAdapter> ToniApplication<H> {
         // TODO: for separate-port gateways ws_adapter is moved into a spawned task via
         // take() in listen(), so self.ws_adapter is None here. A shared shutdown channel
         // (like the watch::Sender used for HTTP) is needed to signal the spawned server.
-        if let Some(ref mut ws) = self.ws_adapter {
+        if let Some(ws) = &mut self.ws_adapter {
             let _ = ws.close().await;
         }
 
@@ -177,17 +175,15 @@ impl<H: HttpAdapter> ToniApplication<H> {
         // Resolve ConnectionManager if BroadcastModule is imported
         let connection_manager = self.get::<Arc<ConnectionManager>>().await.ok();
 
-        // Register WebSocket gateways — route each gateway based on its declared port.
-        // No port (or same port as HTTP) → same-port HTTP upgrade.
-        // Different port → separate WebSocket server via ws_adapter.
-        let mut separate_port_gateways: Vec<(u16, Arc<GatewayWrapper>)> = Vec::new();
+        // Route each gateway to its target: no port (or matching HTTP port) → HTTP upgrade;
+        // different port → a clone of the template adapter for that port.
+        let mut port_to_adapter: HashMap<u16, Box<dyn ErasedWebSocketAdapter>> = HashMap::new();
 
         if !self.ws_gateways.is_empty() {
             for (path, gateway) in &self.ws_gateways {
                 let gateway_port = gateway.get_port();
 
                 if gateway_port.is_none() || gateway_port == Some(port) {
-                    // Same-port path: register as HTTP upgrade route
                     let result = if let Some(ref cm) = connection_manager {
                         self.http_adapter.bind_gateway_with_broadcast(
                             path,
@@ -202,40 +198,39 @@ impl<H: HttpAdapter> ToniApplication<H> {
                         eprintln!("This HTTP adapter may not support WebSocket upgrades");
                     }
                 } else {
-                    // Separate-port path: collect and register with ws_adapter below
                     let ws_port = gateway_port.unwrap();
 
-                    match &mut self.ws_adapter {
-                        None => {
-                            eprintln!(
-                                "Gateway at {} requests port {} but no WebSocketAdapter is registered. \
-                                 Call use_websocket_adapter() to enable separate-port WebSocket.",
-                                path, ws_port
-                            );
-                        }
-                        Some(ws) => {
-                            let result = if let Some(ref cm) = connection_manager {
-                                ws.bind_gateway_with_broadcast(path, gateway.clone(), cm.clone())
-                            } else {
-                                ws.bind_gateway(path, gateway.clone())
-                            };
-                            if let Err(e) = result {
+                    if !port_to_adapter.contains_key(&ws_port) {
+                        match &self.ws_adapter {
+                            None => {
                                 eprintln!(
-                                    "Failed to register gateway at {} with WS adapter: {}",
-                                    path, e
+                                    "Gateway at {} requests port {} but no WebSocket adapter is \
+                                     registered. Call use_websocket_adapter() to add one.",
+                                    path, ws_port
                                 );
-                            } else {
-                                separate_port_gateways.push((ws_port, gateway.clone()));
+                                continue;
+                            }
+                            Some(template) => {
+                                port_to_adapter.insert(ws_port, template.clone_box());
                             }
                         }
+                    }
+
+                    let ws = port_to_adapter.get_mut(&ws_port).unwrap();
+                    let result = if let Some(ref cm) = connection_manager {
+                        ws.bind_gateway_with_broadcast(path, gateway.clone(), cm.clone())
+                    } else {
+                        ws.bind_gateway(path, gateway.clone())
+                    };
+                    if let Err(e) = result {
+                        eprintln!(
+                            "Failed to register gateway at {} with WS adapter: {}",
+                            path, e
+                        );
                     }
                 }
             }
         }
-
-        let ws_server = separate_port_gateways
-            .first()
-            .and_then(|(ws_port, _)| self.ws_adapter.take().map(|ws| (ws, *ws_port)));
 
         let has_same_port_ws = self
             .ws_gateways
@@ -254,25 +249,31 @@ impl<H: HttpAdapter> ToniApplication<H> {
         let http_clone = self.http_adapter.clone();
         let http_hostname = hostname.to_string();
 
-        if let Some((mut ws, ws_port)) = ws_server {
-            let ws_hostname = hostname.to_string();
-            futures::future::join(
+        let ws_futs: Vec<_> = port_to_adapter
+            .into_iter()
+            .map(|(ws_port, mut ws)| {
+                let h = hostname.to_string();
                 async move {
-                    if let Err(e) = ws.listen(ws_port, &ws_hostname).await {
+                    if let Err(e) = ws.listen(ws_port, &h).await {
                         eprintln!("WS server on port {} failed: {}", ws_port, e);
                     }
-                },
-                async move {
-                    if let Err(e) = http_clone.listen(port, &http_hostname).await {
-                        eprintln!("Failed to start server: {}", e);
-                        std::process::exit(1);
-                    }
-                },
-            )
+                }
+            })
+            .collect();
+
+        if ws_futs.is_empty() {
+            if let Err(e) = http_clone.listen(port, &http_hostname).await {
+                eprintln!("Failed to start server: {}", e);
+                std::process::exit(1);
+            }
+        } else {
+            futures::future::join(futures::future::join_all(ws_futs), async move {
+                if let Err(e) = http_clone.listen(port, &http_hostname).await {
+                    eprintln!("Failed to start server: {}", e);
+                    std::process::exit(1);
+                }
+            })
             .await;
-        } else if let Err(e) = http_clone.listen(port, &http_hostname).await {
-            eprintln!("Failed to start server: {}", e);
-            std::process::exit(1);
         }
     }
 }
