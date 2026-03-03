@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 use anyhow::Result;
 
 use crate::{
-    adapter::WebSocketAdapter,
+    adapter::{ErasedWebSocketAdapter, WebSocketAdapter},
     application_context::ToniApplicationContext,
     http_adapter::HttpAdapter,
     injector::{GatewayResolver, IntoToken, ToniContainer},
@@ -18,7 +18,7 @@ pub struct ToniApplication<H: HttpAdapter> {
     /// Discovered WebSocket gateways (path -> gateway)
     ws_gateways: HashMap<String, Arc<GatewayWrapper>>,
     /// WebSocket adapter (for separate port support)
-    ws_adapter: Option<Box<dyn WebSocketAdapter>>,
+    ws_adapter: Option<Box<dyn ErasedWebSocketAdapter>>,
 }
 
 impl<H: HttpAdapter> ToniApplication<H> {
@@ -42,7 +42,7 @@ impl<H: HttpAdapter> ToniApplication<H> {
     where
         A: WebSocketAdapter,
     {
-        self.ws_adapter = Some(Box::new(adapter));
+        self.ws_adapter = Some(Box::new(adapter) as Box<dyn ErasedWebSocketAdapter>);
 
         println!("✓ WebSocket adapter registered");
 
@@ -215,9 +215,9 @@ impl<H: HttpAdapter> ToniApplication<H> {
                         }
                         Some(ws) => {
                             let result = if let Some(ref cm) = connection_manager {
-                                ws.on_gateway_with_broadcast(path, gateway.clone(), cm.clone())
+                                ws.bind_gateway_with_broadcast(path, gateway.clone(), cm.clone())
                             } else {
-                                ws.on_gateway(path, gateway.clone())
+                                ws.bind_gateway(path, gateway.clone())
                             };
                             if let Err(e) = result {
                                 eprintln!(

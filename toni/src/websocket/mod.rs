@@ -13,7 +13,6 @@ mod broadcast_provider;
 mod ws_client;
 mod ws_error;
 mod ws_message;
-mod ws_socket;
 
 pub use broadcast::{
     BroadcastError, BroadcastService, BroadcastTarget, ClientId, ConnectionManager, RoomId,
@@ -27,4 +26,3 @@ pub use broadcast_provider::{BroadcastServiceManager, BroadcastServiceProvider};
 pub use ws_client::{WsClient, WsHandshake};
 pub use ws_error::{DisconnectReason, WsError};
 pub use ws_message::WsMessage;
-pub use ws_socket::WsSocket;

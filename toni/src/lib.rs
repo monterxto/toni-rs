@@ -32,7 +32,6 @@ pub use injector::{InstanceWrapper, Protocol, ProtocolType};
 pub use rpc::{RpcContext, RpcData};
 pub use websocket::{
     DisconnectReason, GatewayTrait, GatewayWrapper, WsClient, WsError, WsHandshake, WsMessage,
-    WsSocket,
 };
 
 // Re-export built-in providers
