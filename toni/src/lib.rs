@@ -32,6 +32,7 @@ pub use injector::{InstanceWrapper, Protocol, ProtocolType};
 pub use rpc::{RpcContext, RpcData};
 pub use websocket::{
     DisconnectReason, GatewayTrait, GatewayWrapper, WsClient, WsError, WsHandshake, WsMessage,
+    WsSocket,
 };
 
 // Re-export built-in providers
@@ -74,9 +75,9 @@ mod tests {
         let server_handle: JoinHandle<()> = tokio::spawn(async {
             // let factory = ToniFactory::new();
             // let mut axum_adapter = AxumAdapter::new();
-            // let app = ToniFactory::create(app_module, axum_adapter).unwrap();
+            // let mut app = ToniFactory::create(app_module, axum_adapter).unwrap();
             // app.listen(3000, "127.0.0.1").await;
-            // let app = match app {
+            // let mut app = match app {
             //     Ok(app) => {
             //         app
             //     }
