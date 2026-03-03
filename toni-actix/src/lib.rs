@@ -21,10 +21,7 @@
 //! ```
 
 mod actix_adapter;
-mod actix_route_adapter;
 
 pub use actix_adapter::ActixAdapter;
-pub use actix_route_adapter::ActixRouteAdapter;
 
-// Re-export commonly used types from toni
-pub use toni::{HttpAdapter, RouteAdapter};
+pub use toni::HttpAdapter;
