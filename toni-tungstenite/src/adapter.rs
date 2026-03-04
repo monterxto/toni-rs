@@ -4,7 +4,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use futures_util::{stream::SplitStream, SinkExt, StreamExt};
 use tokio::net::TcpStream;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 use toni::async_trait;
 use toni::websocket::{ConnectionManager, GatewayWrapper, SendError, Sender, TrySendError, WsError, WsMessage};
@@ -48,13 +48,16 @@ impl Sender for TokioSender {
 pub struct TungsteniteAdapter {
     gateways: HashMap<String, Arc<GatewayWrapper>>,
     broadcast_gateways: HashMap<String, (Arc<GatewayWrapper>, Arc<ConnectionManager>)>,
+    shutdown_tx: Arc<watch::Sender<bool>>,
 }
 
 impl TungsteniteAdapter {
     pub fn new() -> Self {
+        let (tx, _) = watch::channel(false);
         Self {
             gateways: HashMap::new(),
             broadcast_gateways: HashMap::new(),
+            shutdown_tx: Arc::new(tx),
         }
     }
 }
@@ -150,37 +153,55 @@ impl WebSocketAdapter for TungsteniteAdapter {
             HashMap<String, (Arc<GatewayWrapper>, Arc<ConnectionManager>)>,
         > = Arc::new(self.broadcast_gateways.clone());
 
+        let mut shutdown_rx = self.shutdown_tx.subscribe();
+
         loop {
-            let (stream, _peer) = listener.accept().await?;
-            let gateways = gateways.clone();
-            let broadcast_gateways = broadcast_gateways.clone();
+            tokio::select! {
+                result = listener.accept() => {
+                    let (stream, _peer) = result?;
+                    let gateways = gateways.clone();
+                    let broadcast_gateways = broadcast_gateways.clone();
 
-            tokio::spawn(async move {
-                let ws_stream = match tokio_tungstenite::accept_async(stream).await {
-                    Ok(ws) => ws,
-                    Err(e) => {
-                        eprintln!("WS handshake error: {}", e);
-                        return;
-                    }
-                };
+                    tokio::spawn(async move {
+                        let ws_stream = match tokio_tungstenite::accept_async(stream).await {
+                            Ok(ws) => ws,
+                            Err(e) => {
+                                eprintln!("WS handshake error: {}", e);
+                                return;
+                            }
+                        };
 
-                // Raw TCP doesn't expose the request path; `accept_hdr_async` would be
-                // needed for true path routing. One gateway per port is the current contract.
-                let conn = TungsteniteWsConnection::Full(ws_stream);
+                        // Raw TCP doesn't expose the request path; `accept_hdr_async` would be
+                        // needed for true path routing. One gateway per port is the current contract.
+                        let conn = TungsteniteWsConnection::Full(ws_stream);
 
-                if let Some((gateway, cm)) = broadcast_gateways.values().next() {
-                    TungsteniteAdapter::handle_connection_with_broadcast(
-                        conn,
-                        gateway,
-                        HashMap::new(),
-                        cm,
-                    )
-                    .await;
-                } else if let Some(gateway) = gateways.values().next() {
-                    TungsteniteAdapter::handle_connection(conn, gateway, HashMap::new()).await;
+                        if let Some((gateway, cm)) = broadcast_gateways.values().next() {
+                            TungsteniteAdapter::handle_connection_with_broadcast(
+                                conn,
+                                gateway,
+                                HashMap::new(),
+                                cm,
+                            )
+                            .await;
+                        } else if let Some(gateway) = gateways.values().next() {
+                            TungsteniteAdapter::handle_connection(conn, gateway, HashMap::new()).await;
+                        }
+                    });
                 }
-            });
+                _ = shutdown_rx.changed() => {
+                    if *shutdown_rx.borrow() {
+                        break;
+                    }
+                }
+            }
         }
+
+        Ok(())
+    }
+
+    async fn close(&mut self) -> Result<()> {
+        let _ = self.shutdown_tx.send(true);
+        Ok(())
     }
 }
 

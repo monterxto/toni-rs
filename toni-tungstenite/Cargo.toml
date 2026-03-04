@@ -9,7 +9,7 @@ categories = ["web-programming::websocket"]
 
 [dependencies]
 toni = { path = "../toni" }
-tokio = { version = "1", features = ["net", "sync", "rt"] }
+tokio = { version = "1", features = ["net", "sync", "rt", "macros"] }
 tokio-tungstenite = "0.28"
 futures-util = "0.3"
 anyhow = "1.0"
