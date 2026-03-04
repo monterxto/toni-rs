@@ -5,6 +5,7 @@
 
 mod broadcast;
 mod broadcast_module;
+mod handle;
 mod connection_manager_provider;
 mod gateway_trait;
 mod gateway_wrapper;
@@ -23,6 +24,7 @@ pub use connection_manager_provider::{ConnectionManagerManager, ConnectionManage
 pub use gateway_trait::GatewayTrait;
 pub use gateway_wrapper::GatewayWrapper;
 pub use broadcast_provider::{BroadcastServiceManager, BroadcastServiceProvider};
+pub use handle::WsGatewayHandle;
 pub use ws_client::{WsClient, WsHandshake};
 pub use ws_error::{DisconnectReason, WsError};
 pub use ws_message::WsMessage;

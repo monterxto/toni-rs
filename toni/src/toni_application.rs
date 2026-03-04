@@ -1,7 +1,6 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, collections::HashSet, rc::Rc, sync::Arc};
 
 use anyhow::Result;
-use futures::channel::oneshot;
 
 use crate::{
     adapter::{ErasedWebSocketAdapter, WebSocketAdapter},
@@ -9,18 +8,15 @@ use crate::{
     http_adapter::HttpAdapter,
     injector::{GatewayResolver, IntoToken, ToniContainer},
     router::RoutesResolver,
-    websocket::{ConnectionManager, GatewayWrapper},
+    websocket::{ConnectionManager, GatewayWrapper, WsGatewayHandle},
 };
 
 pub struct ToniApplication<H: HttpAdapter> {
     http_adapter: H,
     routes_resolver: RoutesResolver,
     context: ToniApplicationContext,
-    /// Discovered WebSocket gateways (path -> gateway)
     ws_gateways: HashMap<String, Arc<GatewayWrapper>>,
-    /// WebSocket adapter (for separate port support)
     ws_adapter: Option<Box<dyn ErasedWebSocketAdapter>>,
-    ws_shutdown_txs: Vec<oneshot::Sender<()>>,
 }
 
 impl<H: HttpAdapter> ToniApplication<H> {
@@ -31,7 +27,6 @@ impl<H: HttpAdapter> ToniApplication<H> {
             routes_resolver: RoutesResolver::new(container),
             ws_gateways: HashMap::new(),
             ws_adapter: None,
-            ws_shutdown_txs: Vec::new(),
         }
     }
 
@@ -43,7 +38,7 @@ impl<H: HttpAdapter> ToniApplication<H> {
     /// Gateway discovery is deferred to `listen()` to allow adapter configuration beforehand
     pub fn use_websocket_adapter<A>(&mut self, adapter: A) -> Result<&mut Self>
     where
-        A: WebSocketAdapter + Clone,
+        A: WebSocketAdapter,
     {
         self.ws_adapter = Some(Box::new(adapter) as Box<dyn ErasedWebSocketAdapter>);
         println!("✓ WebSocket adapter registered");
@@ -103,10 +98,6 @@ impl<H: HttpAdapter> ToniApplication<H> {
 
         if let Some(ws) = &mut self.ws_adapter {
             let _ = ws.close().await;
-        }
-
-        for tx in self.ws_shutdown_txs.drain(..) {
-            let _ = tx.send(());
         }
 
         Ok(())
@@ -179,113 +170,94 @@ impl<H: HttpAdapter> ToniApplication<H> {
         // Resolve ConnectionManager if BroadcastModule is imported
         let connection_manager = self.get::<Arc<ConnectionManager>>().await.ok();
 
-        // Route each gateway to its target: no port (or matching HTTP port) → HTTP upgrade;
-        // different port → a clone of the template adapter for that port.
-        let mut port_to_adapter: HashMap<u16, Box<dyn ErasedWebSocketAdapter>> = HashMap::new();
+        // Collect gateways for same-port (HTTP upgrade) and separate-port paths
+        let (same_port, separate_port): (Vec<_>, Vec<_>) = self
+            .ws_gateways
+            .iter()
+            .map(|(p, gw)| (p.clone(), gw.clone()))
+            .partition(|(_, gw)| {
+                let p = gw.get_port();
+                p.is_none() || p == Some(port)
+            });
 
-        if !self.ws_gateways.is_empty() {
-            for (path, gateway) in &self.ws_gateways {
-                let gateway_port = gateway.get_port();
+        // Wire same-port gateways into the HTTP adapter as upgrade routes
+        for (path, gateway) in &same_port {
+            let result = if let Some(ref cm) = connection_manager {
+                self.http_adapter
+                    .bind_gateway_with_broadcast(path, gateway.clone(), cm.clone())
+            } else {
+                self.http_adapter.bind_gateway(path, gateway.clone())
+            };
+            if let Err(e) = result {
+                eprintln!("Failed to add WebSocket route at {}: {}", path, e);
+            }
+        }
 
-                if gateway_port.is_none() || gateway_port == Some(port) {
-                    let result = if let Some(ref cm) = connection_manager {
-                        self.http_adapter.bind_gateway_with_broadcast(
-                            path,
-                            gateway.clone(),
-                            cm.clone(),
-                        )
-                    } else {
-                        self.http_adapter.bind_gateway(path, gateway.clone())
-                    };
-                    if let Err(e) = result {
-                        eprintln!("Failed to add WebSocket route at {}: {}", path, e);
-                        eprintln!("This HTTP adapter may not support WebSocket upgrades");
-                    }
-                } else {
-                    let ws_port = gateway_port.unwrap();
-
-                    if !port_to_adapter.contains_key(&ws_port) {
-                        match &self.ws_adapter {
-                            None => {
-                                eprintln!(
-                                    "Gateway at {} requests port {} but no WebSocket adapter is \
-                                     registered. Call use_websocket_adapter() to add one.",
-                                    path, ws_port
-                                );
-                                continue;
-                            }
-                            Some(template) => {
-                                port_to_adapter.insert(ws_port, template.clone_box());
+        // Wire separate-port gateways into the WS adapter
+        if !separate_port.is_empty() {
+            if self.ws_adapter.is_none() {
+                for (path, gw) in &separate_port {
+                    eprintln!(
+                        "Gateway at {} requests port {:?} but no WebSocket adapter registered. \
+                         Call use_websocket_adapter() to add one.",
+                        path,
+                        gw.get_port()
+                    );
+                }
+            } else {
+                // Create a server entry for each unique port
+                let mut seen: HashSet<u16> = HashSet::new();
+                for (_, gw) in &separate_port {
+                    if let Some(ws_port) = gw.get_port() {
+                        if seen.insert(ws_port) {
+                            if let Some(ws) = &mut self.ws_adapter {
+                                if let Err(e) = ws.create(ws_port) {
+                                    eprintln!("Failed to create WS server on port {}: {}", ws_port, e);
+                                }
                             }
                         }
                     }
+                }
 
-                    let ws = port_to_adapter.get_mut(&ws_port).unwrap();
-                    let result = if let Some(ref cm) = connection_manager {
-                        ws.bind_gateway_with_broadcast(path, gateway.clone(), cm.clone())
-                    } else {
-                        ws.bind_gateway(path, gateway.clone())
-                    };
-                    if let Err(e) = result {
-                        eprintln!(
-                            "Failed to register gateway at {} with WS adapter: {}",
-                            path, e
-                        );
+                // Attach each gateway with its freshly created handle
+                for (path, gateway) in &separate_port {
+                    if let Some(ws_port) = gateway.get_port() {
+                        let handle = Arc::new(WsGatewayHandle::new());
+                        if let Some(ws) = &mut self.ws_adapter {
+                            let result = if let Some(ref cm) = connection_manager {
+                                ws.attach_with_broadcast(
+                                    ws_port,
+                                    path,
+                                    gateway.clone(),
+                                    handle,
+                                    cm.clone(),
+                                )
+                            } else {
+                                ws.attach(ws_port, path, gateway.clone(), handle)
+                            };
+                            if let Err(e) = result {
+                                eprintln!("Failed to attach gateway at {}: {}", path, e);
+                            }
+                        }
+                    }
+                }
+
+                // Start all WS servers (spawns tasks, returns immediately)
+                if let Some(ws) = &mut self.ws_adapter {
+                    if let Err(e) = ws.listen(hostname).await {
+                        eprintln!("WS adapter failed to start: {}", e);
                     }
                 }
             }
         }
 
-        let has_same_port_ws = self
-            .ws_gateways
-            .values()
-            .any(|g| g.get_port().is_none() || g.get_port() == Some(port));
-        let server_type = if has_same_port_ws {
-            "HTTP + WebSocket"
-        } else {
-            "HTTP"
-        };
-        println!(
-            "🚀 Starting {} server on {}:{}",
-            server_type, hostname, port
-        );
+        let has_same_port_ws = !same_port.is_empty();
+        let server_type = if has_same_port_ws { "HTTP + WebSocket" } else { "HTTP" };
+        println!("Starting {} server on {}:{}", server_type, hostname, port);
 
-        let http_clone = self.http_adapter.clone();
-        let http_hostname = hostname.to_string();
-
-        let mut ws_futs = Vec::new();
-        for (ws_port, mut ws) in port_to_adapter {
-            let (tx, rx) = oneshot::channel::<()>();
-            self.ws_shutdown_txs.push(tx);
-            let h = hostname.to_string();
-            ws_futs.push(async move {
-                match futures::future::select(
-                    Box::pin(ws.listen(ws_port, &h)),
-                    Box::pin(rx),
-                )
-                .await
-                {
-                    futures::future::Either::Left((Err(e), _)) => {
-                        eprintln!("WS server on port {} failed: {}", ws_port, e);
-                    }
-                    _ => {}
-                }
-            });
-        }
-
-        if ws_futs.is_empty() {
-            if let Err(e) = http_clone.listen(port, &http_hostname).await {
-                eprintln!("Failed to start server: {}", e);
-                std::process::exit(1);
-            }
-        } else {
-            futures::future::join(futures::future::join_all(ws_futs), async move {
-                if let Err(e) = http_clone.listen(port, &http_hostname).await {
-                    eprintln!("Failed to start server: {}", e);
-                    std::process::exit(1);
-                }
-            })
-            .await;
+        if let Err(e) = self.http_adapter.clone().listen(port, hostname).await {
+            eprintln!("Failed to start server: {}", e);
+            std::process::exit(1);
         }
     }
 }

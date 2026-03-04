@@ -7,11 +7,14 @@ use tokio::net::TcpStream;
 use tokio::sync::{mpsc, watch};
 use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
 use toni::async_trait;
-use toni::websocket::{ConnectionManager, GatewayWrapper, SendError, Sender, TrySendError, WsError, WsMessage};
+use toni::websocket::{
+    ConnectionManager, GatewayWrapper, SendError, Sender, TrySendError, WsError,
+    WsGatewayHandle, WsMessage,
+};
 use toni::WebSocketAdapter;
 
 /// `Full` is the initial state. After `split()`, the read half becomes `ReadOnly` and the
-/// write half is a `TokioSender` registered with `ConnectionManager`.
+/// write half is a `TokioSender` registered with the gateway handle (and optionally ConnectionManager).
 pub enum TungsteniteWsConnection {
     Full(WebSocketStream<TcpStream>),
     ReadOnly(SplitStream<WebSocketStream<TcpStream>>),
@@ -44,10 +47,23 @@ impl Sender for TokioSender {
     }
 }
 
-#[derive(Clone)]
+struct PortEntry {
+    gateways: HashMap<String, (Arc<GatewayWrapper>, Arc<WsGatewayHandle>)>,
+    broadcast_gateways:
+        HashMap<String, (Arc<GatewayWrapper>, Arc<WsGatewayHandle>, Arc<ConnectionManager>)>,
+}
+
+impl PortEntry {
+    fn new() -> Self {
+        Self {
+            gateways: HashMap::new(),
+            broadcast_gateways: HashMap::new(),
+        }
+    }
+}
+
 pub struct TungsteniteAdapter {
-    gateways: HashMap<String, Arc<GatewayWrapper>>,
-    broadcast_gateways: HashMap<String, (Arc<GatewayWrapper>, Arc<ConnectionManager>)>,
+    ports: HashMap<u16, PortEntry>,
     shutdown_tx: Arc<watch::Sender<bool>>,
 }
 
@@ -55,8 +71,7 @@ impl TungsteniteAdapter {
     pub fn new() -> Self {
         let (tx, _) = watch::channel(false);
         Self {
-            gateways: HashMap::new(),
-            broadcast_gateways: HashMap::new(),
+            ports: HashMap::new(),
             shutdown_tx: Arc::new(tx),
         }
     }
@@ -127,73 +142,98 @@ impl WebSocketAdapter for TungsteniteAdapter {
         }
     }
 
-    fn bind_gateway(&mut self, path: &str, gateway: Arc<GatewayWrapper>) -> Result<()> {
-        self.gateways.insert(path.to_string(), gateway);
+    fn create(&mut self, port: u16) -> Result<()> {
+        self.ports.entry(port).or_insert_with(PortEntry::new);
         Ok(())
     }
 
-    fn bind_gateway_with_broadcast(
+    fn attach(
         &mut self,
+        port: u16,
         path: &str,
         gateway: Arc<GatewayWrapper>,
-        connection_manager: Arc<ConnectionManager>,
+        handle: Arc<WsGatewayHandle>,
     ) -> Result<()> {
-        self.broadcast_gateways
-            .insert(path.to_string(), (gateway, connection_manager));
+        self.ports
+            .entry(port)
+            .or_insert_with(PortEntry::new)
+            .gateways
+            .insert(path.to_string(), (gateway, handle));
         Ok(())
     }
 
-    async fn listen(&mut self, port: u16, hostname: &str) -> Result<()> {
-        let addr = format!("{}:{}", hostname, port);
-        let listener = tokio::net::TcpListener::bind(&addr).await?;
+    fn attach_with_broadcast(
+        &mut self,
+        port: u16,
+        path: &str,
+        gateway: Arc<GatewayWrapper>,
+        handle: Arc<WsGatewayHandle>,
+        connection_manager: Arc<ConnectionManager>,
+    ) -> Result<()> {
+        self.ports
+            .entry(port)
+            .or_insert_with(PortEntry::new)
+            .broadcast_gateways
+            .insert(path.to_string(), (gateway, handle, connection_manager));
+        Ok(())
+    }
 
-        let gateways: Arc<HashMap<String, Arc<GatewayWrapper>>> =
-            Arc::new(self.gateways.clone());
-        let broadcast_gateways: Arc<
-            HashMap<String, (Arc<GatewayWrapper>, Arc<ConnectionManager>)>,
-        > = Arc::new(self.broadcast_gateways.clone());
+    async fn listen(&mut self, hostname: &str) -> Result<()> {
+        for (port, entry) in &self.ports {
+            let addr = format!("{}:{}", hostname, port);
+            let listener = tokio::net::TcpListener::bind(&addr).await?;
 
-        let mut shutdown_rx = self.shutdown_tx.subscribe();
+            // Arc the routing tables so the spawned task owns them
+            let gateways = Arc::new(entry.gateways.clone());
+            let broadcast_gateways = Arc::new(entry.broadcast_gateways.clone());
+            let mut shutdown_rx = self.shutdown_tx.subscribe();
 
-        loop {
-            tokio::select! {
-                result = listener.accept() => {
-                    let (stream, _peer) = result?;
-                    let gateways = gateways.clone();
-                    let broadcast_gateways = broadcast_gateways.clone();
+            tokio::spawn(async move {
+                loop {
+                    tokio::select! {
+                        result = listener.accept() => {
+                            let (stream, _) = match result {
+                                Ok(r) => r,
+                                Err(e) => { eprintln!("Accept error: {}", e); continue; }
+                            };
+                            let gateways = gateways.clone();
+                            let broadcast_gateways = broadcast_gateways.clone();
 
-                    tokio::spawn(async move {
-                        let ws_stream = match tokio_tungstenite::accept_async(stream).await {
-                            Ok(ws) => ws,
-                            Err(e) => {
-                                eprintln!("WS handshake error: {}", e);
-                                return;
-                            }
-                        };
+                            tokio::spawn(async move {
+                                let ws_stream = match tokio_tungstenite::accept_async(stream).await {
+                                    Ok(ws) => ws,
+                                    Err(e) => { eprintln!("WS handshake error: {}", e); return; }
+                                };
 
-                        // Raw TCP doesn't expose the request path; `accept_hdr_async` would be
-                        // needed for true path routing. One gateway per port is the current contract.
-                        let conn = TungsteniteWsConnection::Full(ws_stream);
+                                // Raw TCP has no HTTP path; take the first registered gateway.
+                                let conn = TungsteniteWsConnection::Full(ws_stream);
 
-                        if let Some((gateway, cm)) = broadcast_gateways.values().next() {
-                            TungsteniteAdapter::handle_connection_with_broadcast(
-                                conn,
-                                gateway,
-                                HashMap::new(),
-                                cm,
-                            )
-                            .await;
-                        } else if let Some(gateway) = gateways.values().next() {
-                            TungsteniteAdapter::handle_connection(conn, gateway, HashMap::new()).await;
+                                if let Some((gateway, handle, cm)) = broadcast_gateways.values().next() {
+                                    TungsteniteAdapter::handle_connection_with_handle_and_broadcast(
+                                        conn,
+                                        gateway,
+                                        HashMap::new(),
+                                        handle,
+                                        cm,
+                                    )
+                                    .await;
+                                } else if let Some((gateway, handle)) = gateways.values().next() {
+                                    TungsteniteAdapter::handle_connection_with_handle(
+                                        conn,
+                                        gateway,
+                                        HashMap::new(),
+                                        handle,
+                                    )
+                                    .await;
+                                }
+                            });
                         }
-                    });
-                }
-                _ = shutdown_rx.changed() => {
-                    if *shutdown_rx.borrow() {
-                        break;
+                        _ = shutdown_rx.changed() => {
+                            if *shutdown_rx.borrow() { break; }
+                        }
                     }
                 }
-            }
+            });
         }
 
         Ok(())

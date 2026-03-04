@@ -15,7 +15,7 @@ use futures_util::StreamExt;
 use serde_json::Value;
 use std::str::FromStr;
 
-use toni::websocket::{ConnectionManager, GatewayWrapper, WsError, WsMessage};
+use toni::websocket::{ConnectionManager, GatewayWrapper, WsError, WsGatewayHandle, WsMessage};
 use toni::{
     async_trait, http_helpers::Extensions, Body as ToniBody, HttpAdapter, HttpMethod, HttpRequest,
     HttpResponse, InstanceWrapper, ToResponse, WebSocketAdapter,
@@ -29,6 +29,7 @@ use crate::TokioSender;
 #[derive(Clone)]
 pub struct AxumAdapter {
     instance: Router,
+    ws_ports: HashMap<u16, Router>,
     shutdown_tx: Arc<watch::Sender<bool>>,
 }
 
@@ -37,6 +38,7 @@ impl AxumAdapter {
         let (tx, _) = watch::channel(false);
         Self {
             instance: Router::new(),
+            ws_ports: HashMap::new(),
             shutdown_tx: Arc::new(tx),
         }
     }
@@ -302,5 +304,92 @@ impl WebSocketAdapter for AxumAdapter {
             }
             AxumWsConnection::ReadOnly(_) => panic!("Cannot split an already-split connection"),
         }
+    }
+
+    fn create(&mut self, port: u16) -> anyhow::Result<()> {
+        self.ws_ports.entry(port).or_insert_with(Router::new);
+        Ok(())
+    }
+
+    fn attach(
+        &mut self,
+        port: u16,
+        path: &str,
+        gateway: Arc<GatewayWrapper>,
+        handle: Arc<WsGatewayHandle>,
+    ) -> anyhow::Result<()> {
+        let router = self.ws_ports.entry(port).or_insert_with(Router::new);
+        *router = router.clone().route(
+            path,
+            get(move |headers: HeaderMap, ws: WebSocketUpgrade| {
+                let gateway = gateway.clone();
+                let handle = handle.clone();
+                async move {
+                    ws.on_upgrade(move |socket| async move {
+                        let headers = extract_headers(&headers);
+                        AxumAdapter::handle_connection_with_handle(
+                            AxumWsConnection::Full(socket),
+                            &gateway,
+                            headers,
+                            &handle,
+                        )
+                        .await;
+                    })
+                }
+            }),
+        );
+        Ok(())
+    }
+
+    fn attach_with_broadcast(
+        &mut self,
+        port: u16,
+        path: &str,
+        gateway: Arc<GatewayWrapper>,
+        handle: Arc<WsGatewayHandle>,
+        connection_manager: Arc<ConnectionManager>,
+    ) -> anyhow::Result<()> {
+        let router = self.ws_ports.entry(port).or_insert_with(Router::new);
+        *router = router.clone().route(
+            path,
+            get(move |headers: HeaderMap, ws: WebSocketUpgrade| {
+                let gateway = gateway.clone();
+                let handle = handle.clone();
+                let cm = connection_manager.clone();
+                async move {
+                    ws.on_upgrade(move |socket| async move {
+                        let headers = extract_headers(&headers);
+                        AxumAdapter::handle_connection_with_handle_and_broadcast(
+                            AxumWsConnection::Full(socket),
+                            &gateway,
+                            headers,
+                            &handle,
+                            &cm,
+                        )
+                        .await;
+                    })
+                }
+            }),
+        );
+        Ok(())
+    }
+
+    async fn listen(&mut self, hostname: &str) -> anyhow::Result<()> {
+        for (port, router) in &self.ws_ports {
+            let addr = format!("{}:{}", hostname, port);
+            let listener = TcpListener::bind(&addr).await?;
+            let router = router.clone();
+            let mut shutdown_rx = self.shutdown_tx.subscribe();
+
+            tokio::spawn(async move {
+                axum::serve(listener, router)
+                    .with_graceful_shutdown(async move {
+                        let _ = shutdown_rx.wait_for(|v| *v).await;
+                    })
+                    .await
+                    .ok();
+            });
+        }
+        Ok(())
     }
 }

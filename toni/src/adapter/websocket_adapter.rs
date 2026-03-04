@@ -6,37 +6,22 @@ use async_trait::async_trait;
 
 use crate::websocket::helpers::create_client_from_headers;
 use crate::websocket::{
-    ConnectionManager, DisconnectReason, GatewayWrapper, Sender as WsSender, WsClient, WsError,
-    WsMessage,
+    ConnectionManager, DisconnectReason, GatewayWrapper, Sender as WsSender, WsClient,
+    WsError, WsGatewayHandle, WsMessage,
 };
 
 /// Interface for WebSocket server adapters (both same-port upgrade and standalone).
 ///
-/// Implement `recv`, `send`, and `bind_gateway` at minimum. `split` and `listen` are
-/// only needed for broadcast mode and separate-port deployment respectively.
-/// `handle_connection` and `handle_connection_with_broadcast` are provided as defaults
-/// and should not be overridden.
-///
-/// ```rust,ignore
-/// impl WebSocketAdapter for MyAdapter {
-///     type Connection = my_framework::WebSocket;
-///     type Sender = MySender;
-///
-///     async fn recv(conn: &mut Self::Connection) -> Option<Result<WsMessage, WsError>> { ... }
-///     async fn send(conn: &mut Self::Connection, msg: WsMessage) -> Result<(), WsError> { ... }
-///
-///     fn bind_gateway(&mut self, path: &str, gateway: Arc<GatewayWrapper>) -> Result<()> { ... }
-///     async fn listen(&mut self, port: u16, hostname: &str) -> Result<()> { ... }
-/// }
-/// ```
+/// Implement `recv`, `send`, and either `bind_gateway` (same-port, via `HttpAdapter`) or
+/// `create`/`attach`/`listen` (separate-port standalone server).
+/// `split` is required only when broadcast mode or `WsGatewayHandle` is used.
+/// Template methods (`handle_connection*`) are provided as defaults and should not be overridden.
 #[async_trait]
 pub trait WebSocketAdapter: Send + Sync + 'static {
     /// The adapter's native per-connection type (e.g. `axum::extract::ws::WebSocket`).
     type Connection: Send + 'static;
 
-    /// The write-only handle returned by `split`, used by `ConnectionManager` for broadcasting.
-    ///
-    /// Only required when broadcast mode is used — otherwise `split` can remain unimplemented.
+    /// The write-only handle returned by `split`, used for proactive sends.
     type Sender: WsSender + Send + Sync + 'static;
 
     /// Returns `None` when the connection is closed.
@@ -44,20 +29,82 @@ pub trait WebSocketAdapter: Send + Sync + 'static {
 
     async fn send(conn: &mut Self::Connection, msg: WsMessage) -> Result<(), WsError>;
 
-    /// Split the connection into a read half (still `Self::Connection`) and a shared write handle.
+    /// Split the connection into a read half and a shared write handle.
     ///
-    /// Required only for broadcast mode. After splitting, `recv` is called on the read half
-    /// and all writes go through `ConnectionManager` via the returned `Sender`.
-    ///
-    /// **Default:** panics — implement when `BroadcastModule` is in use.
+    /// Required for `WsGatewayHandle` and broadcast mode. **Default:** panics.
     fn split(conn: Self::Connection) -> (Self::Connection, Self::Sender) {
         let _ = conn;
         unimplemented!(
-            "split() not supported — implement WebSocketAdapter::split to enable broadcast mode"
+            "split() not supported — implement WebSocketAdapter::split to enable handle/broadcast mode"
         )
     }
 
-    /// Framework adapters should not override this — implement `recv` and `send` instead.
+    // -------------------------------------------------------------------------
+    // Separate-port server lifecycle
+    // -------------------------------------------------------------------------
+
+    /// Configure a server for the given port without starting it.
+    ///
+    /// Called once per unique port before any `attach` calls.
+    /// **Default:** Returns error — implement for separate-port support.
+    fn create(&mut self, port: u16) -> Result<()> {
+        let _ = port;
+        Err(anyhow::anyhow!(
+            "This WebSocket adapter does not support separate-port servers"
+        ))
+    }
+
+    /// Wire a gateway and its handle to a path on an already-created port.
+    ///
+    /// Called once per gateway after `create`. **Default:** Returns error.
+    fn attach(
+        &mut self,
+        port: u16,
+        path: &str,
+        gateway: Arc<GatewayWrapper>,
+        handle: Arc<WsGatewayHandle>,
+    ) -> Result<()> {
+        let _ = (port, path, gateway, handle);
+        Err(anyhow::anyhow!(
+            "This WebSocket adapter does not support separate-port servers"
+        ))
+    }
+
+    /// Broadcast-aware variant of `attach`. Called instead of `attach` when `BroadcastModule`
+    /// is imported. **Default:** Ignores `connection_manager` and delegates to `attach`.
+    fn attach_with_broadcast(
+        &mut self,
+        port: u16,
+        path: &str,
+        gateway: Arc<GatewayWrapper>,
+        handle: Arc<WsGatewayHandle>,
+        connection_manager: Arc<ConnectionManager>,
+    ) -> Result<()> {
+        let _ = connection_manager;
+        self.attach(port, path, gateway, handle)
+    }
+
+    /// Start accepting connections on all previously `create`d ports.
+    ///
+    /// Implementations should spawn tasks and return immediately so the caller
+    /// can start the HTTP server concurrently.
+    /// **Default:** Returns error.
+    async fn listen(&mut self, hostname: &str) -> Result<()> {
+        let _ = hostname;
+        Err(anyhow::anyhow!(
+            "Standalone WebSocket server not supported by this adapter"
+        ))
+    }
+
+    async fn close(&mut self) -> Result<()> {
+        Ok(())
+    }
+
+    // -------------------------------------------------------------------------
+    // Connection loop templates — do not override
+    // -------------------------------------------------------------------------
+
+    /// Simple request/response loop — no split, no external registry.
     async fn handle_connection(
         conn: Self::Connection,
         gateway: &Arc<GatewayWrapper>,
@@ -72,8 +119,6 @@ pub trait WebSocketAdapter: Send + Sync + 'static {
             return;
         }
 
-        println!("Client {} connected to {}", client_id, gateway.get_path());
-
         while let Some(msg_result) = Self::recv(&mut conn).await {
             match msg_result {
                 Ok(ws_msg) => match gateway.handle_message(client_id.clone(), ws_msg).await {
@@ -84,7 +129,6 @@ pub trait WebSocketAdapter: Send + Sync + 'static {
                     }
                     Ok(None) => {}
                     Err(e) => {
-                        eprintln!("Error handling message: {}", e);
                         let error_msg = WsMessage::text(
                             serde_json::json!({ "error": e.to_string() }).to_string(),
                         );
@@ -95,24 +139,139 @@ pub trait WebSocketAdapter: Send + Sync + 'static {
                         }
                     }
                 },
-                Err(e) => {
-                    eprintln!("WebSocket error: {}", e);
-                    break;
-                }
+                Err(_) => break,
             }
         }
 
-        println!(
-            "Client {} disconnected from {}",
-            client_id,
-            gateway.get_path()
-        );
         gateway
             .handle_disconnect(client_id, DisconnectReason::ClientDisconnect)
             .await;
     }
 
-    /// Framework adapters should not override this — implement `recv`, `send`, and `split`.
+    /// Handle + split loop — registers senders with the gateway handle for proactive sends.
+    async fn handle_connection_with_handle(
+        conn: Self::Connection,
+        gateway: &Arc<GatewayWrapper>,
+        headers: HashMap<String, String>,
+        handle: &Arc<WsGatewayHandle>,
+    ) {
+        let (mut read_half, sender) = Self::split(conn);
+        let client = create_client_from_headers(headers);
+        let client_id = client.id.clone();
+
+        // Phase 1: guards pass, client stored
+        if let Err(e) = gateway.begin_connect(client).await {
+            eprintln!("Connection rejected: {}", e);
+            return;
+        }
+
+        // Phase 2: register sender with handle — client is now reachable for proactive sends
+        let sender: Arc<dyn WsSender> = Arc::new(sender);
+        handle.register(client_id.clone(), sender);
+
+        // Phase 3: on_connect fires
+        if let Err(e) = gateway.complete_connect(&client_id).await {
+            eprintln!("on_connect hook failed: {}", e);
+            handle.unregister(&client_id);
+            return;
+        }
+
+        while let Some(msg_result) = Self::recv(&mut read_half).await {
+            match msg_result {
+                Ok(ws_msg) => match gateway.handle_message(client_id.clone(), ws_msg).await {
+                    Ok(Some(response)) => {
+                        handle.emit(&client_id, response).await;
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        let error_msg = WsMessage::text(
+                            serde_json::json!({ "error": e.to_string() }).to_string(),
+                        );
+                        handle.emit(&client_id, error_msg).await;
+                        match &e {
+                            WsError::ConnectionClosed(_) | WsError::AuthFailed(_) => break,
+                            _ => {}
+                        }
+                    }
+                },
+                Err(_) => break,
+            }
+        }
+
+        handle.unregister(&client_id);
+        gateway
+            .handle_disconnect(client_id, DisconnectReason::ClientDisconnect)
+            .await;
+    }
+
+    /// Handle + split loop with both a gateway handle and `ConnectionManager`.
+    ///
+    /// Registers senders with both so the gateway can use `WsGatewayHandle` for
+    /// per-gateway sends and `BroadcastService` for cross-gateway sends.
+    async fn handle_connection_with_handle_and_broadcast(
+        conn: Self::Connection,
+        gateway: &Arc<GatewayWrapper>,
+        headers: HashMap<String, String>,
+        handle: &Arc<WsGatewayHandle>,
+        connection_manager: &Arc<ConnectionManager>,
+    ) {
+        let (mut read_half, sender) = Self::split(conn);
+        let client = create_client_from_headers(headers);
+        let client_id = client.id.clone();
+
+        // Phase 1: guards pass, client stored
+        if let Err(e) = gateway.begin_connect(client).await {
+            eprintln!("Connection rejected: {}", e);
+            return;
+        }
+
+        // Phase 2: register with both registries
+        let sender: Arc<dyn WsSender> = Arc::new(sender);
+        handle.register(client_id.clone(), sender.clone());
+        connection_manager.register(
+            WsClient::new(&client_id),
+            sender,
+            gateway.get_namespace(),
+        );
+
+        // Phase 3: on_connect fires
+        if let Err(e) = gateway.complete_connect(&client_id).await {
+            eprintln!("on_connect hook failed: {}", e);
+            handle.unregister(&client_id);
+            connection_manager.unregister(&client_id);
+            return;
+        }
+
+        while let Some(msg_result) = Self::recv(&mut read_half).await {
+            match msg_result {
+                Ok(ws_msg) => match gateway.handle_message(client_id.clone(), ws_msg).await {
+                    Ok(Some(response)) => {
+                        handle.emit(&client_id, response).await;
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        let error_msg = WsMessage::text(
+                            serde_json::json!({ "error": e.to_string() }).to_string(),
+                        );
+                        handle.emit(&client_id, error_msg).await;
+                        match &e {
+                            WsError::ConnectionClosed(_) | WsError::AuthFailed(_) => break,
+                            _ => {}
+                        }
+                    }
+                },
+                Err(_) => break,
+            }
+        }
+
+        handle.unregister(&client_id);
+        connection_manager.unregister(&client_id);
+        gateway
+            .handle_disconnect(client_id, DisconnectReason::ClientDisconnect)
+            .await;
+    }
+
+    /// Same-port broadcast loop — kept for `HttpAdapter` upgrade routes.
     async fn handle_connection_with_broadcast(
         conn: Self::Connection,
         gateway: &Arc<GatewayWrapper>,
@@ -123,28 +282,19 @@ pub trait WebSocketAdapter: Send + Sync + 'static {
         let client = create_client_from_headers(headers);
         let client_id = client.id.clone();
 
-        // Phase 1: guards pass, client stored in GatewayWrapper
         if let Err(e) = gateway.begin_connect(client).await {
             eprintln!("Connection rejected: {}", e);
             return;
         }
 
-        // Phase 2: register with ConnectionManager — client is now reachable for broadcasting
         let sender: Arc<dyn WsSender> = Arc::new(sender);
         connection_manager.register(WsClient::new(&client_id), sender, gateway.get_namespace());
 
-        // Phase 3: on_connect fires — client is fully live in both GW map and ConnectionManager
         if let Err(e) = gateway.complete_connect(&client_id).await {
             eprintln!("on_connect hook failed: {}", e);
             connection_manager.unregister(&client_id);
             return;
         }
-
-        println!(
-            "✓ Client {} connected to {} (broadcast)",
-            client_id,
-            gateway.get_path()
-        );
 
         while let Some(msg_result) = Self::recv(&mut read_half).await {
             match msg_result {
@@ -156,7 +306,6 @@ pub trait WebSocketAdapter: Send + Sync + 'static {
                     }
                     Ok(None) => {}
                     Err(e) => {
-                        eprintln!("Error handling message: {}", e);
                         let error_msg = WsMessage::text(
                             serde_json::json!({ "error": e.to_string() }).to_string(),
                         );
@@ -169,105 +318,76 @@ pub trait WebSocketAdapter: Send + Sync + 'static {
                         }
                     }
                 },
-                Err(e) => {
-                    eprintln!("WebSocket error: {}", e);
-                    break;
-                }
+                Err(_) => break,
             }
         }
 
-        println!(
-            "✗ Client {} disconnected from {}",
-            client_id,
-            gateway.get_path()
-        );
         connection_manager.unregister(&client_id);
         gateway
             .handle_disconnect(client_id, DisconnectReason::ClientDisconnect)
             .await;
     }
-
-    /// Register a gateway for the standalone (separate-port) WebSocket server.
-    ///
-    /// **Default:** Returns error — implement to support gateway routing.
-    fn bind_gateway(&mut self, path: &str, gateway: Arc<GatewayWrapper>) -> Result<()> {
-        let _ = (path, gateway);
-        Err(anyhow::anyhow!(
-            "This WebSocket adapter does not implement bind_gateway"
-        ))
-    }
-
-    /// Broadcast-aware variant of `bind_gateway`.
-    ///
-    /// Called instead of `bind_gateway` when `BroadcastModule` is imported.
-    ///
-    /// **Default:** Ignores `connection_manager` and falls back to `bind_gateway`.
-    fn bind_gateway_with_broadcast(
-        &mut self,
-        path: &str,
-        gateway: Arc<GatewayWrapper>,
-        connection_manager: Arc<ConnectionManager>,
-    ) -> Result<()> {
-        let _ = connection_manager;
-        self.bind_gateway(path, gateway)
-    }
-
-    /// **Default:** Returns error — implement to start a separate-port server.
-    async fn listen(&mut self, port: u16, hostname: &str) -> Result<()> {
-        let _ = (port, hostname);
-        Err(anyhow::anyhow!(
-            "Standalone WebSocket server not supported by this adapter"
-        ))
-    }
-
-    async fn close(&mut self) -> Result<()> {
-        Ok(())
-    }
 }
 
-/// Object-safe internal facade used by `ToniApplication` to store any `WebSocketAdapter`
-/// behind a `Box<dyn ErasedWebSocketAdapter>` without requiring associated types at the
-/// storage site. Users never interact with this trait directly.
+/// Object-safe internal facade over `WebSocketAdapter` for storage in `ToniApplication`.
 #[async_trait]
 pub(crate) trait ErasedWebSocketAdapter: Send + Sync + 'static {
-    fn clone_box(&self) -> Box<dyn ErasedWebSocketAdapter>;
-    fn bind_gateway(&mut self, path: &str, gateway: Arc<GatewayWrapper>) -> Result<()>;
-    fn bind_gateway_with_broadcast(
+    fn create(&mut self, port: u16) -> Result<()>;
+    fn attach(
         &mut self,
+        port: u16,
         path: &str,
         gateway: Arc<GatewayWrapper>,
+        handle: Arc<WsGatewayHandle>,
+    ) -> Result<()>;
+    fn attach_with_broadcast(
+        &mut self,
+        port: u16,
+        path: &str,
+        gateway: Arc<GatewayWrapper>,
+        handle: Arc<WsGatewayHandle>,
         connection_manager: Arc<ConnectionManager>,
     ) -> Result<()>;
-    async fn listen(&mut self, port: u16, hostname: &str) -> Result<()>;
+    async fn listen(&mut self, hostname: &str) -> Result<()>;
     async fn close(&mut self) -> Result<()>;
 }
 
 #[async_trait]
-impl<W: WebSocketAdapter + Clone> ErasedWebSocketAdapter for W {
-    fn clone_box(&self) -> Box<dyn ErasedWebSocketAdapter> {
-        Box::new(self.clone())
+impl<W: WebSocketAdapter> ErasedWebSocketAdapter for W {
+    fn create(&mut self, port: u16) -> Result<()> {
+        <W as WebSocketAdapter>::create(self, port)
     }
 
-    fn bind_gateway(&mut self, path: &str, gateway: Arc<GatewayWrapper>) -> Result<()> {
-        <W as WebSocketAdapter>::bind_gateway(self, path, gateway)
-    }
-
-    fn bind_gateway_with_broadcast(
+    fn attach(
         &mut self,
+        port: u16,
         path: &str,
         gateway: Arc<GatewayWrapper>,
+        handle: Arc<WsGatewayHandle>,
+    ) -> Result<()> {
+        <W as WebSocketAdapter>::attach(self, port, path, gateway, handle)
+    }
+
+    fn attach_with_broadcast(
+        &mut self,
+        port: u16,
+        path: &str,
+        gateway: Arc<GatewayWrapper>,
+        handle: Arc<WsGatewayHandle>,
         connection_manager: Arc<ConnectionManager>,
     ) -> Result<()> {
-        <W as WebSocketAdapter>::bind_gateway_with_broadcast(
+        <W as WebSocketAdapter>::attach_with_broadcast(
             self,
+            port,
             path,
             gateway,
+            handle,
             connection_manager,
         )
     }
 
-    async fn listen(&mut self, port: u16, hostname: &str) -> Result<()> {
-        <W as WebSocketAdapter>::listen(self, port, hostname).await
+    async fn listen(&mut self, hostname: &str) -> Result<()> {
+        <W as WebSocketAdapter>::listen(self, hostname).await
     }
 
     async fn close(&mut self) -> Result<()> {
