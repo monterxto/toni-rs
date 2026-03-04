@@ -1,6 +1,7 @@
 use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
 
 use anyhow::Result;
+use futures::channel::oneshot;
 
 use crate::{
     adapter::{ErasedWebSocketAdapter, WebSocketAdapter},
@@ -19,6 +20,7 @@ pub struct ToniApplication<H: HttpAdapter> {
     ws_gateways: HashMap<String, Arc<GatewayWrapper>>,
     /// WebSocket adapter (for separate port support)
     ws_adapter: Option<Box<dyn ErasedWebSocketAdapter>>,
+    ws_shutdown_txs: Vec<oneshot::Sender<()>>,
 }
 
 impl<H: HttpAdapter> ToniApplication<H> {
@@ -29,6 +31,7 @@ impl<H: HttpAdapter> ToniApplication<H> {
             routes_resolver: RoutesResolver::new(container),
             ws_gateways: HashMap::new(),
             ws_adapter: None,
+            ws_shutdown_txs: Vec::new(),
         }
     }
 
@@ -98,11 +101,12 @@ impl<H: HttpAdapter> ToniApplication<H> {
 
         let _ = self.http_adapter.close().await;
 
-        // TODO: for separate-port gateways ws_adapter is moved into a spawned task via
-        // take() in listen(), so self.ws_adapter is None here. A shared shutdown channel
-        // (like the watch::Sender used for HTTP) is needed to signal the spawned server.
         if let Some(ws) = &mut self.ws_adapter {
             let _ = ws.close().await;
+        }
+
+        for tx in self.ws_shutdown_txs.drain(..) {
+            let _ = tx.send(());
         }
 
         Ok(())
@@ -249,17 +253,25 @@ impl<H: HttpAdapter> ToniApplication<H> {
         let http_clone = self.http_adapter.clone();
         let http_hostname = hostname.to_string();
 
-        let ws_futs: Vec<_> = port_to_adapter
-            .into_iter()
-            .map(|(ws_port, mut ws)| {
-                let h = hostname.to_string();
-                async move {
-                    if let Err(e) = ws.listen(ws_port, &h).await {
+        let mut ws_futs = Vec::new();
+        for (ws_port, mut ws) in port_to_adapter {
+            let (tx, rx) = oneshot::channel::<()>();
+            self.ws_shutdown_txs.push(tx);
+            let h = hostname.to_string();
+            ws_futs.push(async move {
+                match futures::future::select(
+                    Box::pin(ws.listen(ws_port, &h)),
+                    Box::pin(rx),
+                )
+                .await
+                {
+                    futures::future::Either::Left((Err(e), _)) => {
                         eprintln!("WS server on port {} failed: {}", ws_port, e);
                     }
+                    _ => {}
                 }
-            })
-            .collect();
+            });
+        }
 
         if ws_futs.is_empty() {
             if let Err(e) = http_clone.listen(port, &http_hostname).await {
