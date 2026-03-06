@@ -274,12 +274,7 @@ impl WebSocketAdapter for AxumAdapter {
         Ok(())
     }
 
-    fn bind(
-        &mut self,
-        port: u16,
-        path: &str,
-        callbacks: Arc<WsConnectionCallbacks>,
-    ) -> Result<()> {
+    fn bind(&mut self, port: u16, path: &str, callbacks: Arc<WsConnectionCallbacks>) -> Result<()> {
         let router = self.ws_ports.entry(port).or_insert_with(Router::new);
         *router = router.clone().route(path, ws_route(callbacks));
         Ok(())

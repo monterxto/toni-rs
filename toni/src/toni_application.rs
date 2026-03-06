@@ -9,8 +9,8 @@ use crate::{
     injector::{GatewayResolver, IntoToken, ToniContainer},
     router::RoutesResolver,
     websocket::{
-        helpers::create_client_from_headers, ConnectionManager, DisconnectReason, GatewayWrapper,
-        WsClient, WsError, WsGatewayHandle, WsMessage,
+        ConnectionManager, DisconnectReason, GatewayWrapper, WsClient, WsError, WsGatewayHandle,
+        WsMessage, helpers::create_client_from_headers,
     },
 };
 

@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use parking_lot::RwLock;
 
-use super::{broadcast::ClientId, Sender, WsMessage};
+use super::{Sender, WsMessage, broadcast::ClientId};
 
 pub struct WsGatewayHandle {
     clients: Arc<RwLock<HashMap<ClientId, Arc<dyn Sender>>>>,

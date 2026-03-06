@@ -2,7 +2,10 @@ use anyhow::{anyhow, Context, Result};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use actix_web::{dev::Server, web, web::Bytes, App, HttpRequest as ActixHttpRequest, HttpResponse as ActixHttpResponse, HttpServer};
+use actix_web::{
+    dev::Server, web, web::Bytes, App, HttpRequest as ActixHttpRequest,
+    HttpResponse as ActixHttpResponse, HttpServer,
+};
 use serde_json::Value;
 use toni::{
     http_helpers::Extensions, Body, HttpAdapter, HttpMethod, HttpRequest, HttpResponse,
@@ -239,46 +242,46 @@ impl HttpAdapter for ActixAdapter {
                     HttpMethod::OPTIONS => {
                         app = app.route(
                             &path,
-                            web::route()
-                                .method(actix_web::http::Method::OPTIONS)
-                                .to(move |req: ActixHttpRequest, body: Bytes| {
+                            web::route().method(actix_web::http::Method::OPTIONS).to(
+                                move |req: ActixHttpRequest, body: Bytes| {
                                     let handler = handler.clone();
                                     async move {
                                         ActixAdapter::handle_request((req, body), handler)
                                             .await
                                             .unwrap()
                                     }
-                                }),
+                                },
+                            ),
                         );
                     }
                     HttpMethod::TRACE => {
                         app = app.route(
                             &path,
-                            web::route()
-                                .method(actix_web::http::Method::TRACE)
-                                .to(move |req: ActixHttpRequest, body: Bytes| {
+                            web::route().method(actix_web::http::Method::TRACE).to(
+                                move |req: ActixHttpRequest, body: Bytes| {
                                     let handler = handler.clone();
                                     async move {
                                         ActixAdapter::handle_request((req, body), handler)
                                             .await
                                             .unwrap()
                                     }
-                                }),
+                                },
+                            ),
                         );
                     }
                     HttpMethod::CONNECT => {
                         app = app.route(
                             &path,
-                            web::route()
-                                .method(actix_web::http::Method::CONNECT)
-                                .to(move |req: ActixHttpRequest, body: Bytes| {
+                            web::route().method(actix_web::http::Method::CONNECT).to(
+                                move |req: ActixHttpRequest, body: Bytes| {
                                     let handler = handler.clone();
                                     async move {
                                         ActixAdapter::handle_request((req, body), handler)
                                             .await
                                             .unwrap()
                                     }
-                                }),
+                                },
+                            ),
                         );
                     }
                 }

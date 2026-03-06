@@ -149,8 +149,13 @@ pub fn generate_instance_provider_system(
     let lifecycle_hooks = detect_lifecycle_hooks(impl_block);
     enhancer_traits.is_gateway = is_gateway;
 
-    let provider_wrapper =
-        generate_provider_wrapper(struct_name, dependencies, scope, &enhancer_traits, &lifecycle_hooks);
+    let provider_wrapper = generate_provider_wrapper(
+        struct_name,
+        dependencies,
+        scope,
+        &enhancer_traits,
+        &lifecycle_hooks,
+    );
 
     let manager = generate_manager(struct_name, dependencies, scope);
 

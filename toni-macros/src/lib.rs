@@ -344,7 +344,6 @@ pub fn set_metadata(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
 }
 
-
 // Helper derive to register #[inject] and #[default] as valid attributes
 // This allows them to be used on struct fields in injectable/controller_struct
 #[proc_macro_derive(Injectable, attributes(inject, default))]

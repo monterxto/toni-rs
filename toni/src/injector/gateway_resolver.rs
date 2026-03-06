@@ -84,7 +84,11 @@ impl GatewayResolver {
 
     fn resolve_error_handlers(&self, tokens: Vec<String>) -> Result<Vec<Arc<dyn ErrorHandler>>> {
         let mut error_handlers = Vec::new();
-        let global_error_handlers = self.container.borrow().get_global_enhancers().error_handlers;
+        let global_error_handlers = self
+            .container
+            .borrow()
+            .get_global_enhancers()
+            .error_handlers;
         error_handlers.extend(global_error_handlers);
         for token in tokens {
             if let Some(eh) = self.resolve_error_handler_by_token(&token)? {
@@ -99,7 +103,9 @@ impl GatewayResolver {
         for module_token in container.get_modules_token() {
             let providers = container.get_providers_instance(&module_token)?;
             if let Some(p) = providers.get(token) {
-                if let Some(g) = p.as_guard() { return Ok(Some(g)); }
+                if let Some(g) = p.as_guard() {
+                    return Ok(Some(g));
+                }
             }
         }
         Ok(None)
@@ -110,7 +116,9 @@ impl GatewayResolver {
         for module_token in container.get_modules_token() {
             let providers = container.get_providers_instance(&module_token)?;
             if let Some(p) = providers.get(token) {
-                if let Some(i) = p.as_interceptor() { return Ok(Some(i)); }
+                if let Some(i) = p.as_interceptor() {
+                    return Ok(Some(i));
+                }
             }
         }
         Ok(None)
@@ -121,7 +129,9 @@ impl GatewayResolver {
         for module_token in container.get_modules_token() {
             let providers = container.get_providers_instance(&module_token)?;
             if let Some(p) = providers.get(token) {
-                if let Some(pipe) = p.as_pipe() { return Ok(Some(pipe)); }
+                if let Some(pipe) = p.as_pipe() {
+                    return Ok(Some(pipe));
+                }
             }
         }
         Ok(None)
@@ -132,7 +142,9 @@ impl GatewayResolver {
         for module_token in container.get_modules_token() {
             let providers = container.get_providers_instance(&module_token)?;
             if let Some(p) = providers.get(token) {
-                if let Some(eh) = p.as_error_handler() { return Ok(Some(eh)); }
+                if let Some(eh) = p.as_error_handler() {
+                    return Ok(Some(eh));
+                }
             }
         }
         Ok(None)

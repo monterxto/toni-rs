@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use async_trait::async_trait;
 use async_lock::RwLock;
+use async_trait::async_trait;
 
 use crate::http_helpers::RouteMetadata;
 use crate::injector::{Context, Protocol};

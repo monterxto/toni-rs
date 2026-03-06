@@ -788,10 +788,7 @@ fn generate_singleton_controller_wrapper(
 
     // For static methods, we don't need to store or downcast the instance
     let (struct_fields, instance_downcast) = if is_static_method {
-        (
-            quote! {},
-            quote! {},
-        )
+        (quote! {}, quote! {})
     } else {
         (
             quote! {

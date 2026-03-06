@@ -21,32 +21,28 @@ pub struct WsConnectionCallbacks {
             + Send
             + Sync,
     >,
-    on_message: Arc<
-        dyn Fn(String, WsMessage) -> Pin<Box<dyn Future<Output = bool> + Send>>
-            + Send
-            + Sync,
-    >,
-    on_disconnect:
-        Arc<dyn Fn(String) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>,
+    on_message:
+        Arc<dyn Fn(String, WsMessage) -> Pin<Box<dyn Future<Output = bool> + Send>> + Send + Sync>,
+    on_disconnect: Arc<dyn Fn(String) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync>,
 }
 
 impl WsConnectionCallbacks {
     pub(crate) fn new(
         on_connect: impl Fn(
-                HashMap<String, String>,
-                Arc<dyn WsSender>,
-            ) -> Pin<Box<dyn Future<Output = Result<String, WsError>> + Send>>
-            + Send
-            + Sync
-            + 'static,
+            HashMap<String, String>,
+            Arc<dyn WsSender>,
+        ) -> Pin<Box<dyn Future<Output = Result<String, WsError>> + Send>>
+        + Send
+        + Sync
+        + 'static,
         on_message: impl Fn(String, WsMessage) -> Pin<Box<dyn Future<Output = bool> + Send>>
-            + Send
-            + Sync
-            + 'static,
+        + Send
+        + Sync
+        + 'static,
         on_disconnect: impl Fn(String) -> Pin<Box<dyn Future<Output = ()> + Send>>
-            + Send
-            + Sync
-            + 'static,
+        + Send
+        + Sync
+        + 'static,
     ) -> Self {
         Self {
             on_connect: Arc::new(on_connect),
@@ -104,12 +100,7 @@ pub trait WebSocketAdapter: Send + Sync + 'static {
     ///
     /// The adapter stores `callbacks` and invokes them for each connection on that path.
     /// **Default:** returns error.
-    fn bind(
-        &mut self,
-        port: u16,
-        path: &str,
-        callbacks: Arc<WsConnectionCallbacks>,
-    ) -> Result<()> {
+    fn bind(&mut self, port: u16, path: &str, callbacks: Arc<WsConnectionCallbacks>) -> Result<()> {
         let _ = (port, path, callbacks);
         Err(anyhow::anyhow!(
             "This WebSocket adapter does not support separate-port servers"
@@ -137,12 +128,7 @@ pub trait WebSocketAdapter: Send + Sync + 'static {
 #[async_trait]
 pub(crate) trait ErasedWebSocketAdapter: Send + Sync + 'static {
     fn create(&mut self, port: u16) -> Result<()>;
-    fn bind(
-        &mut self,
-        port: u16,
-        path: &str,
-        callbacks: Arc<WsConnectionCallbacks>,
-    ) -> Result<()>;
+    fn bind(&mut self, port: u16, path: &str, callbacks: Arc<WsConnectionCallbacks>) -> Result<()>;
     async fn listen(&mut self, hostname: &str) -> Result<()>;
     async fn close(&mut self) -> Result<()>;
 }
@@ -153,12 +139,7 @@ impl<W: WebSocketAdapter> ErasedWebSocketAdapter for W {
         <W as WebSocketAdapter>::create(self, port)
     }
 
-    fn bind(
-        &mut self,
-        port: u16,
-        path: &str,
-        callbacks: Arc<WsConnectionCallbacks>,
-    ) -> Result<()> {
+    fn bind(&mut self, port: u16, path: &str, callbacks: Arc<WsConnectionCallbacks>) -> Result<()> {
         <W as WebSocketAdapter>::bind(self, port, path, callbacks)
     }
 

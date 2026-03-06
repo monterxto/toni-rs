@@ -72,9 +72,9 @@ impl syn::parse::Parse for GatewayArgs {
                 return Err(Error::new(ident.span(), "Unknown argument"));
             }
 
-            return Err(
-                input.error("Expected path string, namespace argument, port argument, or struct definition")
-            );
+            return Err(input.error(
+                "Expected path string, namespace argument, port argument, or struct definition",
+            ));
         }
 
         let struct_def = struct_def.ok_or_else(|| {

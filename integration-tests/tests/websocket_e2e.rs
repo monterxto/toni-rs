@@ -30,11 +30,11 @@ mod common;
 use common::TestServer;
 use futures_util::{SinkExt, StreamExt};
 use serial_test::serial;
-use toni::{controller, module, post, Body as ToniBody};
-use toni::websocket::{BroadcastModule, BroadcastService, WsClient, WsError, WsMessage};
-use toni_macros::websocket_gateway;
-use toni_axum::AxumAdapter;
 use toni::toni_factory::ToniFactory;
+use toni::websocket::{BroadcastModule, BroadcastService, WsClient, WsError, WsMessage};
+use toni::{controller, module, post, Body as ToniBody};
+use toni_axum::AxumAdapter;
+use toni_macros::websocket_gateway;
 use toni_tungstenite::TungsteniteAdapter;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -311,7 +311,8 @@ async fn websocket_separate_port_end_to_end() {
     local.spawn_local(async move {
         let mut app =
             ToniFactory::create(PingModule::module_definition(), AxumAdapter::new()).await;
-        app.use_websocket_adapter(TungsteniteAdapter::new()).unwrap();
+        app.use_websocket_adapter(TungsteniteAdapter::new())
+            .unwrap();
         app.listen(http_port, "127.0.0.1").await;
     });
     tokio::task::spawn_local(async move {
@@ -343,8 +344,7 @@ async fn separate_port_close_stops_ws_server() {
     use std::time::Duration;
     use tokio::sync::oneshot;
 
-    static HTTP_PORT: std::sync::atomic::AtomicU16 =
-        std::sync::atomic::AtomicU16::new(32000);
+    static HTTP_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(32000);
     let http_port = HTTP_PORT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
     let (close_tx, close_rx) = oneshot::channel::<()>();
@@ -353,7 +353,8 @@ async fn separate_port_close_stops_ws_server() {
     local.spawn_local(async move {
         let mut app =
             ToniFactory::create(PingModule::module_definition(), AxumAdapter::new()).await;
-        app.use_websocket_adapter(TungsteniteAdapter::new()).unwrap();
+        app.use_websocket_adapter(TungsteniteAdapter::new())
+            .unwrap();
         tokio::select! {
             _ = app.listen(http_port, "127.0.0.1") => {}
             _ = close_rx => {

@@ -79,12 +79,7 @@ impl WebSocketAdapter for TungsteniteAdapter {
         Ok(())
     }
 
-    fn bind(
-        &mut self,
-        port: u16,
-        path: &str,
-        callbacks: Arc<WsConnectionCallbacks>,
-    ) -> Result<()> {
+    fn bind(&mut self, port: u16, path: &str, callbacks: Arc<WsConnectionCallbacks>) -> Result<()> {
         self.ports
             .entry(port)
             .or_insert_with(PortEntry::new)
