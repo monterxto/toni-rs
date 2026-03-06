@@ -1,20 +1,7 @@
-use axum::{
-    extract::ws::{Message, WebSocket},
-    http::HeaderMap,
-};
-use futures_util::stream::SplitStream;
+use axum::{extract::ws::Message, http::HeaderMap};
 use std::collections::HashMap;
 
 use toni::websocket::{WsError, WsMessage};
-
-/// Wraps an Axum WebSocket, supporting both full-duplex and read-only (post-split) modes.
-///
-/// `Full` is the initial state. After `split()`, the read half becomes `ReadOnly` and the
-/// write half is a `TokioSender` registered with `ConnectionManager`.
-pub enum AxumWsConnection {
-    Full(WebSocket),
-    ReadOnly(SplitStream<WebSocket>),
-}
 
 pub(crate) fn axum_to_ws_message(msg: Message) -> Result<WsMessage, WsError> {
     match msg {

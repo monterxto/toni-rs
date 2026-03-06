@@ -14,4 +14,4 @@
 
 mod adapter;
 
-pub use adapter::{TokioSender, TungsteniteAdapter, TungsteniteWsConnection};
+pub use adapter::TungsteniteAdapter;

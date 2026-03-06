@@ -3,9 +3,9 @@ use std::sync::Arc;
 
 use anyhow::Result;
 
+use crate::adapter::WsConnectionCallbacks;
 use crate::http_helpers::{HttpMethod, HttpRequest, HttpResponse, ToResponse};
 use crate::injector::InstanceWrapper;
-use crate::websocket::{ConnectionManager, GatewayWrapper};
 
 pub trait HttpAdapter: Clone + Send + Sync {
     type Request;
@@ -39,26 +39,11 @@ pub trait HttpAdapter: Clone + Send + Sync {
 
     /// Register a WebSocket gateway on the same port as HTTP (upgrade path).
     ///
-    /// **Default:** Returns error — implement to support WebSocket upgrades.
-    fn bind_gateway(&mut self, path: &str, gateway: Arc<GatewayWrapper>) -> Result<()> {
-        let _ = (path, gateway);
+    /// **Default:** returns error — implement to support WebSocket upgrades on this adapter.
+    fn bind_ws(&mut self, path: &str, callbacks: Arc<WsConnectionCallbacks>) -> Result<()> {
+        let _ = (path, callbacks);
         Err(anyhow::anyhow!(
             "This HTTP adapter does not support WebSocket upgrades"
         ))
-    }
-
-    /// Broadcast-aware variant of `bind_gateway`.
-    ///
-    /// Called instead of `bind_gateway` when `BroadcastModule` is imported.
-    ///
-    /// **Default:** Ignores `connection_manager` and falls back to `bind_gateway`.
-    fn bind_gateway_with_broadcast(
-        &mut self,
-        path: &str,
-        gateway: Arc<GatewayWrapper>,
-        connection_manager: Arc<ConnectionManager>,
-    ) -> Result<()> {
-        let _ = connection_manager;
-        self.bind_gateway(path, gateway)
     }
 }

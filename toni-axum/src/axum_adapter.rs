@@ -11,20 +11,18 @@ use axum::{
     routing::{connect, delete, get, head, options, patch, post, put, trace},
     RequestPartsExt, Router,
 };
-use futures_util::StreamExt;
+use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use std::str::FromStr;
 
-use toni::websocket::{ConnectionManager, GatewayWrapper, WsError, WsGatewayHandle, WsMessage};
+use toni::websocket::{Sender, WsMessage};
 use toni::{
     async_trait, http_helpers::Extensions, Body as ToniBody, HttpAdapter, HttpMethod, HttpRequest,
-    HttpResponse, InstanceWrapper, ToResponse, WebSocketAdapter,
+    HttpResponse, InstanceWrapper, ToResponse, WebSocketAdapter, WsConnectionCallbacks,
 };
 
-use crate::axum_websocket_adapter::{
-    axum_to_ws_message, extract_headers, ws_message_to_axum, AxumWsConnection,
-};
-use crate::TokioSender;
+use crate::axum_websocket_adapter::{axum_to_ws_message, extract_headers, ws_message_to_axum};
+use crate::tokio_sender::TokioSender;
 
 #[derive(Clone)]
 pub struct AxumAdapter {
@@ -43,6 +41,74 @@ impl AxumAdapter {
         }
     }
 }
+
+impl Default for AxumAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ── Shared connection loop ────────────────────────────────────────────────────
+
+/// Runs the full WebSocket connection lifecycle for one connected client.
+///
+/// Splits the socket, spawns a writer task, then pumps the read half through
+/// the framework callbacks until the connection closes.
+async fn run_ws_connection(
+    socket: axum::extract::ws::WebSocket,
+    callbacks: Arc<WsConnectionCallbacks>,
+    headers_map: HashMap<String, String>,
+) {
+    let (write, read) = socket.split();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<WsMessage>(32);
+
+    tokio::spawn(async move {
+        let mut write = write;
+        while let Some(msg) = rx.recv().await {
+            if let Ok(axum_msg) = ws_message_to_axum(msg) {
+                if write.send(axum_msg).await.is_err() {
+                    break;
+                }
+            }
+        }
+    });
+
+    let sender: Arc<dyn Sender> = Arc::new(TokioSender::new(tx));
+
+    let client_id = match callbacks.connect(headers_map, sender).await {
+        Ok(id) => id,
+        Err(_) => return,
+    };
+
+    let mut read = read;
+    while let Some(result) = read.next().await {
+        match result {
+            Ok(axum_msg) => match axum_to_ws_message(axum_msg) {
+                Ok(ws_msg) => {
+                    if !callbacks.message(client_id.clone(), ws_msg).await {
+                        break;
+                    }
+                }
+                Err(_) => {}
+            },
+            Err(_) => break,
+        }
+    }
+
+    callbacks.disconnect(client_id).await;
+}
+
+fn ws_route(callbacks: Arc<WsConnectionCallbacks>) -> axum::routing::MethodRouter {
+    get(move |headers: HeaderMap, ws: WebSocketUpgrade| {
+        let callbacks = callbacks.clone();
+        async move {
+            let headers_map = extract_headers(&headers);
+            ws.on_upgrade(move |socket| run_ws_connection(socket, callbacks, headers_map))
+        }
+    })
+}
+
+// ── HttpAdapter ───────────────────────────────────────────────────────────────
 
 impl HttpAdapter for AxumAdapter {
     type Request = Request<Body>;
@@ -193,188 +259,33 @@ impl HttpAdapter for AxumAdapter {
         }
     }
 
-    fn bind_gateway(&mut self, path: &str, gateway: Arc<GatewayWrapper>) -> Result<()> {
-        let gateway_clone = gateway.clone();
-
-        self.instance = self.instance.clone().route(
-            path,
-            get(move |headers: HeaderMap, ws: WebSocketUpgrade| {
-                let gateway = gateway_clone.clone();
-                async move {
-                    ws.on_upgrade(move |socket| async move {
-                        let headers = extract_headers(&headers);
-                        AxumAdapter::handle_connection(
-                            AxumWsConnection::Full(socket),
-                            &gateway,
-                            headers,
-                        )
-                        .await;
-                    })
-                }
-            }),
-        );
-
-        Ok(())
-    }
-
-    fn bind_gateway_with_broadcast(
-        &mut self,
-        path: &str,
-        gateway: Arc<GatewayWrapper>,
-        connection_manager: Arc<ConnectionManager>,
-    ) -> Result<()> {
-        let gateway_clone = gateway.clone();
-        let cm = connection_manager.clone();
-
-        self.instance = self.instance.clone().route(
-            path,
-            get(move |headers: HeaderMap, ws: WebSocketUpgrade| {
-                let gateway = gateway_clone.clone();
-                let cm = cm.clone();
-                async move {
-                    ws.on_upgrade(move |socket| async move {
-                        let headers = extract_headers(&headers);
-                        AxumAdapter::handle_connection_with_broadcast(
-                            AxumWsConnection::Full(socket),
-                            &gateway,
-                            headers,
-                            &cm,
-                        )
-                        .await;
-                    })
-                }
-            }),
-        );
-
+    fn bind_ws(&mut self, path: &str, callbacks: Arc<WsConnectionCallbacks>) -> Result<()> {
+        self.instance = self.instance.clone().route(path, ws_route(callbacks));
         Ok(())
     }
 }
 
+// ── WebSocketAdapter (separate-port) ─────────────────────────────────────────
+
 #[async_trait]
 impl WebSocketAdapter for AxumAdapter {
-    type Connection = AxumWsConnection;
-    type Sender = TokioSender;
-
-    async fn recv(conn: &mut Self::Connection) -> Option<Result<WsMessage, WsError>> {
-        match conn {
-            AxumWsConnection::Full(ws) => ws.recv().await.map(|r| {
-                r.map_err(|e| WsError::Internal(e.to_string()))
-                    .and_then(axum_to_ws_message)
-            }),
-            AxumWsConnection::ReadOnly(stream) => stream.next().await.map(|r| {
-                r.map_err(|e| WsError::Internal(e.to_string()))
-                    .and_then(axum_to_ws_message)
-            }),
-        }
-    }
-
-    async fn send(conn: &mut Self::Connection, msg: WsMessage) -> Result<(), WsError> {
-        match conn {
-            AxumWsConnection::Full(ws) => {
-                let axum_msg = ws_message_to_axum(msg)?;
-                ws.send(axum_msg)
-                    .await
-                    .map_err(|e| WsError::Internal(e.to_string()))
-            }
-            AxumWsConnection::ReadOnly(_) => Err(WsError::Internal(
-                "Cannot send on read-only connection".into(),
-            )),
-        }
-    }
-
-    fn split(conn: Self::Connection) -> (Self::Connection, Self::Sender) {
-        match conn {
-            AxumWsConnection::Full(ws) => {
-                use futures_util::SinkExt;
-                let (write, read) = ws.split();
-                let (tx, mut rx) = tokio::sync::mpsc::channel::<WsMessage>(32);
-
-                tokio::spawn(async move {
-                    let mut write = write;
-                    while let Some(msg) = rx.recv().await {
-                        if let Ok(axum_msg) = ws_message_to_axum(msg) {
-                            if write.send(axum_msg).await.is_err() {
-                                break;
-                            }
-                        }
-                    }
-                });
-
-                (AxumWsConnection::ReadOnly(read), TokioSender::new(tx))
-            }
-            AxumWsConnection::ReadOnly(_) => panic!("Cannot split an already-split connection"),
-        }
-    }
-
-    fn create(&mut self, port: u16) -> anyhow::Result<()> {
+    fn create(&mut self, port: u16) -> Result<()> {
         self.ws_ports.entry(port).or_insert_with(Router::new);
         Ok(())
     }
 
-    fn attach(
+    fn bind(
         &mut self,
         port: u16,
         path: &str,
-        gateway: Arc<GatewayWrapper>,
-        handle: Arc<WsGatewayHandle>,
-    ) -> anyhow::Result<()> {
+        callbacks: Arc<WsConnectionCallbacks>,
+    ) -> Result<()> {
         let router = self.ws_ports.entry(port).or_insert_with(Router::new);
-        *router = router.clone().route(
-            path,
-            get(move |headers: HeaderMap, ws: WebSocketUpgrade| {
-                let gateway = gateway.clone();
-                let handle = handle.clone();
-                async move {
-                    ws.on_upgrade(move |socket| async move {
-                        let headers = extract_headers(&headers);
-                        AxumAdapter::handle_connection_with_handle(
-                            AxumWsConnection::Full(socket),
-                            &gateway,
-                            headers,
-                            &handle,
-                        )
-                        .await;
-                    })
-                }
-            }),
-        );
+        *router = router.clone().route(path, ws_route(callbacks));
         Ok(())
     }
 
-    fn attach_with_broadcast(
-        &mut self,
-        port: u16,
-        path: &str,
-        gateway: Arc<GatewayWrapper>,
-        handle: Arc<WsGatewayHandle>,
-        connection_manager: Arc<ConnectionManager>,
-    ) -> anyhow::Result<()> {
-        let router = self.ws_ports.entry(port).or_insert_with(Router::new);
-        *router = router.clone().route(
-            path,
-            get(move |headers: HeaderMap, ws: WebSocketUpgrade| {
-                let gateway = gateway.clone();
-                let handle = handle.clone();
-                let cm = connection_manager.clone();
-                async move {
-                    ws.on_upgrade(move |socket| async move {
-                        let headers = extract_headers(&headers);
-                        AxumAdapter::handle_connection_with_handle_and_broadcast(
-                            AxumWsConnection::Full(socket),
-                            &gateway,
-                            headers,
-                            &handle,
-                            &cm,
-                        )
-                        .await;
-                    })
-                }
-            }),
-        );
-        Ok(())
-    }
-
-    async fn listen(&mut self, hostname: &str) -> anyhow::Result<()> {
+    async fn listen(&mut self, hostname: &str) -> Result<()> {
         for (port, router) in &self.ws_ports {
             let addr = format!("{}:{}", hostname, port);
             let listener = TcpListener::bind(&addr).await?;

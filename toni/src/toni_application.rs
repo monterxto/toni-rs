@@ -1,14 +1,17 @@
-use std::{cell::RefCell, collections::HashMap, collections::HashSet, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, collections::HashSet, pin::Pin, rc::Rc, sync::Arc};
 
 use anyhow::Result;
 
 use crate::{
-    adapter::{ErasedWebSocketAdapter, WebSocketAdapter},
+    adapter::{ErasedWebSocketAdapter, WebSocketAdapter, WsConnectionCallbacks},
     application_context::ToniApplicationContext,
     http_adapter::HttpAdapter,
     injector::{GatewayResolver, IntoToken, ToniContainer},
     router::RoutesResolver,
-    websocket::{ConnectionManager, GatewayWrapper, WsGatewayHandle},
+    websocket::{
+        helpers::create_client_from_headers, ConnectionManager, DisconnectReason, GatewayWrapper,
+        WsClient, WsError, WsGatewayHandle, WsMessage,
+    },
 };
 
 pub struct ToniApplication<H: HttpAdapter> {
@@ -35,7 +38,7 @@ impl<H: HttpAdapter> ToniApplication<H> {
         Ok(())
     }
 
-    /// Gateway discovery is deferred to `listen()` to allow adapter configuration beforehand
+    /// Gateway discovery is deferred to `listen()` to allow adapter configuration beforehand.
     pub fn use_websocket_adapter<A>(&mut self, adapter: A) -> Result<&mut Self>
     where
         A: WebSocketAdapter,
@@ -59,22 +62,23 @@ impl<H: HttpAdapter> ToniApplication<H> {
         Ok(())
     }
 
-    /// Returns an instance of `T` from the DI container, searching across all modules
+    /// Returns an instance of `T` from the DI container, searching across all modules.
     pub async fn get<T: 'static>(&self) -> Result<T> {
         self.context.get::<T>().await
     }
 
-    /// Returns an instance of `T` from a specific module's scope in the DI container
+    /// Returns an instance of `T` from a specific module's scope in the DI container.
     pub async fn get_from<T: 'static>(&self, module_token: &str) -> Result<T> {
         self.context.get_from::<T>(module_token).await
     }
 
-    /// Returns an instance from the DI container by token rather than type; use when providers are registered with a custom token
+    /// Returns an instance from the DI container by token rather than type; use when providers
+    /// are registered with a custom token.
     pub async fn get_by_token<T: 'static>(&self, token: impl IntoToken) -> Result<T> {
         self.context.get_by_token::<T>(token).await
     }
 
-    /// Returns an instance by token from a specific module's scope in the DI container
+    /// Returns an instance by token from a specific module's scope in the DI container.
     pub async fn get_from_by_token<T: 'static>(
         &self,
         module_token: &str,
@@ -167,10 +171,8 @@ impl<H: HttpAdapter> ToniApplication<H> {
             eprintln!("Error discovering WebSocket gateways: {}", e);
         }
 
-        // Resolve ConnectionManager if BroadcastModule is imported
         let connection_manager = self.get::<Arc<ConnectionManager>>().await.ok();
 
-        // Collect gateways for same-port (HTTP upgrade) and separate-port paths
         let (same_port, separate_port): (Vec<_>, Vec<_>) = self
             .ws_gateways
             .iter()
@@ -180,20 +182,18 @@ impl<H: HttpAdapter> ToniApplication<H> {
                 p.is_none() || p == Some(port)
             });
 
-        // Wire same-port gateways into the HTTP adapter as upgrade routes
+        // Wire same-port gateways into the HTTP adapter as upgrade routes.
         for (path, gateway) in &same_port {
-            let result = if let Some(ref cm) = connection_manager {
-                self.http_adapter
-                    .bind_gateway_with_broadcast(path, gateway.clone(), cm.clone())
-            } else {
-                self.http_adapter.bind_gateway(path, gateway.clone())
-            };
-            if let Err(e) = result {
+            let callbacks = Arc::new(make_ws_callbacks(
+                gateway.clone(),
+                connection_manager.clone(),
+            ));
+            if let Err(e) = self.http_adapter.bind_ws(path, callbacks) {
                 eprintln!("Failed to add WebSocket route at {}: {}", path, e);
             }
         }
 
-        // Wire separate-port gateways into the WS adapter
+        // Wire separate-port gateways into the standalone WS adapter.
         if !separate_port.is_empty() {
             if self.ws_adapter.is_none() {
                 for (path, gw) in &separate_port {
@@ -205,44 +205,36 @@ impl<H: HttpAdapter> ToniApplication<H> {
                     );
                 }
             } else {
-                // Create a server entry for each unique port
                 let mut seen: HashSet<u16> = HashSet::new();
                 for (_, gw) in &separate_port {
                     if let Some(ws_port) = gw.get_port() {
                         if seen.insert(ws_port) {
                             if let Some(ws) = &mut self.ws_adapter {
                                 if let Err(e) = ws.create(ws_port) {
-                                    eprintln!("Failed to create WS server on port {}: {}", ws_port, e);
+                                    eprintln!(
+                                        "Failed to create WS server on port {}: {}",
+                                        ws_port, e
+                                    );
                                 }
                             }
                         }
                     }
                 }
 
-                // Attach each gateway with its freshly created handle
                 for (path, gateway) in &separate_port {
                     if let Some(ws_port) = gateway.get_port() {
-                        let handle = Arc::new(WsGatewayHandle::new());
+                        let callbacks = Arc::new(make_ws_callbacks(
+                            gateway.clone(),
+                            connection_manager.clone(),
+                        ));
                         if let Some(ws) = &mut self.ws_adapter {
-                            let result = if let Some(ref cm) = connection_manager {
-                                ws.attach_with_broadcast(
-                                    ws_port,
-                                    path,
-                                    gateway.clone(),
-                                    handle,
-                                    cm.clone(),
-                                )
-                            } else {
-                                ws.attach(ws_port, path, gateway.clone(), handle)
-                            };
-                            if let Err(e) = result {
-                                eprintln!("Failed to attach gateway at {}: {}", path, e);
+                            if let Err(e) = ws.bind(ws_port, path, callbacks) {
+                                eprintln!("Failed to bind gateway at {}: {}", path, e);
                             }
                         }
                     }
                 }
 
-                // Start all WS servers (spawns tasks, returns immediately)
                 if let Some(ws) = &mut self.ws_adapter {
                     if let Err(e) = ws.listen(hostname).await {
                         eprintln!("WS adapter failed to start: {}", e);
@@ -252,7 +244,11 @@ impl<H: HttpAdapter> ToniApplication<H> {
         }
 
         let has_same_port_ws = !same_port.is_empty();
-        let server_type = if has_same_port_ws { "HTTP + WebSocket" } else { "HTTP" };
+        let server_type = if has_same_port_ws {
+            "HTTP + WebSocket"
+        } else {
+            "HTTP"
+        };
         println!("Starting {} server on {}:{}", server_type, hostname, port);
 
         if let Err(e) = self.http_adapter.clone().listen(port, hostname).await {
@@ -260,4 +256,80 @@ impl<H: HttpAdapter> ToniApplication<H> {
             std::process::exit(1);
         }
     }
+}
+
+/// Build the connection callbacks for one gateway, embedding the handle and optional
+/// ConnectionManager inside the closures so the adapter never sees framework internals.
+fn make_ws_callbacks(
+    gateway: Arc<GatewayWrapper>,
+    connection_manager: Option<Arc<ConnectionManager>>,
+) -> WsConnectionCallbacks {
+    let handle = Arc::new(WsGatewayHandle::new());
+
+    let g_connect = gateway.clone();
+    let g_message = gateway.clone();
+    let g_disconnect = gateway.clone();
+    let h_connect = handle.clone();
+    let h_message = handle.clone();
+    let h_disconnect = handle.clone();
+    let cm_connect = connection_manager.clone();
+    let cm_disconnect = connection_manager.clone();
+
+    WsConnectionCallbacks::new(
+        move |headers, sender| {
+            let gateway = g_connect.clone();
+            let handle = h_connect.clone();
+            let cm = cm_connect.clone();
+            Box::pin(async move {
+                let client = create_client_from_headers(headers);
+                let client_id = client.id.clone();
+                gateway.begin_connect(client).await?;
+                handle.register(client_id.clone(), sender.clone());
+                if let Some(cm) = &cm {
+                    cm.register(WsClient::new(&client_id), sender, gateway.get_namespace());
+                }
+                gateway.complete_connect(&client_id).await?;
+                Ok(client_id)
+            })
+        },
+        move |client_id, msg| {
+            let gateway = g_message.clone();
+            let handle = h_message.clone();
+            Box::pin(async move {
+                match gateway.handle_message(client_id.clone(), msg).await {
+                    Ok(Some(response)) => {
+                        handle.emit(&client_id, response).await;
+                        true
+                    }
+                    Ok(None) => true,
+                    Err(e) => {
+                        let error_msg = WsMessage::text(
+                            serde_json::json!({ "error": e.to_string() }).to_string(),
+                        );
+                        match &e {
+                            WsError::ConnectionClosed(_) | WsError::AuthFailed(_) => false,
+                            _ => {
+                                handle.emit(&client_id, error_msg).await;
+                                true
+                            }
+                        }
+                    }
+                }
+            })
+        },
+        move |client_id| {
+            let gateway = g_disconnect.clone();
+            let handle = h_disconnect.clone();
+            let cm = cm_disconnect.clone();
+            Box::pin(async move {
+                handle.unregister(&client_id);
+                if let Some(cm) = &cm {
+                    cm.unregister(&client_id);
+                }
+                gateway
+                    .handle_disconnect(client_id, DisconnectReason::ClientDisconnect)
+                    .await;
+            })
+        },
+    )
 }

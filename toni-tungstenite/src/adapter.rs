@@ -2,28 +2,17 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::Result;
-use futures_util::{stream::SplitStream, SinkExt, StreamExt};
-use tokio::net::TcpStream;
+use futures_util::{SinkExt, StreamExt};
+use tokio::net::TcpListener;
 use tokio::sync::{mpsc, watch};
-use tokio_tungstenite::{tungstenite::Message, WebSocketStream};
+use tokio_tungstenite::tungstenite::Message;
 use toni::async_trait;
-use toni::websocket::{
-    ConnectionManager, GatewayWrapper, SendError, Sender, TrySendError, WsError,
-    WsGatewayHandle, WsMessage,
-};
-use toni::WebSocketAdapter;
+use toni::websocket::{SendError, Sender, TrySendError, WsMessage};
+use toni::{WebSocketAdapter, WsConnectionCallbacks};
 
-/// `Full` is the initial state. After `split()`, the read half becomes `ReadOnly` and the
-/// write half is a `TokioSender` registered with the gateway handle (and optionally ConnectionManager).
-pub enum TungsteniteWsConnection {
-    Full(WebSocketStream<TcpStream>),
-    ReadOnly(SplitStream<WebSocketStream<TcpStream>>),
-}
+// ── TokioSender ───────────────────────────────────────────────────────────────
 
-// Safety: WebSocketStream<TcpStream> is Send
-unsafe impl Send for TungsteniteWsConnection {}
-
-pub struct TokioSender {
+struct TokioSender {
     inner: mpsc::Sender<WsMessage>,
 }
 
@@ -47,17 +36,17 @@ impl Sender for TokioSender {
     }
 }
 
+// ── TungsteniteAdapter ────────────────────────────────────────────────────────
+
 struct PortEntry {
-    gateways: HashMap<String, (Arc<GatewayWrapper>, Arc<WsGatewayHandle>)>,
-    broadcast_gateways:
-        HashMap<String, (Arc<GatewayWrapper>, Arc<WsGatewayHandle>, Arc<ConnectionManager>)>,
+    // path → callbacks; raw TCP has no path info, so we use the first registered binding
+    bindings: HashMap<String, Arc<WsConnectionCallbacks>>,
 }
 
 impl PortEntry {
     fn new() -> Self {
         Self {
-            gateways: HashMap::new(),
-            broadcast_gateways: HashMap::new(),
+            bindings: HashMap::new(),
         }
     }
 }
@@ -85,107 +74,33 @@ impl Default for TungsteniteAdapter {
 
 #[async_trait]
 impl WebSocketAdapter for TungsteniteAdapter {
-    type Connection = TungsteniteWsConnection;
-    type Sender = TokioSender;
-
-    async fn recv(conn: &mut Self::Connection) -> Option<Result<WsMessage, WsError>> {
-        loop {
-            let raw = match conn {
-                TungsteniteWsConnection::Full(ws) => ws.next().await,
-                TungsteniteWsConnection::ReadOnly(stream) => stream.next().await,
-            }?;
-
-            match raw {
-                Ok(Message::Text(t)) => return Some(Ok(WsMessage::Text(t.to_string()))),
-                Ok(Message::Binary(b)) => return Some(Ok(WsMessage::Binary(b.to_vec()))),
-                Ok(Message::Close(_)) => return None,
-                Ok(Message::Ping(_)) | Ok(Message::Pong(_)) | Ok(Message::Frame(_)) => continue,
-                Err(e) => return Some(Err(WsError::Internal(e.to_string()))),
-            }
-        }
-    }
-
-    async fn send(conn: &mut Self::Connection, msg: WsMessage) -> Result<(), WsError> {
-        match conn {
-            TungsteniteWsConnection::Full(ws) => {
-                let m = ws_message_to_tungstenite(msg)?;
-                ws.send(m).await.map_err(|e| WsError::Internal(e.to_string()))
-            }
-            TungsteniteWsConnection::ReadOnly(_) => {
-                Err(WsError::Internal("Cannot send on read-only connection".into()))
-            }
-        }
-    }
-
-    fn split(conn: Self::Connection) -> (Self::Connection, Self::Sender) {
-        match conn {
-            TungsteniteWsConnection::Full(ws) => {
-                let (write, read) = ws.split();
-                let (tx, mut rx) = mpsc::channel::<WsMessage>(32);
-
-                tokio::spawn(async move {
-                    let mut write = write;
-                    while let Some(msg) = rx.recv().await {
-                        if let Ok(m) = ws_message_to_tungstenite(msg) {
-                            if write.send(m).await.is_err() {
-                                break;
-                            }
-                        }
-                    }
-                });
-
-                (TungsteniteWsConnection::ReadOnly(read), TokioSender::new(tx))
-            }
-            TungsteniteWsConnection::ReadOnly(_) => {
-                panic!("Cannot split an already-split connection")
-            }
-        }
-    }
-
     fn create(&mut self, port: u16) -> Result<()> {
         self.ports.entry(port).or_insert_with(PortEntry::new);
         Ok(())
     }
 
-    fn attach(
+    fn bind(
         &mut self,
         port: u16,
         path: &str,
-        gateway: Arc<GatewayWrapper>,
-        handle: Arc<WsGatewayHandle>,
+        callbacks: Arc<WsConnectionCallbacks>,
     ) -> Result<()> {
         self.ports
             .entry(port)
             .or_insert_with(PortEntry::new)
-            .gateways
-            .insert(path.to_string(), (gateway, handle));
-        Ok(())
-    }
-
-    fn attach_with_broadcast(
-        &mut self,
-        port: u16,
-        path: &str,
-        gateway: Arc<GatewayWrapper>,
-        handle: Arc<WsGatewayHandle>,
-        connection_manager: Arc<ConnectionManager>,
-    ) -> Result<()> {
-        self.ports
-            .entry(port)
-            .or_insert_with(PortEntry::new)
-            .broadcast_gateways
-            .insert(path.to_string(), (gateway, handle, connection_manager));
+            .bindings
+            .insert(path.to_string(), callbacks);
         Ok(())
     }
 
     async fn listen(&mut self, hostname: &str) -> Result<()> {
         for (port, entry) in &self.ports {
             let addr = format!("{}:{}", hostname, port);
-            let listener = tokio::net::TcpListener::bind(&addr).await?;
+            let listener = TcpListener::bind(&addr).await?;
 
-            // Arc the routing tables so the spawned task owns them
-            let gateways = Arc::new(entry.gateways.clone());
-            let broadcast_gateways = Arc::new(entry.broadcast_gateways.clone());
+            // Raw TCP has no path info, so grab the first registered callbacks.
+            let bindings: Vec<Arc<WsConnectionCallbacks>> =
+                entry.bindings.values().cloned().collect();
             let mut shutdown_rx = self.shutdown_tx.subscribe();
 
             tokio::spawn(async move {
@@ -196,37 +111,19 @@ impl WebSocketAdapter for TungsteniteAdapter {
                                 Ok(r) => r,
                                 Err(e) => { eprintln!("Accept error: {}", e); continue; }
                             };
-                            let gateways = gateways.clone();
-                            let broadcast_gateways = broadcast_gateways.clone();
 
-                            tokio::spawn(async move {
-                                let ws_stream = match tokio_tungstenite::accept_async(stream).await {
-                                    Ok(ws) => ws,
-                                    Err(e) => { eprintln!("WS handshake error: {}", e); return; }
-                                };
-
-                                // Raw TCP has no HTTP path; take the first registered gateway.
-                                let conn = TungsteniteWsConnection::Full(ws_stream);
-
-                                if let Some((gateway, handle, cm)) = broadcast_gateways.values().next() {
-                                    TungsteniteAdapter::handle_connection_with_handle_and_broadcast(
-                                        conn,
-                                        gateway,
-                                        HashMap::new(),
-                                        handle,
-                                        cm,
-                                    )
-                                    .await;
-                                } else if let Some((gateway, handle)) = gateways.values().next() {
-                                    TungsteniteAdapter::handle_connection_with_handle(
-                                        conn,
-                                        gateway,
-                                        HashMap::new(),
-                                        handle,
-                                    )
-                                    .await;
-                                }
-                            });
+                            if let Some(callbacks) = bindings.first().cloned() {
+                                tokio::spawn(async move {
+                                    let ws_stream = match tokio_tungstenite::accept_async(stream).await {
+                                        Ok(ws) => ws,
+                                        Err(e) => {
+                                            eprintln!("WS handshake error: {}", e);
+                                            return;
+                                        }
+                                    };
+                                    run_ws_connection(ws_stream, callbacks).await;
+                                });
+                            }
                         }
                         _ = shutdown_rx.changed() => {
                             if *shutdown_rx.borrow() { break; }
@@ -245,7 +142,61 @@ impl WebSocketAdapter for TungsteniteAdapter {
     }
 }
 
-fn ws_message_to_tungstenite(msg: WsMessage) -> Result<Message, WsError> {
+// ── Shared connection loop ────────────────────────────────────────────────────
+
+async fn run_ws_connection(
+    ws_stream: tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+    callbacks: Arc<WsConnectionCallbacks>,
+) {
+    let (write, read) = ws_stream.split();
+    let (tx, mut rx) = mpsc::channel::<WsMessage>(32);
+
+    tokio::spawn(async move {
+        let mut write = write;
+        while let Some(msg) = rx.recv().await {
+            if let Ok(m) = ws_message_to_tungstenite(msg) {
+                if write.send(m).await.is_err() {
+                    break;
+                }
+            }
+        }
+    });
+
+    let sender: Arc<dyn Sender> = Arc::new(TokioSender::new(tx));
+
+    let client_id = match callbacks.connect(HashMap::new(), sender).await {
+        Ok(id) => id,
+        Err(_) => return,
+    };
+
+    let mut read = read;
+    while let Some(result) = read.next().await {
+        match result {
+            Ok(Message::Text(t)) => {
+                if !callbacks
+                    .message(client_id.clone(), WsMessage::Text(t.to_string()))
+                    .await
+                {
+                    break;
+                }
+            }
+            Ok(Message::Binary(b)) => {
+                if !callbacks
+                    .message(client_id.clone(), WsMessage::Binary(b.to_vec()))
+                    .await
+                {
+                    break;
+                }
+            }
+            Ok(Message::Close(_)) | Err(_) => break,
+            Ok(Message::Ping(_)) | Ok(Message::Pong(_)) | Ok(Message::Frame(_)) => {}
+        }
+    }
+
+    callbacks.disconnect(client_id).await;
+}
+
+fn ws_message_to_tungstenite(msg: WsMessage) -> Result<Message> {
     match msg {
         WsMessage::Text(t) => Ok(Message::Text(t.into())),
         WsMessage::Binary(b) => Ok(Message::Binary(b.into())),
