@@ -1,4 +1,11 @@
-use std::{cell::RefCell, collections::HashMap, collections::HashSet, pin::Pin, rc::Rc, sync::Arc};
+use std::{
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+    future::Future,
+    pin::Pin,
+    rc::Rc,
+    sync::Arc,
+};
 
 use anyhow::Result;
 
@@ -22,7 +29,7 @@ pub struct ToniApplication<H: HttpAdapter> {
     ws_adapter: Option<Box<dyn ErasedWebSocketAdapter>>,
 }
 
-impl<H: HttpAdapter> ToniApplication<H> {
+impl<H: HttpAdapter + 'static> ToniApplication<H> {
     pub fn new(http_adapter: H, container: Rc<RefCell<ToniContainer>>) -> Self {
         Self {
             http_adapter,
@@ -193,6 +200,8 @@ impl<H: HttpAdapter> ToniApplication<H> {
             }
         }
 
+        let mut ws_futures: Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> = vec![];
+
         // Wire separate-port gateways into the standalone WS adapter.
         if !separate_port.is_empty() {
             if self.ws_adapter.is_none() {
@@ -205,22 +214,7 @@ impl<H: HttpAdapter> ToniApplication<H> {
                     );
                 }
             } else {
-                let mut seen: HashSet<u16> = HashSet::new();
-                for (_, gw) in &separate_port {
-                    if let Some(ws_port) = gw.get_port() {
-                        if seen.insert(ws_port) {
-                            if let Some(ws) = &mut self.ws_adapter {
-                                if let Err(e) = ws.create(ws_port) {
-                                    eprintln!(
-                                        "Failed to create WS server on port {}: {}",
-                                        ws_port, e
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-
+                // Bind all paths first.
                 for (path, gateway) in &separate_port {
                     if let Some(ws_port) = gateway.get_port() {
                         let callbacks = Arc::new(make_ws_callbacks(
@@ -235,9 +229,21 @@ impl<H: HttpAdapter> ToniApplication<H> {
                     }
                 }
 
-                if let Some(ws) = &mut self.ws_adapter {
-                    if let Err(e) = ws.listen(hostname).await {
-                        eprintln!("WS adapter failed to start: {}", e);
+                // Then seal each port — create returns the server future.
+                let mut seen: HashSet<u16> = HashSet::new();
+                for (_, gw) in &separate_port {
+                    if let Some(ws_port) = gw.get_port() {
+                        if seen.insert(ws_port) {
+                            if let Some(ws) = &mut self.ws_adapter {
+                                match ws.create(ws_port, hostname) {
+                                    Ok(fut) => ws_futures.push(fut),
+                                    Err(e) => eprintln!(
+                                        "Failed to create WS server on port {}: {}",
+                                        ws_port, e
+                                    ),
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -251,10 +257,16 @@ impl<H: HttpAdapter> ToniApplication<H> {
         };
         println!("Starting {} server on {}:{}", server_type, hostname, port);
 
-        if let Err(e) = self.http_adapter.clone().listen(port, hostname).await {
-            eprintln!("Failed to start server: {}", e);
-            std::process::exit(1);
-        }
+        let hostname = hostname.to_string();
+        let http_adapter = self.http_adapter.clone();
+        ws_futures.push(Box::pin(async move {
+            if let Err(e) = http_adapter.listen(port, &hostname).await {
+                eprintln!("Failed to start server: {}", e);
+                std::process::exit(1);
+            }
+        }));
+
+        futures::future::join_all(ws_futures).await;
     }
 }
 

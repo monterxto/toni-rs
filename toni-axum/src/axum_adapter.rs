@@ -1,5 +1,7 @@
 use anyhow::{anyhow, Context, Result};
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tokio::sync::watch;
@@ -269,33 +271,38 @@ impl HttpAdapter for AxumAdapter {
 
 #[async_trait]
 impl WebSocketAdapter for AxumAdapter {
-    fn create(&mut self, port: u16) -> Result<()> {
-        self.ws_ports.entry(port).or_insert_with(Router::new);
-        Ok(())
-    }
-
     fn bind(&mut self, port: u16, path: &str, callbacks: Arc<WsConnectionCallbacks>) -> Result<()> {
         let router = self.ws_ports.entry(port).or_insert_with(Router::new);
         *router = router.clone().route(path, ws_route(callbacks));
         Ok(())
     }
 
-    async fn listen(&mut self, hostname: &str) -> Result<()> {
-        for (port, router) in &self.ws_ports {
-            let addr = format!("{}:{}", hostname, port);
-            let listener = TcpListener::bind(&addr).await?;
-            let router = router.clone();
-            let mut shutdown_rx = self.shutdown_tx.subscribe();
-
-            tokio::spawn(async move {
-                axum::serve(listener, router)
-                    .with_graceful_shutdown(async move {
-                        let _ = shutdown_rx.wait_for(|v| *v).await;
-                    })
-                    .await
-                    .ok();
-            });
-        }
-        Ok(())
+    fn create(
+        &mut self,
+        port: u16,
+        hostname: &str,
+    ) -> Result<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> {
+        let router = self
+            .ws_ports
+            .remove(&port)
+            .ok_or_else(|| anyhow!("No routes registered for WS port {}", port))?;
+        let addr = format!("{}:{}", hostname, port);
+        let mut shutdown_rx = self.shutdown_tx.subscribe();
+        Ok(Box::pin(async move {
+            let listener = match TcpListener::bind(&addr).await {
+                Ok(l) => l,
+                Err(e) => {
+                    eprintln!("Failed to bind WS port {}: {}", addr, e);
+                    return;
+                }
+            };
+            println!("WebSocket listening on {}", addr);
+            axum::serve(listener, router)
+                .with_graceful_shutdown(async move {
+                    let _ = shutdown_rx.wait_for(|v| *v).await;
+                })
+                .await
+                .ok();
+        }))
     }
 }

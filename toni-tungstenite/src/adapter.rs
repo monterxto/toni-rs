@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -74,11 +76,6 @@ impl Default for TungsteniteAdapter {
 
 #[async_trait]
 impl WebSocketAdapter for TungsteniteAdapter {
-    fn create(&mut self, port: u16) -> Result<()> {
-        self.ports.entry(port).or_insert_with(PortEntry::new);
-        Ok(())
-    }
-
     fn bind(&mut self, port: u16, path: &str, callbacks: Arc<WsConnectionCallbacks>) -> Result<()> {
         self.ports
             .entry(port)
@@ -88,47 +85,53 @@ impl WebSocketAdapter for TungsteniteAdapter {
         Ok(())
     }
 
-    async fn listen(&mut self, hostname: &str) -> Result<()> {
-        for (port, entry) in &self.ports {
-            let addr = format!("{}:{}", hostname, port);
-            let listener = TcpListener::bind(&addr).await?;
+    fn create(
+        &mut self,
+        port: u16,
+        hostname: &str,
+    ) -> Result<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> {
+        let entry = self
+            .ports
+            .remove(&port)
+            .ok_or_else(|| anyhow::anyhow!("No bindings registered for WS port {}", port))?;
 
-            // Raw TCP has no path info, so grab the first registered callbacks.
-            let bindings: Vec<Arc<WsConnectionCallbacks>> =
-                entry.bindings.values().cloned().collect();
-            let mut shutdown_rx = self.shutdown_tx.subscribe();
+        // Raw TCP has no path info — use the first registered callbacks.
+        let bindings: Vec<Arc<WsConnectionCallbacks>> = entry.bindings.into_values().collect();
+        let addr = format!("{}:{}", hostname, port);
+        let mut shutdown_rx = self.shutdown_tx.subscribe();
 
-            tokio::spawn(async move {
-                loop {
-                    tokio::select! {
-                        result = listener.accept() => {
-                            let (stream, _) = match result {
-                                Ok(r) => r,
-                                Err(e) => { eprintln!("Accept error: {}", e); continue; }
-                            };
-
-                            if let Some(callbacks) = bindings.first().cloned() {
-                                tokio::spawn(async move {
-                                    let ws_stream = match tokio_tungstenite::accept_async(stream).await {
-                                        Ok(ws) => ws,
-                                        Err(e) => {
-                                            eprintln!("WS handshake error: {}", e);
-                                            return;
-                                        }
-                                    };
-                                    run_ws_connection(ws_stream, callbacks).await;
-                                });
-                            }
-                        }
-                        _ = shutdown_rx.changed() => {
-                            if *shutdown_rx.borrow() { break; }
+        Ok(Box::pin(async move {
+            let listener = match TcpListener::bind(&addr).await {
+                Ok(l) => l,
+                Err(e) => {
+                    eprintln!("Failed to bind WS port {}: {}", addr, e);
+                    return;
+                }
+            };
+            println!("WebSocket listening on {}", addr);
+            loop {
+                tokio::select! {
+                    result = listener.accept() => {
+                        let (stream, _) = match result {
+                            Ok(r) => r,
+                            Err(e) => { eprintln!("Accept error: {}", e); continue; }
+                        };
+                        if let Some(callbacks) = bindings.first().cloned() {
+                            tokio::spawn(async move {
+                                let ws_stream = match tokio_tungstenite::accept_async(stream).await {
+                                    Ok(ws) => ws,
+                                    Err(e) => { eprintln!("WS handshake error: {}", e); return; }
+                                };
+                                run_ws_connection(ws_stream, callbacks).await;
+                            });
                         }
                     }
+                    _ = shutdown_rx.changed() => {
+                        if *shutdown_rx.borrow() { break; }
+                    }
                 }
-            });
-        }
-
-        Ok(())
+            }
+        }))
     }
 
     async fn close(&mut self) -> Result<()> {

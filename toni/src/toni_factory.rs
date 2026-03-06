@@ -68,7 +68,7 @@ impl ToniFactory {
     /// Shorthand for `ToniFactory::new().create_with(...)` when no factory config is needed
     pub async fn create<A>(module: impl Into<ModuleDefinition>, adapter: A) -> ToniApplication<A>
     where
-        A: HttpAdapter,
+        A: HttpAdapter + 'static,
     {
         Self::new().create_with(module, adapter).await
     }
@@ -79,7 +79,7 @@ impl ToniFactory {
         adapter: A,
     ) -> ToniApplication<A>
     where
-        A: HttpAdapter,
+        A: HttpAdapter + 'static,
     {
         let http_adapter = adapter;
         let container = Rc::new(RefCell::new(ToniContainer::new()));
