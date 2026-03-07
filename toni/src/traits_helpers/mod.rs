@@ -6,7 +6,7 @@ mod provider;
 pub use self::provider::{Provider, ProviderFactory};
 
 mod controller;
-pub use self::controller::{Controller, ControllerTrait};
+pub use self::controller::{Controller, ControllerFactory};
 
 mod interceptor;
 pub use self::interceptor::{Interceptor, InterceptorNext};

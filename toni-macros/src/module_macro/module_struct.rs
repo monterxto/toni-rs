@@ -407,7 +407,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
             fn imports(&self) -> Option<Vec<Box<dyn ::toni::traits_helpers::ModuleMetadata>>> {
                 Some(vec![#(Box::new(#imports)),*])
             }
-            fn controllers(&self) -> Option<Vec<Box<dyn ::toni::traits_helpers::Controller>>> {
+            fn controllers(&self) -> Option<Vec<Box<dyn ::toni::traits_helpers::ControllerFactory>>> {
                 Some(vec![#(Box::new(#controllers)),*])
             }
             fn providers(&self) -> Option<Vec<Box<dyn ::toni::traits_helpers::ProviderFactory>>> {

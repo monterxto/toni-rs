@@ -9,7 +9,7 @@ use std::{
 use super::{DependencyGraph, ToniContainer};
 use crate::{
     structs_helpers::EnhancerMetadata,
-    traits_helpers::{ControllerTrait, Provider},
+    traits_helpers::{Controller, Provider},
 };
 
 pub struct ToniInstanceLoader {
@@ -305,7 +305,7 @@ impl ToniInstanceLoader {
     fn add_controllers_instances(
         &self,
         module_token: String,
-        controllers_instances: FxHashMap<String, Arc<Box<dyn ControllerTrait>>>,
+        controllers_instances: FxHashMap<String, Arc<Box<dyn Controller>>>,
     ) -> Result<()> {
         let mut container_mut = self.container.borrow_mut();
 
@@ -345,7 +345,7 @@ impl ToniInstanceLoader {
     /// - Then: Directly instantiated enhancers (from instances)
     fn resolve_enhancers_from_tokens(
         &self,
-        controller: &Arc<Box<dyn ControllerTrait>>,
+        controller: &Arc<Box<dyn Controller>>,
         providers: &FxHashMap<String, Arc<Box<dyn Provider>>>,
     ) -> Result<EnhancerMetadata> {
         // Resolve guards from DI (type name syntax: AuthGuard)

@@ -8,7 +8,7 @@ use crate::http_helpers::{HttpMethod, HttpRequest, HttpResponse, RouteMetadata, 
 use super::{ErrorHandler, Guard, Interceptor, Pipe, provider::Provider, validate::Validatable};
 
 #[async_trait]
-pub trait ControllerTrait: Send + Sync {
+pub trait Controller: Send + Sync {
     fn get_token(&self) -> String;
     async fn execute(
         &self,
@@ -88,11 +88,11 @@ pub trait ControllerTrait: Send + Sync {
     async fn on_application_shutdown(&self, _signal: Option<String>) {}
 }
 #[async_trait]
-pub trait Controller {
+pub trait ControllerFactory {
     async fn get_all_controllers(
         &self,
         dependencies: &FxHashMap<String, Arc<Box<dyn Provider>>>,
-    ) -> FxHashMap<String, Arc<Box<dyn ControllerTrait>>>;
+    ) -> FxHashMap<String, Arc<Box<dyn Controller>>>;
     fn get_name(&self) -> String;
     fn get_token(&self) -> String;
     fn get_dependencies(&self) -> Vec<String>;

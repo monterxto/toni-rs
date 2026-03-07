@@ -27,7 +27,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
 pub fn controller_struct(attr: TokenStream, item: TokenStream) -> TokenStream {
     let attr = proc_macro2::TokenStream::from(attr);
     let item = proc_macro2::TokenStream::from(item);
-    let trait_name = Ident::new("ControllerTrait", Span::call_site());
+    let trait_name = Ident::new("Controller", Span::call_site());
     let output = handle_controller_struct(attr, item, trait_name);
     proc_macro::TokenStream::from(output.unwrap_or_else(|e| e.to_compile_error()))
 }

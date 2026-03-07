@@ -7,7 +7,7 @@ use crate::{
     middleware::MiddlewareManager,
     structs_helpers::EnhancerMetadata,
     traits_helpers::{
-        Controller, ControllerTrait, Guard, Interceptor, ModuleMetadata, Pipe, Provider,
+        Controller, ControllerFactory, Guard, Interceptor, ModuleMetadata, Pipe, Provider,
         ProviderFactory,
     },
     websocket::GatewayTrait,
@@ -112,7 +112,7 @@ impl ToniContainer {
     pub fn add_controller(
         &mut self,
         module_ref_token: &String,
-        controller: Box<dyn Controller>,
+        controller: Box<dyn ControllerFactory>,
     ) -> Result<()> {
         let module_ref = self
             .modules
@@ -159,7 +159,7 @@ impl ToniContainer {
     pub fn add_controller_instance(
         &mut self,
         module_ref_token: &String,
-        controller_instance: Arc<Box<dyn ControllerTrait>>,
+        controller_instance: Arc<Box<dyn Controller>>,
         enhancer_metadata: EnhancerMetadata,
     ) -> Result<()> {
         let global_enhancers = self.get_global_enhancers();
@@ -211,7 +211,7 @@ impl ToniContainer {
     pub fn get_controllers_manager(
         &self,
         module_ref_token: &String,
-    ) -> Result<&FxHashMap<String, Box<dyn Controller>>> {
+    ) -> Result<&FxHashMap<String, Box<dyn ControllerFactory>>> {
         let module_ref = self
             .modules
             .get(module_ref_token)

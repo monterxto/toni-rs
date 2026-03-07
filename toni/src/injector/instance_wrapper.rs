@@ -5,7 +5,7 @@ use crate::{
     http_helpers::{HttpMethod, HttpRequest, HttpResponse, RouteMetadata, ToResponse},
     middleware::{Middleware, MiddlewareChain},
     structs_helpers::EnhancerMetadata,
-    traits_helpers::{ControllerTrait, ErrorHandler, Guard, Interceptor, InterceptorNext, Pipe},
+    traits_helpers::{Controller, ErrorHandler, Guard, Interceptor, InterceptorNext, Pipe},
 };
 
 use super::Context;
@@ -13,7 +13,7 @@ use super::Context;
 /// Represents the next step in the interceptor chain
 struct ChainNext {
     interceptors: Vec<Arc<dyn Interceptor>>,
-    instance: Arc<Box<dyn ControllerTrait>>,
+    instance: Arc<Box<dyn Controller>>,
     pipes: Vec<Arc<dyn Pipe>>,
     error_handlers: Vec<Arc<dyn ErrorHandler>>,
     route_metadata: Arc<RouteMetadata>,
@@ -35,7 +35,7 @@ impl InterceptorNext for ChainNext {
 }
 
 pub struct InstanceWrapper {
-    instance: Arc<Box<dyn ControllerTrait>>,
+    instance: Arc<Box<dyn Controller>>,
     guards: Vec<Arc<dyn Guard>>,
     interceptors: Vec<Arc<dyn Interceptor>>,
     pipes: Vec<Arc<dyn Pipe>>,
@@ -46,7 +46,7 @@ pub struct InstanceWrapper {
 
 impl InstanceWrapper {
     pub fn new(
-        instance: Arc<Box<dyn ControllerTrait>>,
+        instance: Arc<Box<dyn Controller>>,
         enhancer_metadata: EnhancerMetadata,
         global_enhancers: EnhancerMetadata,
     ) -> Self {
@@ -96,7 +96,7 @@ impl InstanceWrapper {
     }
 
     /// Get the controller instance for lifecycle hook checks
-    pub fn get_instance(&self) -> Arc<Box<dyn ControllerTrait>> {
+    pub fn get_instance(&self) -> Arc<Box<dyn Controller>> {
         self.instance.clone()
     }
 
@@ -170,7 +170,7 @@ impl InstanceWrapper {
     /// Execute the controller logic with guards, interceptors, and pipes
     async fn execute_controller_logic(
         req: HttpRequest,
-        instance: Arc<Box<dyn ControllerTrait>>,
+        instance: Arc<Box<dyn Controller>>,
         guards: Vec<Arc<dyn Guard>>,
         interceptors: Vec<Arc<dyn Interceptor>>,
         pipes: Vec<Arc<dyn Pipe>>,
@@ -238,7 +238,7 @@ impl InstanceWrapper {
     async fn execute_with_interceptors(
         context: &mut Context,
         interceptors: &[Arc<dyn Interceptor>],
-        instance: &Arc<Box<dyn ControllerTrait>>,
+        instance: &Arc<Box<dyn Controller>>,
         pipes: &[Arc<dyn Pipe>],
         error_handlers: &[Arc<dyn ErrorHandler>],
         route_metadata: &Arc<RouteMetadata>,
@@ -269,7 +269,7 @@ impl InstanceWrapper {
     /// Execute the actual handler (pipes + controller)
     async fn execute_handler(
         context: &mut Context,
-        instance: &Arc<Box<dyn ControllerTrait>>,
+        instance: &Arc<Box<dyn Controller>>,
         pipes: &[Arc<dyn Pipe>],
     ) {
         // Get and validate DTO
@@ -313,7 +313,7 @@ impl InstanceWrapper {
     /// Execute handler with error handling support
     async fn execute_handler_with_error_handling(
         context: &mut Context,
-        instance: &Arc<Box<dyn ControllerTrait>>,
+        instance: &Arc<Box<dyn Controller>>,
         pipes: &[Arc<dyn Pipe>],
         error_handlers: &[Arc<dyn ErrorHandler>],
     ) {

@@ -6,12 +6,12 @@ use super::InstanceWrapper;
 
 use crate::{
     structs_helpers::EnhancerMetadata,
-    traits_helpers::{Controller, ControllerTrait, ModuleMetadata, Provider, ProviderFactory},
+    traits_helpers::{Controller, ControllerFactory, ModuleMetadata, Provider, ProviderFactory},
 };
 pub struct Module {
     _token: String,
     _name: String,
-    controllers: FxHashMap<String, Box<dyn Controller>>,
+    controllers: FxHashMap<String, Box<dyn ControllerFactory>>,
     providers: FxHashMap<String, Box<dyn ProviderFactory>>,
     imports: FxHashSet<String>,
     exports: FxHashSet<String>,
@@ -38,7 +38,7 @@ impl Module {
     }
 }
 impl Module {
-    pub fn add_controller(&mut self, controller: Box<dyn Controller>) {
+    pub fn add_controller(&mut self, controller: Box<dyn ControllerFactory>) {
         self.controllers.insert(controller.get_name(), controller);
     }
 
@@ -56,7 +56,7 @@ impl Module {
 
     pub fn add_controller_instance(
         &mut self,
-        controller: Arc<Box<dyn ControllerTrait>>,
+        controller: Arc<Box<dyn Controller>>,
         enhancer_metadata: EnhancerMetadata,
         global_enhancers: EnhancerMetadata,
     ) {
@@ -96,7 +96,7 @@ impl Module {
         self.providers_instances.get(provider_token)
     }
 
-    pub fn get_controllers_manager(&self) -> &FxHashMap<String, Box<dyn Controller>> {
+    pub fn get_controllers_manager(&self) -> &FxHashMap<String, Box<dyn ControllerFactory>> {
         &self.controllers
     }
 
@@ -128,7 +128,10 @@ impl Module {
         &self._token
     }
 
-    pub fn _get_controller_by_token(&self, controller_token: &String) -> Option<&dyn Controller> {
+    pub fn _get_controller_by_token(
+        &self,
+        controller_token: &String,
+    ) -> Option<&dyn ControllerFactory> {
         self.controllers
             .get(controller_token)
             .map(|controller| controller.as_ref())

@@ -6,7 +6,7 @@ use juniper::{
     ScalarValue,
 };
 use std::sync::Arc;
-use toni::traits_helpers::{Controller, ModuleMetadata, ProviderFactory};
+use toni::traits_helpers::{ControllerFactory, ModuleMetadata, ProviderFactory};
 
 /// GraphQL module for Toni.
 ///
@@ -189,7 +189,7 @@ where
         ))])
     }
 
-    fn controllers(&self) -> Option<Vec<Box<dyn Controller>>> {
+    fn controllers(&self) -> Option<Vec<Box<dyn ControllerFactory>>> {
         Some(vec![Box::new(GraphQLControllerManager::<
             Query,
             Mutation,

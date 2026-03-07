@@ -32,7 +32,7 @@
 //!     dependencies: FxHashMap<String, Arc<Box<dyn Provider>>>
 //! }
 //!
-//! impl ControllerTrait for GetInfoController {
+//! impl Controller for GetInfoController {
 //!     async fn handle(&self, req: HttpRequest) -> HttpResponse {
 //!         // Resolve dependencies
 //!         let service: AppService = *self.dependencies.get("AppService")
@@ -317,7 +317,7 @@ fn generate_controller_wrapper(
     };
     let controller_name = Ident::new(
         &format!(
-            "{}{}Controller{}",
+            "{}{}ControllerFactory{}",
             struct_name,
             capitalize_first(method_name.to_string()),
             scope_suffix
@@ -877,7 +877,7 @@ fn generate_singleton_controller_wrapper(
         }
 
         #[::toni::async_trait]
-        impl ::toni::traits_helpers::ControllerTrait for #controller_name {
+        impl ::toni::traits_helpers::Controller for #controller_name {
             async fn execute(
                 &self,
                 req: ::toni::http_helpers::HttpRequest,
@@ -1060,7 +1060,7 @@ fn generate_request_controller_wrapper(
         }
 
         #[::toni::async_trait]
-        impl ::toni::traits_helpers::ControllerTrait for #controller_name {
+        impl ::toni::traits_helpers::Controller for #controller_name {
             async fn execute(
                 &self,
                 req: ::toni::http_helpers::HttpRequest,
@@ -1362,7 +1362,7 @@ fn generate_singleton_manager(
                         #controller_token.to_string(),
                         ::std::sync::Arc::new(
                             Box::new(#controller_name {
-                            }) as Box<dyn ::toni::traits_helpers::ControllerTrait>
+                            }) as Box<dyn ::toni::traits_helpers::Controller>
                         )
                     );
                 }
@@ -1374,7 +1374,7 @@ fn generate_singleton_manager(
                         ::std::sync::Arc::new(
                             Box::new(#controller_name {
                                 instance: controller_instance.clone(),
-                            }) as Box<dyn ::toni::traits_helpers::ControllerTrait>
+                            }) as Box<dyn ::toni::traits_helpers::Controller>
                         )
                     );
                 }
@@ -1452,7 +1452,7 @@ fn generate_singleton_manager(
                         #controller_token.to_string(),
                         ::std::sync::Arc::new(
                             Box::new(#controller_name {
-                            }) as Box<dyn ::toni::traits_helpers::ControllerTrait>
+                            }) as Box<dyn ::toni::traits_helpers::Controller>
                         )
                     )
                 }
@@ -1464,7 +1464,7 @@ fn generate_singleton_manager(
                         ::std::sync::Arc::new(
                             Box::new(#controller_name {
                                 dependencies: dependencies.clone(),
-                            }) as Box<dyn ::toni::traits_helpers::ControllerTrait>
+                            }) as Box<dyn ::toni::traits_helpers::Controller>
                         )
                     )
                 }
@@ -1476,7 +1476,7 @@ fn generate_singleton_manager(
         pub struct #manager_name;
 
         #[::toni::async_trait]
-        impl ::toni::traits_helpers::Controller for #manager_name {
+        impl ::toni::traits_helpers::ControllerFactory for #manager_name {
             async fn get_all_controllers(
                 &self,
                 dependencies: &::toni::FxHashMap<
@@ -1485,7 +1485,7 @@ fn generate_singleton_manager(
                 >,
             ) -> ::toni::FxHashMap<
                 String,
-                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::ControllerTrait>>
+                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Controller>>
             > {
                 let mut controllers = ::toni::FxHashMap::default();
 
@@ -1499,7 +1499,7 @@ fn generate_singleton_manager(
                 if needs_elevation {
                     // ELEVATED TO REQUEST SCOPE - use Request-scoped wrappers
                     #(
-                        let (key, value): (String, ::std::sync::Arc<Box<dyn ::toni::traits_helpers::ControllerTrait>>) = #request_controller_instances;
+                        let (key, value): (String, ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Controller>>) = #request_controller_instances;
                         controllers.insert(key, value);
                     )*
                 } else {
@@ -1573,7 +1573,7 @@ fn generate_request_manager(
                         #controller_token.to_string(),
                         ::std::sync::Arc::new(
                             Box::new(#controller_name {
-                            }) as Box<dyn ::toni::traits_helpers::ControllerTrait>
+                            }) as Box<dyn ::toni::traits_helpers::Controller>
                         )
                     )
                 }
@@ -1585,7 +1585,7 @@ fn generate_request_manager(
                         ::std::sync::Arc::new(
                             Box::new(#controller_name {
                                 dependencies: dependencies.clone(),
-                            }) as Box<dyn ::toni::traits_helpers::ControllerTrait>
+                            }) as Box<dyn ::toni::traits_helpers::Controller>
                         )
                     )
                 }
@@ -1597,7 +1597,7 @@ fn generate_request_manager(
         pub struct #manager_name;
 
         #[::toni::async_trait]
-        impl ::toni::traits_helpers::Controller for #manager_name {
+        impl ::toni::traits_helpers::ControllerFactory for #manager_name {
             async fn get_all_controllers(
                 &self,
                 dependencies: &::toni::FxHashMap<
@@ -1606,12 +1606,12 @@ fn generate_request_manager(
                 >,
             ) -> ::toni::FxHashMap<
                 String,
-                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::ControllerTrait>>
+                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Controller>>
             > {
                 let mut controllers = ::toni::FxHashMap::default();
 
                 #(
-                    let (key, value): (String, ::std::sync::Arc<Box<dyn ::toni::traits_helpers::ControllerTrait>>) = #controller_instances;
+                    let (key, value): (String, ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Controller>>) = #controller_instances;
                     controllers.insert(key, value);
                 )*
 

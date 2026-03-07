@@ -48,7 +48,7 @@ async fn generate_resource_files(base_path: &PathBuf, name: &str) -> Result<()> 
     let upper_case_first_letter = to_upper_case_first_letter(name);
 
     let service_name = format!("{}Service", &upper_case_first_letter);
-    let controller_name = format!("{}Controller", &upper_case_first_letter);
+    let controller_name = format!("{}ControllerFactory", &upper_case_first_letter);
     let module_name = format!("{}Module", &upper_case_first_letter);
     let service_name_snake_case = format!("{}_service", &snake_case);
     let controller_name_snake_case = format!("{}_controller", &snake_case);

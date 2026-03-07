@@ -4,7 +4,7 @@ use async_graphql::{ObjectType, SubscriptionType};
 use async_trait::async_trait;
 use serde::Deserialize;
 use std::sync::Arc;
-use toni::traits_helpers::{Controller, ControllerTrait, Guard, Interceptor, Pipe, Provider};
+use toni::traits_helpers::{Controller, ControllerFactory, Guard, Interceptor, Pipe, Provider};
 use toni::{Body, FxHashMap, HttpMethod, HttpRequest, HttpResponse, ToResponse};
 
 /// GraphQL request payload
@@ -16,7 +16,7 @@ struct GraphQLRequest {
     variables: Option<serde_json::Value>,
 }
 
-/// Controller manager for GraphQL endpoints.
+/// ControllerFactory manager for GraphQL endpoints.
 ///
 /// This creates two endpoints:
 /// - POST /graphql - Execute GraphQL queries
@@ -51,7 +51,7 @@ where
 }
 
 #[async_trait]
-impl<Query, Mutation, Subscription, Ctx> Controller
+impl<Query, Mutation, Subscription, Ctx> ControllerFactory
     for GraphQLControllerManager<Query, Mutation, Subscription, Ctx>
 where
     Query: ObjectType + 'static,
@@ -62,7 +62,7 @@ where
     async fn get_all_controllers(
         &self,
         dependencies: &FxHashMap<String, Arc<Box<dyn Provider>>>,
-    ) -> FxHashMap<String, Arc<Box<dyn ControllerTrait>>> {
+    ) -> FxHashMap<String, Arc<Box<dyn Controller>>> {
         let mut controllers = FxHashMap::default();
 
         // Get GraphQLService from dependencies
@@ -80,7 +80,7 @@ where
 
         controllers.insert(
             format!("GraphQLPostController_{}", self.path),
-            Arc::new(Box::new(post_controller) as Box<dyn ControllerTrait>),
+            Arc::new(Box::new(post_controller) as Box<dyn Controller>),
         );
 
         // GET endpoint for playground (if enabled)
@@ -92,7 +92,7 @@ where
 
             controllers.insert(
                 format!("GraphQLPlaygroundController_{}", self.path),
-                Arc::new(Box::new(get_controller) as Box<dyn ControllerTrait>),
+                Arc::new(Box::new(get_controller) as Box<dyn Controller>),
             );
         }
 
@@ -126,7 +126,7 @@ where
 }
 
 #[async_trait]
-impl<Query, Mutation, Subscription, Ctx> ControllerTrait
+impl<Query, Mutation, Subscription, Ctx> Controller
     for GraphQLPostController<Query, Mutation, Subscription, Ctx>
 where
     Query: ObjectType + 'static,
@@ -247,7 +247,7 @@ struct GraphQLPlaygroundController {
 }
 
 #[async_trait]
-impl ControllerTrait for GraphQLPlaygroundController {
+impl Controller for GraphQLPlaygroundController {
     fn get_token(&self) -> String {
         format!("GraphQLPlaygroundController_{}", self.path)
     }
