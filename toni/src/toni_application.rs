@@ -16,7 +16,7 @@ use crate::{
     injector::{GatewayResolver, IntoToken, ToniContainer},
     router::RoutesResolver,
     websocket::{
-        ConnectionManager, DisconnectReason, GatewayWrapper, WsClient, WsError, WsGatewayHandle,
+        BroadcastService, DisconnectReason, GatewayWrapper, WsClient, WsClientMap, WsError,
         WsMessage, helpers::create_client_from_headers,
     },
 };
@@ -101,8 +101,8 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
         self.call_before_shutdown_hooks(None).await;
         self.call_shutdown_hooks(None).await;
 
-        if let Ok(cm) = self.get::<Arc<ConnectionManager>>().await {
-            cm.close_all().await;
+        if let Ok(bs) = self.get::<BroadcastService>().await {
+            bs.close_all().await;
         }
 
         let _ = self.http_adapter.close().await;
@@ -178,7 +178,9 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
             eprintln!("Error discovering WebSocket gateways: {}", e);
         }
 
-        let connection_manager = self.get::<Arc<ConnectionManager>>().await.ok();
+        // One shared WsClientMap + ConnectionManager when BroadcastService is in DI;
+        // otherwise a fresh WsClientMap per gateway (no CM needed).
+        let broadcast_service = self.get::<BroadcastService>().await.ok().map(Arc::new);
 
         let (same_port, separate_port): (Vec<_>, Vec<_>) = self
             .ws_gateways
@@ -191,9 +193,14 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
 
         // Wire same-port gateways into the HTTP adapter as upgrade routes.
         for (path, gateway) in &same_port {
+            let client_map = broadcast_service
+                .as_ref()
+                .map(|bs| bs.ws_client_map())
+                .unwrap_or_else(|| Arc::new(WsClientMap::new()));
             let callbacks = Arc::new(make_ws_callbacks(
                 gateway.clone(),
-                connection_manager.clone(),
+                client_map,
+                broadcast_service.clone(),
             ));
             if let Err(e) = self.http_adapter.bind_ws(path, callbacks) {
                 eprintln!("Failed to add WebSocket route at {}: {}", path, e);
@@ -217,9 +224,14 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
                 // Bind all paths first.
                 for (path, gateway) in &separate_port {
                     if let Some(ws_port) = gateway.get_port() {
+                        let client_map = broadcast_service
+                            .as_ref()
+                            .map(|bs| bs.ws_client_map())
+                            .unwrap_or_else(|| Arc::new(WsClientMap::new()));
                         let callbacks = Arc::new(make_ws_callbacks(
                             gateway.clone(),
-                            connection_manager.clone(),
+                            client_map,
+                            broadcast_service.clone(),
                         ));
                         if let Some(ws) = &mut self.ws_adapter {
                             if let Err(e) = ws.bind(ws_port, path, callbacks) {
@@ -270,35 +282,37 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
     }
 }
 
-/// Build the connection callbacks for one gateway, embedding the handle and optional
-/// ConnectionManager inside the closures so the adapter never sees framework internals.
+/// Build the connection callbacks for one gateway.
+///
+/// `client_map` is either the shared map from `BroadcastService` (when BS is in DI) or
+/// a fresh per-gateway map (when the user hasn't imported `BroadcastModule`).
+/// `broadcast_service` is `Some` only when BS is in DI; the CM is wired through it.
 fn make_ws_callbacks(
     gateway: Arc<GatewayWrapper>,
-    connection_manager: Option<Arc<ConnectionManager>>,
+    client_map: Arc<WsClientMap>,
+    broadcast_service: Option<Arc<BroadcastService>>,
 ) -> WsConnectionCallbacks {
-    let handle = Arc::new(WsGatewayHandle::new());
-
     let g_connect = gateway.clone();
     let g_message = gateway.clone();
     let g_disconnect = gateway.clone();
-    let h_connect = handle.clone();
-    let h_message = handle.clone();
-    let h_disconnect = handle.clone();
-    let cm_connect = connection_manager.clone();
-    let cm_disconnect = connection_manager.clone();
+    let h_message = client_map.clone();
+    let h_disconnect = client_map.clone();
+    let bs_connect = broadcast_service.clone();
+    let bs_disconnect = broadcast_service;
 
     WsConnectionCallbacks::new(
-        move |headers, sender| {
+        move |headers, sink| {
             let gateway = g_connect.clone();
-            let handle = h_connect.clone();
-            let cm = cm_connect.clone();
+            let bs = bs_connect.clone();
+            let map = client_map.clone();
             Box::pin(async move {
                 let client = create_client_from_headers(headers);
                 let client_id = client.id.clone();
                 gateway.begin_connect(client).await?;
-                handle.register(client_id.clone(), sender.clone());
-                if let Some(cm) = &cm {
-                    cm.register(WsClient::new(&client_id), sender, gateway.get_namespace());
+                if let Some(bs) = &bs {
+                    bs.connect(client_id.clone(), sink, gateway.get_namespace());
+                } else {
+                    map.register(client_id.clone(), sink);
                 }
                 gateway.complete_connect(&client_id).await?;
                 Ok(client_id)
@@ -310,7 +324,7 @@ fn make_ws_callbacks(
             Box::pin(async move {
                 match gateway.handle_message(client_id.clone(), msg).await {
                     Ok(Some(response)) => {
-                        handle.emit(&client_id, response).await;
+                        handle.send_to(&client_id, response).await;
                         true
                     }
                     Ok(None) => true,
@@ -321,7 +335,7 @@ fn make_ws_callbacks(
                         match &e {
                             WsError::ConnectionClosed(_) | WsError::AuthFailed(_) => false,
                             _ => {
-                                handle.emit(&client_id, error_msg).await;
+                                handle.send_to(&client_id, error_msg).await;
                                 true
                             }
                         }
@@ -332,11 +346,12 @@ fn make_ws_callbacks(
         move |client_id| {
             let gateway = g_disconnect.clone();
             let handle = h_disconnect.clone();
-            let cm = cm_disconnect.clone();
+            let bs = bs_disconnect.clone();
             Box::pin(async move {
-                handle.unregister(&client_id);
-                if let Some(cm) = &cm {
-                    cm.unregister(&client_id);
+                if let Some(bs) = &bs {
+                    bs.disconnect(&client_id);
+                } else {
+                    handle.unregister(&client_id);
                 }
                 gateway
                     .handle_disconnect(client_id, DisconnectReason::ClientDisconnect)

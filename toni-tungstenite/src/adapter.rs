@@ -9,7 +9,7 @@ use tokio::net::TcpListener;
 use tokio::sync::{mpsc, watch};
 use tokio_tungstenite::tungstenite::Message;
 use toni::async_trait;
-use toni::websocket::{SendError, Sender, TrySendError, WsMessage};
+use toni::websocket::{SendError, TrySendError, WsMessage, WsSink};
 use toni::{WebSocketAdapter, WsConnectionCallbacks};
 
 // ── TokioSender ───────────────────────────────────────────────────────────────
@@ -25,7 +25,7 @@ impl TokioSender {
 }
 
 #[async_trait]
-impl Sender for TokioSender {
+impl WsSink for TokioSender {
     async fn send(&self, message: WsMessage) -> Result<(), SendError> {
         self.inner.send(message).await.map_err(|_| SendError)
     }
@@ -160,7 +160,7 @@ async fn run_ws_connection(
         }
     });
 
-    let sender: Arc<dyn Sender> = Arc::new(TokioSender::new(tx));
+    let sender: Arc<dyn WsSink> = Arc::new(TokioSender::new(tx));
 
     let client_id = match callbacks.connect(HashMap::new(), sender).await {
         Ok(id) => id,

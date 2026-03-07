@@ -1,14 +1,14 @@
 //! WebSocket broadcasting infrastructure
 //!
 //! Provides Socket.io-style broadcasting capabilities with rooms and targeted messaging.
-//! This module is runtime-agnostic through the `Sender` trait abstraction.
+//! This module is runtime-agnostic through the `WsSink` trait abstraction.
 
 use async_trait::async_trait;
 use parking_lot::RwLock;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use super::{WsClient, WsMessage};
+use super::{WsClient, WsClientMap, WsMessage};
 
 pub type ClientId = String;
 pub type RoomId = String;
@@ -17,15 +17,16 @@ pub type RoomId = String;
 // Core Traits
 // ============================================================================
 
-/// Trait for sending messages to clients (runtime-agnostic)
+/// The write half of a WebSocket connection.
 ///
-/// Adapters provide concrete implementations (e.g., TokioSender, AsyncStdSender).
+/// Adapters implement this over their concrete channel type (e.g. a tokio mpsc sender).
+/// The framework stores `Arc<dyn WsSink>` per client; adapters never see framework internals.
 #[async_trait]
-pub trait Sender: Send + Sync + 'static {
-    /// Send message asynchronously (may block if buffer is full)
+pub trait WsSink: Send + Sync + 'static {
+    /// Send a message, waiting for buffer space if needed.
     async fn send(&self, message: WsMessage) -> Result<(), SendError>;
 
-    /// Try to send without blocking (returns error if buffer full)
+    /// Send without blocking; returns an error if the buffer is full.
     fn try_send(&self, message: WsMessage) -> Result<(), TrySendError>;
 }
 
@@ -88,44 +89,40 @@ impl From<SendError> for BroadcastError {
 // Connection Manager (State Management)
 // ============================================================================
 
-/// Manages WebSocket client connections, rooms, and namespaces
+/// Tracks room membership and namespace assignment for connected WebSocket clients.
 ///
-/// Uses sync locks (parking_lot) for state management since room membership
-/// changes are infrequent and fast. Only async operations are channel sends.
-///
-/// Runtime-agnostic: stores `Arc<dyn Sender>` so any framework adapter works.
+/// Does not store write channels — those live exclusively in [`WsClientMap`].
+/// All message delivery is delegated there, keeping topology state separate from transport.
 pub struct ConnectionManager {
     clients: Arc<RwLock<HashMap<ClientId, ClientState>>>,
     rooms: Arc<RwLock<HashMap<RoomId, HashSet<ClientId>>>>,
     namespaces: Arc<RwLock<HashMap<String, HashSet<ClientId>>>>,
+    ws_client_map: Arc<WsClientMap>,
 }
 
 pub struct ClientState {
     pub client: WsClient,
-    pub sender: Arc<dyn Sender>,
     pub rooms: HashSet<RoomId>,
     pub namespace: Option<String>,
 }
 
 impl ConnectionManager {
-    pub fn new() -> Self {
+    pub(crate) fn new(ws_client_map: Arc<WsClientMap>) -> Self {
         Self {
             clients: Arc::new(RwLock::new(HashMap::new())),
             rooms: Arc::new(RwLock::new(HashMap::new())),
             namespaces: Arc::new(RwLock::new(HashMap::new())),
+            ws_client_map,
         }
     }
 
-    /// Register a new client connection
-    ///
-    /// Automatically joins a room named after the client ID (Socket.io pattern)
-    /// for private messaging support.
-    pub fn register(&self, client: WsClient, sender: Arc<dyn Sender>, namespace: Option<String>) {
+    /// Register a client's topology (rooms, namespace). The write channel must
+    /// already be in `WsClientMap` — `ConnectionManager` never holds senders.
+    pub(crate) fn register(&self, client: WsClient, namespace: Option<String>) {
         let client_id = client.id.clone();
 
         let state = ClientState {
             client,
-            sender,
             rooms: HashSet::new(),
             namespace: namespace.clone(),
         };
@@ -143,8 +140,9 @@ impl ConnectionManager {
         let _ = self.join_room(&client_id, &client_id);
     }
 
-    /// Removes client from all rooms and namespaces
-    pub fn unregister(&self, client_id: &str) -> Option<ClientState> {
+    /// Removes client from topology. The write channel is removed from `WsClientMap`
+    /// separately via the `on_disconnect` callback.
+    pub(crate) fn unregister(&self, client_id: &str) -> Option<ClientState> {
         let state = self.clients.write().remove(client_id)?;
 
         let mut rooms = self.rooms.write();
@@ -219,53 +217,44 @@ impl ConnectionManager {
             .unwrap_or_default()
     }
 
-    /// Send message to specific clients
-    ///
-    /// Returns the number of clients that successfully received the message
+    /// Send a message to the given clients. Returns how many write channels accepted it.
     pub async fn send_to_clients(
         &self,
         client_ids: &[ClientId],
         message: WsMessage,
     ) -> Result<usize, BroadcastError> {
-        let clients = self.clients.read();
         let mut sent_count = 0;
-
         for client_id in client_ids {
-            if let Some(state) = clients.get(client_id) {
-                if state.sender.try_send(message.clone()).is_ok() {
-                    sent_count += 1;
+            if self.clients.read().contains_key(client_id) {
+                if let Some(sink) = self.ws_client_map.get_sink(client_id) {
+                    if sink.try_send(message.clone()).is_ok() {
+                        sent_count += 1;
+                    }
                 }
             }
         }
-
         Ok(sent_count)
     }
 
-    /// Sends close frames to all connected clients and clears all state
+    /// Sends close frames to all connected clients and clears topology state.
     pub async fn close_all(&self) {
-        let clients = self.clients.read();
-        let count = clients.len();
+        let client_ids: Vec<ClientId> = self.clients.read().keys().cloned().collect();
+        let count = client_ids.len();
 
         println!("Closing {} WebSocket connections...", count);
 
-        for (client_id, state) in clients.iter() {
-            let _ = state.sender.try_send(WsMessage::Close);
-            println!("  Sent close frame to: {}", client_id);
+        for client_id in &client_ids {
+            if let Some(sink) = self.ws_client_map.get_sink(client_id) {
+                let _ = sink.try_send(WsMessage::Close);
+                println!("  Sent close frame to: {}", client_id);
+            }
         }
-
-        drop(clients);
 
         self.clients.write().clear();
         self.rooms.write().clear();
         self.namespaces.write().clear();
 
         println!("  Closed {} connections", count);
-    }
-}
-
-impl Default for ConnectionManager {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -298,8 +287,24 @@ pub struct BroadcastService {
 }
 
 impl BroadcastService {
-    pub fn new(manager: Arc<ConnectionManager>) -> Self {
-        Self { manager }
+    pub fn new() -> Self {
+        Self {
+            manager: Arc::new(ConnectionManager::new(Arc::new(WsClientMap::new()))),
+        }
+    }
+
+    /// Expose the internal `ConnectionManager` so the framework can wire
+    /// `on_connect` / `on_disconnect` callbacks into it.
+    pub(crate) fn connection_manager(&self) -> Arc<ConnectionManager> {
+        self.manager.clone()
+    }
+
+    /// The shared client map that holds write channels for all connected clients.
+    ///
+    /// The framework extracts this in `listen()` so `make_ws_callbacks` can register
+    /// sinks into the same map that `BroadcastService` delegates sends through.
+    pub(crate) fn ws_client_map(&self) -> Arc<WsClientMap> {
+        self.manager.ws_client_map.clone()
     }
 
     // ========================================================================
@@ -347,6 +352,30 @@ impl BroadcastService {
 
     pub fn get_room_clients(&self, room_id: &str) -> Vec<ClientId> {
         self.manager.get_room_clients(room_id)
+    }
+
+    // ========================================================================
+    // Connection lifecycle
+    // ========================================================================
+
+    /// Register a client's write channel and topology state.
+    ///
+    /// The framework calls this from `on_connect`. Test code can call it directly
+    /// to set up clients without a real TCP connection.
+    pub fn connect(&self, client_id: ClientId, sink: Arc<dyn WsSink>, namespace: Option<String>) {
+        self.manager.ws_client_map.register(client_id.clone(), sink);
+        self.manager.register(WsClient::new(&client_id), namespace);
+    }
+
+    /// Remove a client's write channel and topology state.
+    pub fn disconnect(&self, client_id: &str) {
+        self.manager.ws_client_map.unregister(client_id);
+        self.manager.unregister(client_id);
+    }
+
+    /// Send close frames to all clients and clear topology. Called by the framework on shutdown.
+    pub(crate) async fn close_all(&self) {
+        self.manager.close_all().await;
     }
 }
 
@@ -485,7 +514,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl Sender for MockSender {
+    impl WsSink for MockSender {
         async fn send(&self, message: WsMessage) -> Result<(), SendError> {
             self.sent.write().push(message);
             Ok(())
@@ -497,140 +526,120 @@ mod tests {
         }
     }
 
-    fn create_client(id: &str) -> WsClient {
-        WsClient::new(id)
+    fn register_client(bs: &BroadcastService, id: &str, namespace: Option<String>) -> MockSender {
+        let mock = MockSender::new();
+        bs.connect(
+            id.to_string(),
+            Arc::new(mock.clone()) as Arc<dyn WsSink>,
+            namespace,
+        );
+        mock
     }
 
     #[test]
     fn test_register_and_unregister() {
-        let manager = ConnectionManager::new();
-        let client = create_client("client1");
-        let sender: Arc<dyn Sender> = Arc::new(MockSender::new());
-
-        manager.register(client.clone(), sender, None);
-        assert_eq!(manager.get_all_clients().len(), 1);
-
-        manager.unregister(&client.id);
-        assert_eq!(manager.get_all_clients().len(), 0);
+        let bs = BroadcastService::new();
+        let cm = bs.connection_manager();
+        register_client(&bs, "client1", None);
+        assert_eq!(cm.get_all_clients().len(), 1);
+        bs.disconnect("client1");
+        assert_eq!(cm.get_all_clients().len(), 0);
     }
 
     #[test]
     fn test_join_and_leave_room() {
-        let manager = ConnectionManager::new();
-        let client = create_client("client1");
-        let sender: Arc<dyn Sender> = Arc::new(MockSender::new());
+        let bs = BroadcastService::new();
+        let cm = bs.connection_manager();
+        register_client(&bs, "client1", None);
+        cm.join_room("client1", "lobby").unwrap();
 
-        manager.register(client.clone(), sender, None);
-        manager.join_room(&client.id, "lobby").unwrap();
-
-        let room_clients = manager.get_room_clients("lobby");
+        let room_clients = cm.get_room_clients("lobby");
         assert_eq!(room_clients.len(), 1);
-        assert_eq!(room_clients[0], client.id);
+        assert_eq!(room_clients[0], "client1");
 
-        manager.leave_room(&client.id, "lobby").unwrap();
-        assert_eq!(manager.get_room_clients("lobby").len(), 0);
+        cm.leave_room("client1", "lobby").unwrap();
+        assert_eq!(cm.get_room_clients("lobby").len(), 0);
     }
 
     #[test]
     fn test_auto_join_client_id_room() {
-        let manager = ConnectionManager::new();
-        let client = create_client("client1");
-        let sender: Arc<dyn Sender> = Arc::new(MockSender::new());
+        let bs = BroadcastService::new();
+        let cm = bs.connection_manager();
+        register_client(&bs, "client1", None);
 
-        manager.register(client.clone(), sender, None);
-
-        let room_clients = manager.get_room_clients("client1");
+        let room_clients = cm.get_room_clients("client1");
         assert_eq!(room_clients.len(), 1);
         assert_eq!(room_clients[0], "client1");
     }
 
     #[tokio::test]
     async fn test_broadcast_to_room() {
-        let manager = Arc::new(ConnectionManager::new());
-        let service = BroadcastService::new(manager.clone());
+        let bs = BroadcastService::new();
+        let s1 = register_client(&bs, "c1", None);
+        let s2 = register_client(&bs, "c2", None);
+        let s3 = register_client(&bs, "c3", None);
 
-        let sender1 = Arc::new(MockSender::new());
-        let sender2 = Arc::new(MockSender::new());
-        let sender3 = Arc::new(MockSender::new());
+        bs.join_room("c1", "lobby").unwrap();
+        bs.join_room("c2", "lobby").unwrap();
 
-        manager.register(create_client("c1"), sender1.clone(), None);
-        manager.register(create_client("c2"), sender2.clone(), None);
-        manager.register(create_client("c3"), sender3.clone(), None);
-
-        service.join_room("c1", "lobby").unwrap();
-        service.join_room("c2", "lobby").unwrap();
-
-        let msg = WsMessage::text("hello");
-        let sent = service.to_room("lobby").send(msg).await.unwrap();
-
+        let sent = bs
+            .to_room("lobby")
+            .send(WsMessage::text("hello"))
+            .await
+            .unwrap();
         assert_eq!(sent, 2);
-        assert_eq!(sender1.get_sent().len(), 1);
-        assert_eq!(sender2.get_sent().len(), 1);
-        assert_eq!(sender3.get_sent().len(), 0);
+        assert_eq!(s1.get_sent().len(), 1);
+        assert_eq!(s2.get_sent().len(), 1);
+        assert_eq!(s3.get_sent().len(), 0);
     }
 
     #[tokio::test]
     async fn test_broadcast_except() {
-        let manager = Arc::new(ConnectionManager::new());
-        let service = BroadcastService::new(manager.clone());
+        let bs = BroadcastService::new();
+        let s1 = register_client(&bs, "c1", None);
+        let s2 = register_client(&bs, "c2", None);
 
-        let sender1 = Arc::new(MockSender::new());
-        let sender2 = Arc::new(MockSender::new());
-
-        manager.register(create_client("c1"), sender1.clone(), None);
-        manager.register(create_client("c2"), sender2.clone(), None);
-
-        let msg = WsMessage::text("hello");
-        service.except("c1").send(msg).await.unwrap();
-
-        assert_eq!(sender1.get_sent().len(), 0);
-        assert_eq!(sender2.get_sent().len(), 1);
+        bs.except("c1")
+            .send(WsMessage::text("hello"))
+            .await
+            .unwrap();
+        assert_eq!(s1.get_sent().len(), 0);
+        assert_eq!(s2.get_sent().len(), 1);
     }
 
     #[tokio::test]
     async fn test_private_message_to_client() {
-        let manager = Arc::new(ConnectionManager::new());
-        let service = BroadcastService::new(manager.clone());
+        let bs = BroadcastService::new();
+        let s1 = register_client(&bs, "c1", None);
+        let s2 = register_client(&bs, "c2", None);
 
-        let sender1 = Arc::new(MockSender::new());
-        let sender2 = Arc::new(MockSender::new());
-
-        manager.register(create_client("c1"), sender1.clone(), None);
-        manager.register(create_client("c2"), sender2.clone(), None);
-
-        let msg = WsMessage::text("private");
-        service.to_client("c1").send(msg).await.unwrap();
-
-        assert_eq!(sender1.get_sent().len(), 1);
-        assert_eq!(sender2.get_sent().len(), 0);
+        bs.to_client("c1")
+            .send(WsMessage::text("private"))
+            .await
+            .unwrap();
+        assert_eq!(s1.get_sent().len(), 1);
+        assert_eq!(s2.get_sent().len(), 0);
     }
 
     #[tokio::test]
     async fn test_multi_room_broadcast() {
-        let manager = Arc::new(ConnectionManager::new());
-        let service = BroadcastService::new(manager.clone());
+        let bs = BroadcastService::new();
+        let s1 = register_client(&bs, "c1", None);
+        let s2 = register_client(&bs, "c2", None);
+        let s3 = register_client(&bs, "c3", None);
 
-        let sender1 = Arc::new(MockSender::new());
-        let sender2 = Arc::new(MockSender::new());
-        let sender3 = Arc::new(MockSender::new());
+        bs.join_room("c1", "room1").unwrap();
+        bs.join_room("c2", "room2").unwrap();
 
-        manager.register(create_client("c1"), sender1.clone(), None);
-        manager.register(create_client("c2"), sender2.clone(), None);
-        manager.register(create_client("c3"), sender3.clone(), None);
-
-        service.join_room("c1", "room1").unwrap();
-        service.join_room("c2", "room2").unwrap();
-
-        let msg = WsMessage::text("multi");
-        service
+        let sent = bs
             .to_room("room1")
             .and_room("room2")
-            .send(msg)
+            .send(WsMessage::text("multi"))
             .await
             .unwrap();
-
-        assert_eq!(sender1.get_sent().len(), 1);
-        assert_eq!(sender2.get_sent().len(), 1);
-        assert_eq!(sender3.get_sent().len(), 0);
+        assert_eq!(sent, 2);
+        assert_eq!(s1.get_sent().len(), 1);
+        assert_eq!(s2.get_sent().len(), 1);
+        assert_eq!(s3.get_sent().len(), 0);
     }
 }

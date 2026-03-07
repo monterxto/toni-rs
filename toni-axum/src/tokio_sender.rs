@@ -2,7 +2,7 @@
 
 use tokio::sync::mpsc;
 use toni::async_trait;
-use toni::websocket::{SendError, Sender, TrySendError, WsMessage};
+use toni::websocket::{SendError, TrySendError, WsMessage, WsSink};
 
 /// Tokio mpsc channel sender wrapper
 ///
@@ -26,7 +26,7 @@ impl TokioSender {
 }
 
 #[async_trait]
-impl Sender for TokioSender {
+impl WsSink for TokioSender {
     async fn send(&self, message: WsMessage) -> Result<(), SendError> {
         self.inner.send(message).await.map_err(|_| SendError)
     }

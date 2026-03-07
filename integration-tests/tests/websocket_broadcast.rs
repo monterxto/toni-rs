@@ -2,31 +2,29 @@
 //!
 //! Two layers of coverage:
 //!
-//! 1. **Broadcast pipeline** — `ConnectionManager` + `BroadcastService` + `TokioSender`
-//!    wired together without a real TCP connection. Verifies the full message-routing
-//!    path from `BroadcastService` API down to the stored `Sender` channel.
+//! 1. **Broadcast pipeline** — `BroadcastService` + `TokioSender` wired together without
+//!    a real TCP connection. Verifies the full message-routing path from `BroadcastService`
+//!    API down to the stored sink channel.
 //!
-//! 2. **DI resolution** — `BroadcastModule` registers `ConnectionManager` and
-//!    `BroadcastService` with `type_name`-based tokens that the framework resolves
-//!    correctly. Verifies the token fix that replaced simple string tokens.
+//! 2. **DI resolution** — `BroadcastModule` registers `BroadcastService` with the correct
+//!    token so the framework resolves it when a gateway declares it as a dependency.
 
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use toni::websocket::{BroadcastService, ConnectionManager, WsMessage};
-use toni::WsClient;
+use toni::websocket::{BroadcastService, WsMessage, WsSink};
 use toni_axum::TokioSender;
 
 // Helpers
 
 /// Returns the receiver so tests can assert what the client received.
 fn register_client(
-    cm: &Arc<ConnectionManager>,
+    bs: &BroadcastService,
     client_id: &str,
     namespace: Option<String>,
 ) -> mpsc::Receiver<WsMessage> {
     let (tx, rx) = mpsc::channel(16);
-    let sender = Arc::new(TokioSender::new(tx));
-    cm.register(WsClient::new(client_id), sender, namespace);
+    let sink = Arc::new(TokioSender::new(tx)) as Arc<dyn WsSink>;
+    bs.connect(client_id.to_string(), sink, namespace);
     rx
 }
 
@@ -34,12 +32,11 @@ fn register_client(
 
 #[tokio::test]
 async fn broadcast_to_all_delivers_to_every_registered_client() {
-    let cm = Arc::new(ConnectionManager::new());
-    let bs = BroadcastService::new(cm.clone());
+    let bs = BroadcastService::new();
 
-    let mut rx1 = register_client(&cm, "client-1", None);
-    let mut rx2 = register_client(&cm, "client-2", None);
-    let mut rx3 = register_client(&cm, "client-3", None);
+    let mut rx1 = register_client(&bs, "client-1", None);
+    let mut rx2 = register_client(&bs, "client-2", None);
+    let mut rx3 = register_client(&bs, "client-3", None);
 
     let msg = WsMessage::text("hello everyone");
     let sent = bs.to_all().send(msg.clone()).await.unwrap();
@@ -52,12 +49,11 @@ async fn broadcast_to_all_delivers_to_every_registered_client() {
 
 #[tokio::test]
 async fn broadcast_to_room_delivers_only_to_room_members() {
-    let cm = Arc::new(ConnectionManager::new());
-    let bs = BroadcastService::new(cm.clone());
+    let bs = BroadcastService::new();
 
-    let mut lobby_rx1 = register_client(&cm, "alice", None);
-    let mut lobby_rx2 = register_client(&cm, "bob", None);
-    let mut other_rx = register_client(&cm, "carol", None);
+    let mut lobby_rx1 = register_client(&bs, "alice", None);
+    let mut lobby_rx2 = register_client(&bs, "bob", None);
+    let mut other_rx = register_client(&bs, "carol", None);
 
     bs.join_room("alice", "lobby").unwrap();
     bs.join_room("bob", "lobby").unwrap();
@@ -86,11 +82,10 @@ async fn broadcast_to_room_delivers_only_to_room_members() {
 
 #[tokio::test]
 async fn broadcast_to_client_delivers_only_to_target() {
-    let cm = Arc::new(ConnectionManager::new());
-    let bs = BroadcastService::new(cm.clone());
+    let bs = BroadcastService::new();
 
-    let mut target_rx = register_client(&cm, "target", None);
-    let mut bystander_rx = register_client(&cm, "bystander", None);
+    let mut target_rx = register_client(&bs, "target", None);
+    let mut bystander_rx = register_client(&bs, "bystander", None);
 
     bs.to_client("target")
         .send(WsMessage::text("private"))
@@ -106,27 +101,25 @@ async fn broadcast_to_client_delivers_only_to_target() {
 
 #[tokio::test]
 async fn unregistered_client_stops_receiving_after_disconnect() {
-    let cm = Arc::new(ConnectionManager::new());
-    let bs = BroadcastService::new(cm.clone());
+    let bs = BroadcastService::new();
 
-    let mut rx = register_client(&cm, "leaving", None);
+    let mut rx = register_client(&bs, "leaving", None);
 
     bs.to_all().send(WsMessage::text("before")).await.unwrap();
     assert_eq!(rx.recv().await.unwrap().as_text(), Some("before"));
 
-    cm.unregister("leaving");
+    bs.disconnect("leaving");
 
     let sent = bs.to_all().send(WsMessage::text("after")).await.unwrap();
-    assert_eq!(sent, 0, "no clients registered after unregister");
+    assert_eq!(sent, 0, "no clients registered after disconnect");
     assert!(rx.try_recv().is_err());
 }
 
 #[tokio::test]
 async fn leave_room_stops_room_messages() {
-    let cm = Arc::new(ConnectionManager::new());
-    let bs = BroadcastService::new(cm.clone());
+    let bs = BroadcastService::new();
 
-    let mut rx = register_client(&cm, "user", None);
+    let mut rx = register_client(&bs, "user", None);
 
     bs.join_room("user", "general").unwrap();
     bs.to_room("general")
@@ -153,31 +146,15 @@ mod di_tests {
     use std::sync::Arc;
     use toni::module;
     use toni::toni_factory::ToniFactory;
-    use toni::websocket::{BroadcastModule, BroadcastService, ConnectionManager};
-    use toni_axum::AxumAdapter;
+    use toni::websocket::{BroadcastModule, BroadcastService, WsMessage, WsSink};
+    use toni_axum::{AxumAdapter, TokioSender};
 
     #[module(imports: [BroadcastModule::new()])]
     struct WsTestModule;
 
-    /// `BroadcastModule` must register `Arc<ConnectionManager>` under the token
-    /// `type_name::<Arc<ConnectionManager>>()` — the same token the macro generates
-    /// when a gateway field is typed `connection_manager: Arc<ConnectionManager>`.
     #[serial]
     #[tokio_localset_test::localset_test]
-    async fn websocket_module_provides_connection_manager_via_type_name_token() {
-        let app = ToniFactory::create(WsTestModule::module_definition(), AxumAdapter::new()).await;
-        let result = app.get::<Arc<ConnectionManager>>().await;
-        assert!(
-            result.is_ok(),
-            "ConnectionManager not found — likely a DI token mismatch. Got: {:?}",
-            result.err()
-        );
-    }
-
-    /// `BroadcastService` must be resolvable by `type_name::<BroadcastService>()`.
-    #[serial]
-    #[tokio_localset_test::localset_test]
-    async fn websocket_module_provides_broadcast_service_via_type_name_token() {
+    async fn broadcast_module_provides_broadcast_service() {
         let app = ToniFactory::create(WsTestModule::module_definition(), AxumAdapter::new()).await;
         let result = app.get::<BroadcastService>().await;
         assert!(
@@ -187,30 +164,21 @@ mod di_tests {
         );
     }
 
-    /// Both `ConnectionManager` and `BroadcastService` are resolvable in the same app,
-    /// and the `BroadcastService` instance correctly holds a reference to the same
-    /// `ConnectionManager` (same Arc pointer).
     #[serial]
     #[tokio_localset_test::localset_test]
-    async fn broadcast_service_shares_connection_manager_instance() {
+    async fn broadcast_service_can_send_to_connected_client() {
         let app = ToniFactory::create(WsTestModule::module_definition(), AxumAdapter::new()).await;
-
-        let cm = app
-            .get::<Arc<ConnectionManager>>()
-            .await
-            .expect("ConnectionManager should resolve");
         let bs = app
             .get::<BroadcastService>()
             .await
             .expect("BroadcastService should resolve");
 
         let (tx, mut rx) = tokio::sync::mpsc::channel(4);
-        let sender = Arc::new(toni_axum::TokioSender::new(tx));
-        cm.register(toni::WsClient::new("test-client"), sender, None);
+        let sink = Arc::new(TokioSender::new(tx)) as Arc<dyn WsSink>;
+        bs.connect("test-client".to_string(), sink, None);
 
-        // Must reach the same ConnectionManager instance the test registered with.
         bs.to_all()
-            .send(toni::websocket::WsMessage::text("via DI"))
+            .send(WsMessage::text("via DI"))
             .await
             .expect("send should succeed");
 

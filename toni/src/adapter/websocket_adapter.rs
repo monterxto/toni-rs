@@ -6,7 +6,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::websocket::{Sender as WsSender, WsError, WsMessage};
+use crate::websocket::{WsError, WsMessage, WsSink};
 
 /// Callbacks the framework supplies to an adapter for one gateway path.
 ///
@@ -16,7 +16,7 @@ pub struct WsConnectionCallbacks {
     on_connect: Arc<
         dyn Fn(
                 HashMap<String, String>,
-                Arc<dyn WsSender>,
+                Arc<dyn WsSink>,
             ) -> Pin<Box<dyn Future<Output = Result<String, WsError>> + Send>>
             + Send
             + Sync,
@@ -30,7 +30,7 @@ impl WsConnectionCallbacks {
     pub(crate) fn new(
         on_connect: impl Fn(
             HashMap<String, String>,
-            Arc<dyn WsSender>,
+            Arc<dyn WsSink>,
         ) -> Pin<Box<dyn Future<Output = Result<String, WsError>> + Send>>
         + Send
         + Sync
@@ -58,7 +58,7 @@ impl WsConnectionCallbacks {
     pub async fn connect(
         &self,
         headers: HashMap<String, String>,
-        sender: Arc<dyn WsSender>,
+        sender: Arc<dyn WsSink>,
     ) -> Result<String, WsError> {
         (self.on_connect)(headers, sender).await
     }

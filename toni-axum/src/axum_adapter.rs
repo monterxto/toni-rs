@@ -17,7 +17,7 @@ use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use std::str::FromStr;
 
-use toni::websocket::{Sender, WsMessage};
+use toni::websocket::{WsMessage, WsSink};
 use toni::{
     async_trait, http_helpers::Extensions, Body as ToniBody, HttpAdapter, HttpMethod, HttpRequest,
     HttpResponse, InstanceWrapper, ToResponse, WebSocketAdapter, WsConnectionCallbacks,
@@ -75,7 +75,7 @@ async fn run_ws_connection(
         }
     });
 
-    let sender: Arc<dyn Sender> = Arc::new(TokioSender::new(tx));
+    let sender: Arc<dyn WsSink> = Arc::new(TokioSender::new(tx));
 
     let client_id = match callbacks.connect(headers_map, sender).await {
         Ok(id) => id,

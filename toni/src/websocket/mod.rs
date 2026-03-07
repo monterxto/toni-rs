@@ -6,25 +6,23 @@
 mod broadcast;
 mod broadcast_module;
 mod broadcast_provider;
-mod connection_manager_provider;
 mod gateway_trait;
 mod gateway_wrapper;
-mod handle;
 pub mod helpers;
 mod ws_client;
+mod ws_client_map;
 mod ws_error;
 mod ws_message;
 
+pub(crate) use broadcast::ConnectionManager;
 pub use broadcast::{
-    BroadcastError, BroadcastService, BroadcastTarget, ClientId, ConnectionManager, RoomId,
-    SendError, Sender, TrySendError,
+    BroadcastError, BroadcastService, BroadcastTarget, ClientId, RoomId, SendError, TrySendError,
+    WsSink,
 };
 pub use broadcast_module::BroadcastModule;
-pub use broadcast_provider::{BroadcastServiceManager, BroadcastServiceProvider};
-pub use connection_manager_provider::{ConnectionManagerManager, ConnectionManagerProvider};
 pub use gateway_trait::GatewayTrait;
 pub use gateway_wrapper::GatewayWrapper;
-pub use handle::WsGatewayHandle;
 pub use ws_client::{WsClient, WsHandshake};
+pub(crate) use ws_client_map::WsClientMap;
 pub use ws_error::{DisconnectReason, WsError};
 pub use ws_message::WsMessage;

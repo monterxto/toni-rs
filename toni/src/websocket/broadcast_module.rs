@@ -1,32 +1,20 @@
-//! Broadcast module for dependency injection
-//!
-//! Provides a module that registers BroadcastService and ConnectionManager
-//! as injectable providers, similar to ConfigModule pattern.
-//!
-//! WebSocket works without this module — import it only when you need broadcasting.
-
-use std::sync::Arc;
-
 use crate::module_helpers::module_enum::ModuleDefinition;
 use crate::traits_helpers::{Controller, ModuleMetadata, Provider};
+use crate::websocket::BroadcastService;
+use crate::websocket::broadcast_provider::BroadcastServiceManager;
 
-use super::{
-    BroadcastService, BroadcastServiceManager, ConnectionManager, ConnectionManagerManager,
-};
-
-/// Module that provides `ConnectionManager` and `BroadcastService` for broadcasting.
+/// Opt-in module that provides `BroadcastService` for WebSocket broadcasting.
 ///
-/// WebSocket gateways work without this module — import it only when you need
-/// `BroadcastService` to send messages to other clients or rooms.
-///
-/// When imported, `ToniApplication` automatically uses the broadcast-aware
-/// connection lifecycle instead of the simple echo path.
+/// Import this in any module whose gateways need `BroadcastService`. Because the
+/// module is global, any module that transitively imports it can inject the service
+/// without re-exporting it.
 ///
 /// # Example
-/// ```ignore
+///
+/// ```rust,ignore
 /// #[module(
+///     imports: [BroadcastModule::new()],
 ///     providers: [ChatGateway],
-///     imports: [BroadcastModule::new()]
 /// )]
 /// struct AppModule;
 /// ```
@@ -38,19 +26,13 @@ impl BroadcastModule {
     }
 }
 
-impl Default for BroadcastModule {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl ModuleMetadata for BroadcastModule {
     fn get_id(&self) -> String {
-        "BroadcastModule".to_string()
+        "ToniBroadcastModule".to_string()
     }
 
     fn get_name(&self) -> String {
-        "BroadcastModule".to_string()
+        "ToniBroadcastModule".to_string()
     }
 
     fn is_global(&self) -> bool {
@@ -66,28 +48,16 @@ impl ModuleMetadata for BroadcastModule {
     }
 
     fn providers(&self) -> Option<Vec<Box<dyn Provider>>> {
-        Some(vec![
-            Box::new(ConnectionManagerManager::new()),
-            Box::new(BroadcastServiceManager::new()),
-        ])
+        Some(vec![Box::new(BroadcastServiceManager)])
     }
 
     fn exports(&self) -> Option<Vec<String>> {
-        Some(vec![
-            std::any::type_name::<Arc<ConnectionManager>>().to_string(),
-            std::any::type_name::<BroadcastService>().to_string(),
-        ])
+        Some(vec![std::any::type_name::<BroadcastService>().to_string()])
     }
 }
 
 impl From<BroadcastModule> for ModuleDefinition {
     fn from(module: BroadcastModule) -> Self {
         ModuleDefinition::DefaultModule(Box::new(module))
-    }
-}
-
-impl Clone for BroadcastModule {
-    fn clone(&self) -> Self {
-        Self
     }
 }
