@@ -116,7 +116,7 @@ async fn test_config_injection_e2e() {
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
 
-        let app = ToniFactory::create(AppModule::module_definition(), adapter).await;
+        let mut app = ToniFactory::create(AppModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
@@ -195,7 +195,7 @@ async fn test_config_with_defaults_e2e() {
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
 
-        let app = ToniFactory::create(AppModule::module_definition(), adapter).await;
+        let mut app = ToniFactory::create(AppModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 

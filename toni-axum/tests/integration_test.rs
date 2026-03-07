@@ -63,7 +63,7 @@ async fn test_axum_e2e() {
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
 
-        let app = ToniFactory::create(TestModule::module_definition(), adapter).await;
+        let mut app = ToniFactory::create(TestModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 

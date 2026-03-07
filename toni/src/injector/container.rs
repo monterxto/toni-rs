@@ -10,6 +10,7 @@ use crate::{
         Controller, ControllerTrait, Guard, Interceptor, ModuleMetadata, Pipe, Provider,
         ProviderTrait,
     },
+    websocket::GatewayTrait,
 };
 
 use super::{InstanceWrapper, module::Module};
@@ -31,6 +32,9 @@ pub struct ToniContainer {
     app_guard_providers: Vec<(String, String)>,
     app_interceptor_providers: Vec<(String, String)>,
     app_pipe_providers: Vec<(String, String)>,
+    /// WebSocket gateways — populated automatically when provider instances are added.
+    /// Key is the WS path (e.g. "/chat"), value is the raw gateway ready for wrapping.
+    gateways: FxHashMap<String, Arc<Box<dyn GatewayTrait>>>,
 }
 
 impl Default for ToniContainer {
@@ -53,6 +57,7 @@ impl ToniContainer {
             app_guard_providers: Vec::new(),
             app_interceptor_providers: Vec::new(),
             app_pipe_providers: Vec::new(),
+            gateways: FxHashMap::default(),
         }
     }
 
@@ -135,12 +140,20 @@ impl ToniContainer {
         module_ref_token: &String,
         provider_instance: Arc<Box<dyn ProviderTrait>>,
     ) -> Result<()> {
+        if let Some(gateway) = provider_instance.as_gateway() {
+            self.gateways.insert(gateway.get_path(), gateway);
+        }
+
         let module_ref = self
             .modules
             .get_mut(module_ref_token)
             .ok_or_else(|| anyhow!("Module not found"))?;
         module_ref.add_provider_instance(provider_instance);
         Ok(())
+    }
+
+    pub fn get_gateways(&self) -> &FxHashMap<String, Arc<Box<dyn GatewayTrait>>> {
+        &self.gateways
     }
 
     pub fn add_controller_instance(

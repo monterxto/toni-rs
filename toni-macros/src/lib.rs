@@ -9,6 +9,7 @@ use syn::Ident;
 mod config_macro;
 mod controller_macro;
 mod enhancer;
+mod gateway_macro;
 mod markers_params;
 mod middleware_macro;
 mod module_macro;
@@ -343,7 +344,6 @@ pub fn set_metadata(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
 }
 
-
 // Helper derive to register #[inject] and #[default] as valid attributes
 // This allows them to be used on struct fields in injectable/controller_struct
 #[proc_macro_derive(Injectable, attributes(inject, default))]
@@ -420,5 +420,67 @@ pub fn pipe(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
 #[proc_macro_attribute]
 pub fn error_handler(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+
+// ============================================================================
+// WEBSOCKET GATEWAY MACROS
+// ============================================================================
+
+/// WebSocket gateway macro for defining WebSocket message handlers.
+///
+/// Similar to `#[controller]` but for WebSocket connections. Implements `GatewayTrait`
+/// and handles WebSocket lifecycle events and message routing.
+///
+/// # Syntax
+///
+/// - **Basic:** `#[websocket_gateway(pub struct Foo { ... })]`
+/// - **With path:** `#[websocket_gateway("/chat", pub struct Foo { ... })]`
+/// - **With namespace:** `#[websocket_gateway("/chat", namespace = "lobby", pub struct Foo { ... })]`
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// #[websocket_gateway("/chat", pub struct ChatGateway {})]
+/// impl ChatGateway {
+///     #[subscribe_message("message")]
+///     async fn handle_message(
+///         &self,
+///         client: WsClient,
+///         message: WsMessage,
+///     ) -> Result<Option<WsMessage>, WsError> {
+///         Ok(Some(WsMessage::text("Echo: ...")))
+///     }
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn websocket_gateway(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let attr = proc_macro2::TokenStream::from(attr);
+    let item = proc_macro2::TokenStream::from(item);
+    let output = gateway_macro::gateway_impl::handle_websocket_gateway(attr, item);
+    proc_macro::TokenStream::from(output.unwrap_or_else(|e| e.to_compile_error()))
+}
+
+/// Marks a method as a WebSocket message handler for a specific event.
+///
+/// Similar to `#[get]`, `#[post]` for HTTP routes but for WebSocket events.
+///
+/// # Syntax
+///
+/// ```rust,ignore
+/// #[subscribe_message("event_name")]
+/// async fn handler(&self, client: WsClient, message: WsMessage) -> Result<Option<WsMessage>, WsError>
+/// ```
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// #[subscribe_message("ping")]
+/// async fn handle_ping(&self, client: WsClient, message: WsMessage) -> Result<Option<WsMessage>, WsError> {
+///     Ok(Some(WsMessage::text("pong")))
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn subscribe_message(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
 }

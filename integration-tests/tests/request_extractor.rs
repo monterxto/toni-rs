@@ -76,7 +76,8 @@ async fn test_method_without_request_parameter() {
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
 
-        let app = ToniFactory::create(RequestExtractorModule::module_definition(), adapter).await;
+        let mut app =
+            ToniFactory::create(RequestExtractorModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
@@ -115,7 +116,8 @@ async fn test_method_with_request_parameter() {
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
 
-        let app = ToniFactory::create(RequestExtractorModule::module_definition(), adapter).await;
+        let mut app =
+            ToniFactory::create(RequestExtractorModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
@@ -155,7 +157,8 @@ async fn test_method_with_request_and_json_extractor() {
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
 
-        let app = ToniFactory::create(RequestExtractorModule::module_definition(), adapter).await;
+        let mut app =
+            ToniFactory::create(RequestExtractorModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
@@ -198,7 +201,8 @@ async fn test_request_header_access() {
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
 
-        let app = ToniFactory::create(RequestExtractorModule::module_definition(), adapter).await;
+        let mut app =
+            ToniFactory::create(RequestExtractorModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
@@ -249,7 +253,8 @@ async fn test_request_query_params_access() {
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
 
-        let app = ToniFactory::create(RequestExtractorModule::module_definition(), adapter).await;
+        let mut app =
+            ToniFactory::create(RequestExtractorModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 

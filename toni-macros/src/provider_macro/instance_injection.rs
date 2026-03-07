@@ -71,6 +71,7 @@ pub struct EnhancerTraits {
     pub is_pipe: bool,
     pub is_middleware: bool,
     pub is_error_handler: bool,
+    pub is_gateway: bool,
 }
 
 /// Detect which enhancer traits a struct implements.
@@ -127,6 +128,7 @@ pub fn generate_instance_provider_system(
     impl_block: &ItemImpl,
     dependencies: &DependencyInfo,
     scope: ProviderScope,
+    is_gateway: bool,
 ) -> Result<TokenStream> {
     let struct_name = &struct_attrs.ident;
 
@@ -143,11 +145,17 @@ pub fn generate_instance_provider_system(
     }
     let impl_def = strip_lifecycle_attrs(&impl_def);
 
-    let enhancer_traits = detect_enhancer_traits(struct_attrs, impl_block);
+    let mut enhancer_traits = detect_enhancer_traits(struct_attrs, impl_block);
     let lifecycle_hooks = detect_lifecycle_hooks(impl_block);
+    enhancer_traits.is_gateway = is_gateway;
 
-    let provider_wrapper =
-        generate_provider_wrapper(struct_name, dependencies, scope, &enhancer_traits, &lifecycle_hooks);
+    let provider_wrapper = generate_provider_wrapper(
+        struct_name,
+        dependencies,
+        scope,
+        &enhancer_traits,
+        &lifecycle_hooks,
+    );
 
     let manager = generate_manager(struct_name, dependencies, scope);
 
@@ -163,16 +171,37 @@ pub fn generate_instance_provider_system(
     })
 }
 
+/// Adds Clone and Injectable derives to struct if needed
+///
+/// # Clone Detection
+/// This function checks for `#[derive(Clone)]` attribute on the struct.
+///
+/// # Limitation: Manual `impl Clone`
+/// This macro **cannot detect** manual `impl Clone` blocks that come after the macro invocation:
+///
+/// ```rust,ignore
+/// #[injectable(pub struct Foo { field: String })]
+/// impl Foo { /* ... */ }
+///
+/// // ❌ Macro cannot see this - will add #[derive(Clone)] and cause conflict
+/// impl Clone for Foo {
+///     fn clone(&self) -> Self { /* custom logic */ }
+/// }
+/// ```
+///
+/// This is an acceptable limitation because:
+/// - Macros process attributes linearly and cannot look ahead to future impl blocks
+/// - Compile errors are clear when conflicts occur
 fn add_clone_derive(struct_attrs: &ItemStruct) -> ItemStruct {
     let mut struct_def = struct_attrs.clone();
 
     let has_clone = struct_def.attrs.iter().any(|attr| {
         if attr.path().is_ident("derive") {
-            //TODO: Would probably need to parse derive contents properly
-            false
-        } else {
-            false
+            if let Ok(meta) = attr.parse_args::<syn::Meta>() {
+                return meta_contains_clone(&meta);
+            }
         }
+        false
     });
 
     if !has_clone {
@@ -191,6 +220,29 @@ fn add_clone_derive(struct_attrs: &ItemStruct) -> ItemStruct {
     }
 
     struct_def
+}
+
+/// Recursively check if a derive meta contains Clone
+fn meta_contains_clone(meta: &syn::Meta) -> bool {
+    match meta {
+        syn::Meta::Path(path) => path.is_ident("Clone"),
+        syn::Meta::List(list) => {
+            for nested in list
+                .parse_args_with(
+                    syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+                )
+                .ok()
+                .iter()
+                .flatten()
+            {
+                if meta_contains_clone(nested) {
+                    return true;
+                }
+            }
+            false
+        }
+        _ => false,
+    }
 }
 
 fn generate_provider_wrapper(
@@ -248,6 +300,14 @@ fn generate_enhancer_methods(traits: &EnhancerTraits) -> TokenStream {
         methods.push(quote! {
             fn as_error_handler(&self) -> Option<::std::sync::Arc<dyn ::toni::traits_helpers::ErrorHandler>> {
                 Some(::std::sync::Arc::new((*self.instance).clone()))
+            }
+        });
+    }
+
+    if traits.is_gateway {
+        methods.push(quote! {
+            fn as_gateway(&self) -> Option<::std::sync::Arc<Box<dyn ::toni::websocket::GatewayTrait>>> {
+                Some(::std::sync::Arc::new(Box::new((*self.instance).clone()) as Box<dyn ::toni::websocket::GatewayTrait>))
             }
         });
     }

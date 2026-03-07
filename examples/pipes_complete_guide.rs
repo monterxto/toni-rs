@@ -545,7 +545,7 @@ impl ExamplesModule {}
 
 #[tokio::main]
 async fn main() {
-    let app = toni::ToniFactory::create(ExamplesModule, toni_axum::AxumAdapter::new()).await;
+    let mut app = toni::ToniFactory::create(ExamplesModule, toni_axum::AxumAdapter::new()).await;
 
     println!("🚀 Toni Pipes Examples Server");
     println!("============================");

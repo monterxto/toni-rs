@@ -12,6 +12,7 @@ toni = { path = "../toni" }
 toni-config = { path = "../toni-config" }
 toni-macros = { path = "../toni-macros" }
 toni-axum = { path = "../toni-axum" }
+toni-tungstenite = { path = "../toni-tungstenite" }
 
 # Testing dependencies
 tokio = { version = "1", features = ["full"] }
@@ -23,3 +24,6 @@ validator = { version = "0.20.0", features = ["derive"] }
 rand = "0.8"
 uuid = { version = "1.11", features = ["v4"] }
 tokio_localset_test = { git = "https://github.com/ifeanyi-ugwu/tokio_localset_test.git", rev = "7fa973b8da300ea8ebbb6ff90f59ef760fcf9bfc" }
+tokio-tungstenite = "0.28"
+futures-util = "0.3"
+anyhow = "1"

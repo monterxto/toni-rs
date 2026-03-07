@@ -178,7 +178,7 @@ mod tests {
         local.spawn_local(async move {
             let adapter = AxumAdapter::new();
 
-            let app = ToniFactory::create(OkModule::module_definition(), adapter).await;
+            let mut app = ToniFactory::create(OkModule::module_definition(), adapter).await;
             let _ = app.listen(port, "127.0.0.1").await;
         });
 
@@ -216,7 +216,8 @@ mod tests {
         local.spawn_local(async move {
             let adapter = AxumAdapter::new();
 
-            let app = ToniFactory::create(ProblematicModule::module_definition(), adapter).await;
+            let mut app =
+                ToniFactory::create(ProblematicModule::module_definition(), adapter).await;
             let _ = app.listen(port, "127.0.0.1").await;
         });
 
@@ -244,7 +245,7 @@ mod tests {
         local.spawn_local(async move {
             let adapter = AxumAdapter::new();
 
-            let app = ToniFactory::create(CorrectModule::module_definition(), adapter).await;
+            let mut app = ToniFactory::create(CorrectModule::module_definition(), adapter).await;
             let _ = app.listen(port, "127.0.0.1").await;
         });
 
@@ -282,7 +283,7 @@ mod tests {
         local.spawn_local(async move {
             let adapter = AxumAdapter::new();
 
-            let app = ToniFactory::create(MixedModule::module_definition(), adapter).await;
+            let mut app = ToniFactory::create(MixedModule::module_definition(), adapter).await;
             let _ = app.listen(port, "127.0.0.1").await;
         });
 
@@ -312,7 +313,7 @@ mod tests {
         local.spawn_local(async move {
             let adapter = AxumAdapter::new();
 
-            let app =
+            let mut app =
                 ToniFactory::create(ExplicitSingletonModule::module_definition(), adapter).await;
             let _ = app.listen(port, "127.0.0.1").await;
         });

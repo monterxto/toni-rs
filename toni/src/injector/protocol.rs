@@ -19,6 +19,7 @@ pub enum Protocol {
         client: WsClient,
         message: WsMessage,
         event: String,
+        response: Option<Result<Option<WsMessage>, crate::websocket::WsError>>,
     },
 
     Rpc {
@@ -48,6 +49,7 @@ impl Protocol {
             client,
             message,
             event: event.into(),
+            response: None,
         }
     }
 

@@ -10,27 +10,31 @@ pub mod http_adapter;
 pub mod http_helpers;
 pub mod injector;
 pub mod middleware;
-pub mod rpc;
-pub mod websocket;
 pub mod module_helpers;
 pub mod provider_scope;
 mod request;
 mod router;
+pub mod rpc;
 mod scanner;
 mod structs_helpers;
 mod toni_application;
 pub mod toni_factory;
 pub mod traits_helpers;
+pub mod websocket;
 
 // Re-exports for adapter crates
-pub use adapter::RouteAdapter;
+pub use adapter::{WebSocketAdapter, WsConnectionCallbacks};
 pub use http_adapter::HttpAdapter;
 pub use http_helpers::{
     Body, HttpMethod, HttpRequest, HttpResponse, HttpResponseBuilder, RouteMetadata, ToResponse,
 };
 pub use injector::{InstanceWrapper, Protocol, ProtocolType};
 pub use rpc::{RpcContext, RpcData};
-pub use websocket::{WsClient, WsHandshake, WsMessage};
+pub use websocket::{
+    BroadcastError, BroadcastModule, BroadcastService, BroadcastTarget, ClientId, DisconnectReason,
+    GatewayTrait, GatewayWrapper, RoomId, SendError, TrySendError, WsClient, WsError,
+    WsHandlerResult, WsHandshake, WsMessage, WsSink,
+};
 
 // Re-export built-in providers
 pub use request::{Request, RequestManager};
@@ -72,9 +76,9 @@ mod tests {
         let server_handle: JoinHandle<()> = tokio::spawn(async {
             // let factory = ToniFactory::new();
             // let mut axum_adapter = AxumAdapter::new();
-            // let app = ToniFactory::create(app_module, axum_adapter).unwrap();
+            // let mut app = ToniFactory::create(app_module, axum_adapter).unwrap();
             // app.listen(3000, "127.0.0.1").await;
-            // let app = match app {
+            // let mut app = match app {
             //     Ok(app) => {
             //         app
             //     }

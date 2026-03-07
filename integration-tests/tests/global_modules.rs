@@ -192,7 +192,7 @@ async fn test_global_module_with_real_http_requests() {
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
 
-        let app = ToniFactory::create(AppModule::module_definition(), adapter).await;
+        let mut app = ToniFactory::create(AppModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 
@@ -331,7 +331,7 @@ async fn test_global_via_builder_method() {
     local.spawn_local(async move {
         let adapter = AxumAdapter::new();
 
-        let app = ToniFactory::create(BuilderAppModule::module_definition(), adapter).await;
+        let mut app = ToniFactory::create(BuilderAppModule::module_definition(), adapter).await;
         let _ = app.listen(port, "127.0.0.1").await;
     });
 

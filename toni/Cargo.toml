@@ -11,7 +11,6 @@ homepage = "https://github.com/monterxto/toni-rs"
 readme = "README.md"
 
 [dependencies]
-tokio = { version = "1.42.0", features = ["full"] }
 serde = { version = "1.0.216", features = ["derive"] }
 serde_json = "1.0.134"
 rustc-hash = "2.1"
@@ -19,7 +18,13 @@ anyhow = "1.0.95"
 async-trait = "0.1.86"
 validator = "0.20.0"
 serde_urlencoded = "0.7"
+thiserror = "2.0"
+parking_lot = "0.12"
+async-lock = "3"
+futures = { version = "0.3", default-features = false, features = ["std"] }
 toni-macros = { path = "../toni-macros" }
+uuid = { version = "1.0", features = ["v4"] }
 
 [dev-dependencies]
+tokio = { version = "1.42.0", features = ["full"] }
 reqwest = { version = "0.12.11", features = ["json"] }

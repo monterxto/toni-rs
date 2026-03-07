@@ -7,6 +7,6 @@ mod app;
 async fn main() {
     let axum_adapter = AxumAdapter::new();
 
-    let app = ToniFactory::create(AppModule::module_definition(), axum_adapter);
+    let mut app = ToniFactory::create(AppModule::module_definition(), axum_adapter);
     app.listen(3000, "127.0.0.1").await;
 }

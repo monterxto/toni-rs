@@ -1,9 +1,11 @@
 [workspace]
+resolver = "3"
 members = [
     "toni",
     "toni-macros",
     "toni-cli",
     "toni-axum",
+    "toni-tungstenite",
     "toni-actix",
     "toni-config",
     "toni-async-graphql",

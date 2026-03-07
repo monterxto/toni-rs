@@ -15,16 +15,13 @@
 //! async fn main() {
 //!     let adapter = ActixAdapter::new();
 //!
-//!     let app = ToniFactory::create(AppModule::module_definition(), adapter);
+//!     let mut app = ToniFactory::create(AppModule::module_definition(), adapter);
 //!     app.listen(3000, "127.0.0.1").await;
 //! }
 //! ```
 
 mod actix_adapter;
-mod actix_route_adapter;
 
 pub use actix_adapter::ActixAdapter;
-pub use actix_route_adapter::ActixRouteAdapter;
 
-// Re-export commonly used types from toni
-pub use toni::{HttpAdapter, RouteAdapter};
+pub use toni::HttpAdapter;

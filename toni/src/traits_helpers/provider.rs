@@ -20,11 +20,21 @@ pub trait ProviderTrait: Send + Sync {
     }
 
     // Enhancer detection — overridden by the macro for guards, interceptors, etc.
-    fn as_guard(&self) -> Option<Arc<dyn Guard>> { None }
-    fn as_interceptor(&self) -> Option<Arc<dyn Interceptor>> { None }
-    fn as_pipe(&self) -> Option<Arc<dyn Pipe>> { None }
-    fn as_middleware(&self) -> Option<Arc<dyn Middleware>> { None }
-    fn as_error_handler(&self) -> Option<Arc<dyn ErrorHandler>> { None }
+    fn as_guard(&self) -> Option<Arc<dyn Guard>> {
+        None
+    }
+    fn as_interceptor(&self) -> Option<Arc<dyn Interceptor>> {
+        None
+    }
+    fn as_pipe(&self) -> Option<Arc<dyn Pipe>> {
+        None
+    }
+    fn as_middleware(&self) -> Option<Arc<dyn Middleware>> {
+        None
+    }
+    fn as_error_handler(&self) -> Option<Arc<dyn ErrorHandler>> {
+        None
+    }
 
     // Lifecycle hooks — overridden by the macro when the user annotates a method.
     // Default implementations are no-ops so providers without hooks incur no overhead.
@@ -33,6 +43,11 @@ pub trait ProviderTrait: Send + Sync {
     async fn on_module_destroy(&self) {}
     async fn before_application_shutdown(&self, _signal: Option<String>) {}
     async fn on_application_shutdown(&self, _signal: Option<String>) {}
+
+    /// Returns this provider as a Gateway if it implements the GatewayTrait
+    fn as_gateway(&self) -> Option<Arc<Box<dyn crate::websocket::GatewayTrait>>> {
+        None
+    }
 }
 
 #[async_trait]
