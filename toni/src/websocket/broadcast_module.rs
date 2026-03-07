@@ -1,5 +1,5 @@
 use crate::module_helpers::module_enum::ModuleDefinition;
-use crate::traits_helpers::{Controller, ModuleMetadata, Provider};
+use crate::traits_helpers::{Controller, ModuleMetadata, ProviderFactory};
 use crate::websocket::BroadcastService;
 use crate::websocket::broadcast_provider::BroadcastServiceManager;
 
@@ -47,7 +47,7 @@ impl ModuleMetadata for BroadcastModule {
         None
     }
 
-    fn providers(&self) -> Option<Vec<Box<dyn Provider>>> {
+    fn providers(&self) -> Option<Vec<Box<dyn ProviderFactory>>> {
         Some(vec![Box::new(BroadcastServiceManager)])
     }
 

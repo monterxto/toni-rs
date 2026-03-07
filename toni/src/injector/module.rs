@@ -6,17 +6,17 @@ use super::InstanceWrapper;
 
 use crate::{
     structs_helpers::EnhancerMetadata,
-    traits_helpers::{Controller, ControllerTrait, ModuleMetadata, Provider, ProviderTrait},
+    traits_helpers::{Controller, ControllerTrait, ModuleMetadata, Provider, ProviderFactory},
 };
 pub struct Module {
     _token: String,
     _name: String,
     controllers: FxHashMap<String, Box<dyn Controller>>,
-    providers: FxHashMap<String, Box<dyn Provider>>,
+    providers: FxHashMap<String, Box<dyn ProviderFactory>>,
     imports: FxHashSet<String>,
     exports: FxHashSet<String>,
     controllers_instances: FxHashMap<String, Arc<InstanceWrapper>>,
-    providers_instances: FxHashMap<String, Arc<Box<dyn ProviderTrait>>>,
+    providers_instances: FxHashMap<String, Arc<Box<dyn Provider>>>,
     exports_instances: FxHashSet<String>,
     metadata: Box<dyn ModuleMetadata>,
 }
@@ -42,7 +42,7 @@ impl Module {
         self.controllers.insert(controller.get_name(), controller);
     }
 
-    pub fn add_provider(&mut self, provider: Box<dyn Provider>) {
+    pub fn add_provider(&mut self, provider: Box<dyn ProviderFactory>) {
         self.providers.insert(provider.get_name(), provider);
     }
 
@@ -67,7 +67,7 @@ impl Module {
             .insert(token, Arc::new(instance_wrapper));
     }
 
-    pub fn add_provider_instance(&mut self, provider: Arc<Box<dyn ProviderTrait>>) {
+    pub fn add_provider_instance(&mut self, provider: Arc<Box<dyn Provider>>) {
         self.providers_instances
             .insert(provider.get_token(), provider);
     }
@@ -75,15 +75,15 @@ impl Module {
         self.exports_instances.insert(provider_token);
     }
 
-    pub fn get_providers_manager(&self) -> &FxHashMap<String, Box<dyn Provider>> {
+    pub fn get_providers_manager(&self) -> &FxHashMap<String, Box<dyn ProviderFactory>> {
         &self.providers
     }
 
-    pub fn get_providers_instances(&self) -> &FxHashMap<String, Arc<Box<dyn ProviderTrait>>> {
+    pub fn get_providers_instances(&self) -> &FxHashMap<String, Arc<Box<dyn Provider>>> {
         &self.providers_instances
     }
 
-    pub fn get_provider_by_token(&self, provider_token: &String) -> Option<&dyn Provider> {
+    pub fn get_provider_by_token(&self, provider_token: &String) -> Option<&dyn ProviderFactory> {
         self.providers
             .get(provider_token)
             .map(|provider| provider.as_ref())
@@ -92,7 +92,7 @@ impl Module {
     pub fn get_provider_instance_by_token(
         &self,
         provider_token: &String,
-    ) -> Option<&Arc<Box<dyn ProviderTrait>>> {
+    ) -> Option<&Arc<Box<dyn Provider>>> {
         self.providers_instances.get(provider_token)
     }
 

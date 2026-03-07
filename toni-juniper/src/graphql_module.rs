@@ -6,7 +6,7 @@ use juniper::{
     ScalarValue,
 };
 use std::sync::Arc;
-use toni::traits_helpers::{Controller, ModuleMetadata, Provider};
+use toni::traits_helpers::{Controller, ModuleMetadata, ProviderFactory};
 
 /// GraphQL module for Toni.
 ///
@@ -182,7 +182,7 @@ where
         "GraphQLModule".to_string()
     }
 
-    fn providers(&self) -> Option<Vec<Box<dyn Provider>>> {
+    fn providers(&self) -> Option<Vec<Box<dyn ProviderFactory>>> {
         Some(vec![Box::new(GraphQLServiceManager::new(
             self.schema.clone(),
             self.context_builder.clone(),

@@ -1,4 +1,4 @@
-use super::{Controller, Provider};
+use super::{Controller, ProviderFactory};
 use crate::middleware::{IntoRoutePattern, RoutePattern};
 use crate::traits_helpers::middleware::{Middleware, MiddlewareConfiguration};
 use std::cell::RefCell;
@@ -10,7 +10,7 @@ pub trait ModuleMetadata {
     fn get_name(&self) -> String;
     fn imports(&self) -> Option<Vec<Box<dyn ModuleMetadata>>>;
     fn controllers(&self) -> Option<Vec<Box<dyn Controller>>>;
-    fn providers(&self) -> Option<Vec<Box<dyn Provider>>>;
+    fn providers(&self) -> Option<Vec<Box<dyn ProviderFactory>>>;
     fn exports(&self) -> Option<Vec<String>>;
 
     /// Returns true if this module is global (exports available everywhere)
@@ -171,7 +171,7 @@ impl<T: ModuleMetadata> ModuleMetadata for GlobalModuleWrapper<T> {
         self.inner.controllers()
     }
 
-    fn providers(&self) -> Option<Vec<Box<dyn Provider>>> {
+    fn providers(&self) -> Option<Vec<Box<dyn ProviderFactory>>> {
         self.inner.providers()
     }
 

@@ -340,16 +340,16 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         #[::toni::async_trait]
-        impl ::toni::traits_helpers::Provider for #module_ref_manager_name {
+        impl ::toni::traits_helpers::ProviderFactory for #module_ref_manager_name {
             async fn get_all_providers(
                 &self,
                 _dependencies: &::toni::FxHashMap<
                     String,
-                    ::std::sync::Arc<Box<dyn ::toni::traits_helpers::ProviderTrait>>
+                    ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
                 >,
             ) -> ::toni::FxHashMap<
                 String,
-                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::ProviderTrait>>
+                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
             > {
                 // Return the pre-configured ModuleRefManager
                 let mut providers = ::toni::FxHashMap::default();
@@ -359,7 +359,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
                     ::std::any::type_name::<::toni::ModuleRef>().to_string(),
                     ::std::sync::Arc::new(Box::new(
                         ::toni::injector::ModuleRefProvider::new(self.module_token.clone())
-                    ) as Box<dyn ::toni::traits_helpers::ProviderTrait>)
+                    ) as Box<dyn ::toni::traits_helpers::Provider>)
                 );
                 providers
             }
@@ -410,8 +410,8 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
             fn controllers(&self) -> Option<Vec<Box<dyn ::toni::traits_helpers::Controller>>> {
                 Some(vec![#(Box::new(#controllers)),*])
             }
-            fn providers(&self) -> Option<Vec<Box<dyn ::toni::traits_helpers::Provider>>> {
-                let mut providers_vec: Vec<Box<dyn ::toni::traits_helpers::Provider>> = vec![
+            fn providers(&self) -> Option<Vec<Box<dyn ::toni::traits_helpers::ProviderFactory>>> {
+                let mut providers_vec: Vec<Box<dyn ::toni::traits_helpers::ProviderFactory>> = vec![
                     #(Box::new(#providers)),*
                 ];
                 // Auto-inject ModuleRefManager for this module

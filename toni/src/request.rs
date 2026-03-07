@@ -120,7 +120,7 @@ use crate::async_trait;
 use crate::extractors::FromRequest;
 use crate::http_helpers::{Body, Extensions, HttpRequest};
 use crate::provider_scope::ProviderScope;
-use crate::traits_helpers::{Provider, ProviderTrait};
+use crate::traits_helpers::{Provider, ProviderFactory};
 
 /// Built-in request-scoped provider for accessing HTTP request data.
 ///
@@ -141,9 +141,9 @@ pub struct Request {
     inner: Arc<HttpRequest>,
 }
 
-// Manual ProviderTrait implementation (can't use macro inside toni crate)
+// Manual Provider implementation (can't use macro inside toni crate)
 #[async_trait]
-impl ProviderTrait for Request {
+impl Provider for Request {
     fn get_token(&self) -> String {
         std::any::type_name::<Request>().to_string()
     }
@@ -458,11 +458,11 @@ impl FromRequest for Request {
 pub struct RequestManager;
 
 #[async_trait]
-impl Provider for RequestManager {
+impl ProviderFactory for RequestManager {
     async fn get_all_providers(
         &self,
-        _dependencies: &FxHashMap<String, Arc<Box<dyn ProviderTrait>>>,
-    ) -> FxHashMap<String, Arc<Box<dyn ProviderTrait>>> {
+        _dependencies: &FxHashMap<String, Arc<Box<dyn Provider>>>,
+    ) -> FxHashMap<String, Arc<Box<dyn Provider>>> {
         let mut providers = FxHashMap::default();
 
         // Request scope: Create a Request instance wrapper
@@ -483,7 +483,7 @@ impl Provider for RequestManager {
 
         providers.insert(
             std::any::type_name::<Request>().to_string(),
-            Arc::new(Box::new(provider_wrapper) as Box<dyn ProviderTrait>),
+            Arc::new(Box::new(provider_wrapper) as Box<dyn Provider>),
         );
 
         providers

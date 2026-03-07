@@ -5,9 +5,7 @@ use rustc_hash::FxHashMap;
 
 use crate::http_helpers::{HttpMethod, HttpRequest, HttpResponse, RouteMetadata, ToResponse};
 
-use super::{
-    ErrorHandler, Guard, Interceptor, Pipe, provider::ProviderTrait, validate::Validatable,
-};
+use super::{ErrorHandler, Guard, Interceptor, Pipe, provider::Provider, validate::Validatable};
 
 #[async_trait]
 pub trait ControllerTrait: Send + Sync {
@@ -93,7 +91,7 @@ pub trait ControllerTrait: Send + Sync {
 pub trait Controller {
     async fn get_all_controllers(
         &self,
-        dependencies: &FxHashMap<String, Arc<Box<dyn ProviderTrait>>>,
+        dependencies: &FxHashMap<String, Arc<Box<dyn Provider>>>,
     ) -> FxHashMap<String, Arc<Box<dyn ControllerTrait>>>;
     fn get_name(&self) -> String;
     fn get_token(&self) -> String;

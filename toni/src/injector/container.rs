@@ -8,7 +8,7 @@ use crate::{
     structs_helpers::EnhancerMetadata,
     traits_helpers::{
         Controller, ControllerTrait, Guard, Interceptor, ModuleMetadata, Pipe, Provider,
-        ProviderTrait,
+        ProviderFactory,
     },
     websocket::GatewayTrait,
 };
@@ -19,7 +19,7 @@ pub struct ToniContainer {
     modules: FxHashMap<String, Module>,
     middleware_manager: Option<MiddlewareManager>,
     /// Global provider registry - providers from modules marked as global
-    global_providers: FxHashMap<String, Arc<Box<dyn ProviderTrait>>>,
+    global_providers: FxHashMap<String, Arc<Box<dyn Provider>>>,
     /// Global provider tokens - registered during scan phase (before instance creation)
     global_provider_tokens: FxHashSet<String>,
     /// Global enhancers - applied to all controllers
@@ -125,7 +125,7 @@ impl ToniContainer {
     pub fn add_provider(
         &mut self,
         module_ref_token: &String,
-        provider: Box<dyn Provider>,
+        provider: Box<dyn ProviderFactory>,
     ) -> Result<()> {
         let module_ref = self
             .modules
@@ -138,7 +138,7 @@ impl ToniContainer {
     pub fn add_provider_instance(
         &mut self,
         module_ref_token: &String,
-        provider_instance: Arc<Box<dyn ProviderTrait>>,
+        provider_instance: Arc<Box<dyn Provider>>,
     ) -> Result<()> {
         if let Some(gateway) = provider_instance.as_gateway() {
             self.gateways.insert(gateway.get_path(), gateway);
@@ -200,7 +200,7 @@ impl ToniContainer {
     pub fn get_providers_manager(
         &self,
         module_ref_token: &String,
-    ) -> Result<&FxHashMap<String, Box<dyn Provider>>> {
+    ) -> Result<&FxHashMap<String, Box<dyn ProviderFactory>>> {
         let module_ref = self
             .modules
             .get(module_ref_token)
@@ -222,7 +222,7 @@ impl ToniContainer {
     pub fn get_providers_instance(
         &self,
         module_ref_token: &String,
-    ) -> Result<&FxHashMap<String, Arc<Box<dyn ProviderTrait>>>> {
+    ) -> Result<&FxHashMap<String, Arc<Box<dyn Provider>>>> {
         let module_ref = self
             .modules
             .get(module_ref_token)
@@ -234,7 +234,7 @@ impl ToniContainer {
         &self,
         module_ref_token: &String,
         provider_token: &String,
-    ) -> Result<Option<&Arc<Box<dyn ProviderTrait>>>> {
+    ) -> Result<Option<&Arc<Box<dyn Provider>>>> {
         let module_ref = self
             .modules
             .get(module_ref_token)
@@ -246,7 +246,7 @@ impl ToniContainer {
         &self,
         module_ref_token: &String,
         provider_token: &String,
-    ) -> Result<Option<&dyn Provider>> {
+    ) -> Result<Option<&dyn ProviderFactory>> {
         let module_ref = self
             .modules
             .get(module_ref_token)
@@ -364,7 +364,7 @@ impl ToniContainer {
     }
 
     /// Get a provider from the global registry
-    pub fn get_global_provider(&self, token: &String) -> Option<Arc<Box<dyn ProviderTrait>>> {
+    pub fn get_global_provider(&self, token: &String) -> Option<Arc<Box<dyn Provider>>> {
         self.global_providers.get(token).cloned()
     }
 

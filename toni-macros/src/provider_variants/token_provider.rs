@@ -78,21 +78,21 @@ pub fn handle_provider_token(input: TokenStream) -> Result<TokenStream> {
     // The type is registered ONLY under the custom token
     let expanded = quote! {
         {
-            // Manager struct for Provider trait implementation
+            // Manager struct for ProviderFactory trait implementation
             struct #wrapper_manager_name;
 
-            // Implement Provider trait for the manager (used by module system)
+            // Implement ProviderFactory trait for the manager (used by module system)
             #[toni::async_trait]
-            impl toni::traits_helpers::Provider for #wrapper_manager_name {
+            impl toni::traits_helpers::ProviderFactory for #wrapper_manager_name {
                 async fn get_all_providers(
                     &self,
                     _dependencies: &toni::FxHashMap<
                         String,
-                        std::sync::Arc<Box<dyn toni::traits_helpers::ProviderTrait>>,
+                        std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
                     >,
                 ) -> toni::FxHashMap<
                     String,
-                    std::sync::Arc<Box<dyn toni::traits_helpers::ProviderTrait>>,
+                    std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
                 > {
                     let mut providers = toni::FxHashMap::default();
 
@@ -116,11 +116,11 @@ pub fn handle_provider_token(input: TokenStream) -> Result<TokenStream> {
                     #[derive(Clone)]
                     struct CustomTokenProvider {
                         custom_token: String,
-                        inner_provider: std::sync::Arc<Box<dyn toni::traits_helpers::ProviderTrait>>,
+                        inner_provider: std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
                     }
 
                     #[toni::async_trait]
-                    impl toni::traits_helpers::ProviderTrait for CustomTokenProvider {
+                    impl toni::traits_helpers::Provider for CustomTokenProvider {
                         fn get_token(&self) -> String {
                             self.custom_token.clone()
                         }
@@ -171,7 +171,7 @@ pub fn handle_provider_token(input: TokenStream) -> Result<TokenStream> {
                     providers.insert(
                         custom_token,
                         std::sync::Arc::new(
-                            Box::new(provider_wrapper) as Box<dyn toni::traits_helpers::ProviderTrait>
+                            Box::new(provider_wrapper) as Box<dyn toni::traits_helpers::Provider>
                         ),
                     );
 

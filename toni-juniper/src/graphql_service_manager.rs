@@ -6,14 +6,14 @@ use juniper::{
     ScalarValue,
 };
 use std::sync::Arc;
-use toni::traits_helpers::{Provider, ProviderTrait};
+use toni::traits_helpers::{Provider, ProviderFactory};
 use toni::FxHashMap;
 
-/// Provider manager for GraphQLService.
+/// ProviderFactory manager for GraphQLService.
 ///
 /// This follows Toni's two-tier provider pattern:
-/// - Manager (implements Provider) - registered during module scanning
-/// - Service (implements ProviderTrait) - actual injectable instance
+/// - Manager (implements ProviderFactory) - registered during module scanning
+/// - Service (implements Provider) - actual injectable instance
 pub struct GraphQLServiceManager<Query, Mutation, Subscription, Ctx, S = DefaultScalarValue>
 where
     Query: GraphQLType<S, Context = Ctx::Context>
@@ -79,7 +79,7 @@ where
 }
 
 #[async_trait]
-impl<Query, Mutation, Subscription, Ctx, S> Provider
+impl<Query, Mutation, Subscription, Ctx, S> ProviderFactory
     for GraphQLServiceManager<Query, Mutation, Subscription, Ctx, S>
 where
     Query: GraphQLType<S, Context = Ctx::Context>
@@ -106,14 +106,14 @@ where
 {
     async fn get_all_providers(
         &self,
-        _dependencies: &FxHashMap<String, Arc<Box<dyn ProviderTrait>>>,
-    ) -> FxHashMap<String, Arc<Box<dyn ProviderTrait>>> {
+        _dependencies: &FxHashMap<String, Arc<Box<dyn Provider>>>,
+    ) -> FxHashMap<String, Arc<Box<dyn Provider>>> {
         let service = GraphQLService::new(self.schema.clone(), self.context_builder.clone());
 
         let mut providers = FxHashMap::default();
         providers.insert(
             "GraphQLService".to_string(),
-            Arc::new(Box::new(service) as Box<dyn ProviderTrait>),
+            Arc::new(Box::new(service) as Box<dyn Provider>),
         );
 
         providers

@@ -36,7 +36,7 @@ pub fn controller_struct(attr: TokenStream, item: TokenStream) -> TokenStream {
 pub fn injectable(attr: TokenStream, item: TokenStream) -> TokenStream {
     let attr = proc_macro2::TokenStream::from(attr);
     let item = proc_macro2::TokenStream::from(item);
-    let trait_name = Ident::new("ProviderTrait", Span::call_site());
+    let trait_name = Ident::new("Provider", Span::call_site());
     let output = handle_provider_struct(attr, item, trait_name);
     proc_macro::TokenStream::from(output.unwrap_or_else(|e| e.to_compile_error()))
 }

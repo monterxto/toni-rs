@@ -6,7 +6,7 @@ use juniper::{
 };
 use serde::Deserialize;
 use std::sync::Arc;
-use toni::traits_helpers::{Controller, ControllerTrait, Guard, Interceptor, Pipe, ProviderTrait};
+use toni::traits_helpers::{Controller, ControllerTrait, Guard, Interceptor, Pipe, Provider};
 use toni::{Body, FxHashMap, HttpMethod, HttpRequest, HttpResponse, ToResponse};
 
 /// GraphQL request payload
@@ -114,7 +114,7 @@ where
 {
     async fn get_all_controllers(
         &self,
-        dependencies: &FxHashMap<String, Arc<Box<dyn ProviderTrait>>>,
+        dependencies: &FxHashMap<String, Arc<Box<dyn Provider>>>,
     ) -> FxHashMap<String, Arc<Box<dyn ControllerTrait>>> {
         let mut controllers = FxHashMap::default();
 
@@ -191,7 +191,7 @@ where
     Subscription::TypeInfo: Send + Sync,
 {
     path: String,
-    graphql_service: Arc<Box<dyn ProviderTrait>>,
+    graphql_service: Arc<Box<dyn Provider>>,
     _phantom: std::marker::PhantomData<(Query, Mutation, Subscription, Ctx, S)>,
 }
 

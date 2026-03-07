@@ -5,7 +5,7 @@
 
 use crate::RequestManager;
 use crate::module_helpers::module_enum::ModuleDefinition;
-use crate::traits_helpers::{Controller, ModuleMetadata, Provider};
+use crate::traits_helpers::{Controller, ModuleMetadata, ProviderFactory};
 
 /// Built-in global module that provides core framework functionality
 ///
@@ -34,7 +34,7 @@ impl ModuleMetadata for BuiltinModule {
         None
     }
 
-    fn providers(&self) -> Option<Vec<Box<dyn Provider>>> {
+    fn providers(&self) -> Option<Vec<Box<dyn ProviderFactory>>> {
         Some(vec![Box::new(RequestManager)])
     }
 

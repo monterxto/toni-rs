@@ -3,7 +3,7 @@ mod module_metadata;
 pub use self::module_metadata::{MiddlewareConsumer, ModuleMetadata};
 
 mod provider;
-pub use self::provider::{Provider, ProviderTrait};
+pub use self::provider::{Provider, ProviderFactory};
 
 mod controller;
 pub use self::controller::{Controller, ControllerTrait};

@@ -1,6 +1,6 @@
 use std::{any::Any, cell::RefCell, rc::Rc};
 
-use crate::{ProviderScope, async_trait, http_helpers::HttpRequest, traits_helpers::ProviderTrait};
+use crate::{ProviderScope, async_trait, http_helpers::HttpRequest, traits_helpers::Provider};
 
 use super::{ModuleRef, ToniContainer};
 
@@ -45,7 +45,7 @@ impl ModuleRefProvider {
 }
 
 #[async_trait]
-impl ProviderTrait for ModuleRefProvider {
+impl Provider for ModuleRefProvider {
     async fn execute(
         &self,
         _params: Vec<Box<dyn Any + Send>>,

@@ -2,7 +2,7 @@ use anyhow::{Result, anyhow};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
 
-use crate::traits_helpers::ProviderTrait;
+use crate::traits_helpers::Provider;
 use crate::traits_helpers::middleware::{Middleware, MiddlewareConfiguration};
 
 /// Middleware manager for organizing middleware by module
@@ -107,7 +107,7 @@ impl MiddlewareManager {
     pub fn resolve_middleware_tokens(
         &mut self,
         module_token: &str,
-        providers: &FxHashMap<String, Arc<Box<dyn ProviderTrait>>>,
+        providers: &FxHashMap<String, Arc<Box<dyn Provider>>>,
     ) -> Result<()> {
         if let Some(configs) = self.module_middleware.get_mut(module_token) {
             for config in configs {

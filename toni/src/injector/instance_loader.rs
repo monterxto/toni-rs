@@ -9,7 +9,7 @@ use std::{
 use super::{DependencyGraph, ToniContainer};
 use crate::{
     structs_helpers::EnhancerMetadata,
-    traits_helpers::{ControllerTrait, ProviderTrait},
+    traits_helpers::{ControllerTrait, Provider},
 };
 
 pub struct ToniInstanceLoader {
@@ -241,7 +241,7 @@ impl ToniInstanceLoader {
     fn add_providers_instances(
         &self,
         module_token: &String,
-        providers_instances: FxHashMap<String, Arc<Box<dyn ProviderTrait>>>,
+        providers_instances: FxHashMap<String, Arc<Box<dyn Provider>>>,
     ) -> Result<()> {
         let mut container = self.container.borrow_mut();
         let mut providers_tokens = Vec::new();
@@ -346,7 +346,7 @@ impl ToniInstanceLoader {
     fn resolve_enhancers_from_tokens(
         &self,
         controller: &Arc<Box<dyn ControllerTrait>>,
-        providers: &FxHashMap<String, Arc<Box<dyn ProviderTrait>>>,
+        providers: &FxHashMap<String, Arc<Box<dyn Provider>>>,
     ) -> Result<EnhancerMetadata> {
         // Resolve guards from DI (type name syntax: AuthGuard)
         let mut guards = Vec::new();
@@ -457,8 +457,8 @@ impl ToniInstanceLoader {
         &self,
         module_token: &String,
         dependencies: Vec<String>,
-        providers_instances: Option<&FxHashMap<String, Arc<Box<dyn ProviderTrait>>>>,
-    ) -> Result<FxHashMap<String, Arc<Box<dyn ProviderTrait>>>> {
+        providers_instances: Option<&FxHashMap<String, Arc<Box<dyn Provider>>>>,
+    ) -> Result<FxHashMap<String, Arc<Box<dyn Provider>>>> {
         let container = self.container.borrow();
         let mut resolved_dependencies = FxHashMap::default();
 
@@ -509,7 +509,7 @@ impl ToniInstanceLoader {
         &self,
         module_token: &String,
         dependency: &String,
-    ) -> Result<Option<Arc<Box<dyn ProviderTrait>>>> {
+    ) -> Result<Option<Arc<Box<dyn Provider>>>> {
         let container = self.container.borrow();
         let imported_modules = container.get_imported_modules(module_token)?;
 

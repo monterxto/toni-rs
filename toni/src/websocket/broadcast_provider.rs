@@ -5,7 +5,7 @@ use crate::FxHashMap;
 use crate::async_trait;
 use crate::http_helpers::HttpRequest;
 use crate::provider_scope::ProviderScope;
-use crate::traits_helpers::{Provider, ProviderTrait};
+use crate::traits_helpers::{Provider, ProviderFactory};
 
 use super::BroadcastService;
 
@@ -15,7 +15,7 @@ pub(crate) struct BroadcastServiceProvider {
 }
 
 #[async_trait]
-impl ProviderTrait for BroadcastServiceProvider {
+impl Provider for BroadcastServiceProvider {
     fn get_token(&self) -> String {
         std::any::type_name::<BroadcastService>().to_string()
     }
@@ -50,20 +50,18 @@ impl Clone for BroadcastServiceProvider {
 pub(crate) struct BroadcastServiceManager;
 
 #[async_trait]
-impl Provider for BroadcastServiceManager {
+impl ProviderFactory for BroadcastServiceManager {
     async fn get_all_providers(
         &self,
-        _dependencies: &FxHashMap<String, Arc<Box<dyn ProviderTrait>>>,
-    ) -> FxHashMap<String, Arc<Box<dyn ProviderTrait>>> {
+        _dependencies: &FxHashMap<String, Arc<Box<dyn Provider>>>,
+    ) -> FxHashMap<String, Arc<Box<dyn Provider>>> {
         let mut providers = FxHashMap::default();
 
         let service = BroadcastService::new();
 
         providers.insert(
             std::any::type_name::<BroadcastService>().to_string(),
-            Arc::new(
-                Box::new(BroadcastServiceProvider { instance: service }) as Box<dyn ProviderTrait>
-            ),
+            Arc::new(Box::new(BroadcastServiceProvider { instance: service }) as Box<dyn Provider>),
         );
 
         providers

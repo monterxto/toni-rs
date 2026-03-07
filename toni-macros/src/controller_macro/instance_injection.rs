@@ -29,7 +29,7 @@
 //! }
 //!
 //! struct GetInfoController {
-//!     dependencies: FxHashMap<String, Arc<Box<dyn ProviderTrait>>>
+//!     dependencies: FxHashMap<String, Arc<Box<dyn Provider>>>
 //! }
 //!
 //! impl ControllerTrait for GetInfoController {
@@ -1049,7 +1049,7 @@ fn generate_request_controller_wrapper(
         quote! {
             dependencies: ::toni::FxHashMap<
                 String,
-                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::ProviderTrait>>
+                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
             >,
         }
     };
@@ -1481,7 +1481,7 @@ fn generate_singleton_manager(
                 &self,
                 dependencies: &::toni::FxHashMap<
                     String,
-                    ::std::sync::Arc<Box<dyn ::toni::traits_helpers::ProviderTrait>>
+                    ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
                 >,
             ) -> ::toni::FxHashMap<
                 String,
@@ -1602,7 +1602,7 @@ fn generate_request_manager(
                 &self,
                 dependencies: &::toni::FxHashMap<
                     String,
-                    ::std::sync::Arc<Box<dyn ::toni::traits_helpers::ProviderTrait>>
+                    ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
                 >,
             ) -> ::toni::FxHashMap<
                 String,

@@ -7,7 +7,7 @@ use juniper::{
 use serde_json::Value;
 use std::fmt;
 use std::sync::Arc;
-use toni::traits_helpers::ProviderTrait;
+use toni::traits_helpers::Provider;
 use toni::HttpRequest;
 
 /// Injectable GraphQL service.
@@ -203,7 +203,7 @@ where
 }
 
 #[async_trait]
-impl<Query, Mutation, Subscription, Ctx, S> ProviderTrait
+impl<Query, Mutation, Subscription, Ctx, S> Provider
     for GraphQLService<Query, Mutation, Subscription, Ctx, S>
 where
     Query: GraphQLType<S, Context = Ctx::Context>

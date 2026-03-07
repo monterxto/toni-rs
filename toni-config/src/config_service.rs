@@ -5,7 +5,7 @@ use std::any::Any;
 use std::sync::Arc;
 use toni::async_trait;
 use toni::http_helpers::HttpRequest;
-use toni::traits_helpers::{Provider, ProviderTrait};
+use toni::traits_helpers::{Provider, ProviderFactory};
 use toni::FxHashMap;
 
 /// Service that provides access to configuration
@@ -69,12 +69,12 @@ impl<T: Config + Clone + 'static> ConfigService<T> {
 }
 
 // ============================================================================
-// ProviderTrait Implementation - Enables ConfigService as Injectable Dependency
+// Provider Implementation - Enables ConfigService as Injectable Dependency
 // ============================================================================
 
-/// Implement ProviderTrait so ConfigService can be injected as a dependency
+/// Implement Provider so ConfigService can be injected as a dependency
 #[async_trait]
-impl<T: Config> ProviderTrait for ConfigService<T> {
+impl<T: Config> Provider for ConfigService<T> {
     async fn execute(
         &self,
         _params: Vec<Box<dyn Any + Send>>,
@@ -96,7 +96,7 @@ impl<T: Config> ProviderTrait for ConfigService<T> {
 }
 
 // ============================================================================
-// Provider Implementation for DI System
+// ProviderFactory Implementation for DI System
 // ============================================================================
 
 /// Manager for ConfigService - handles registration with the DI system
@@ -111,11 +111,11 @@ impl<T: Config> ConfigServiceManager<T> {
 }
 
 #[async_trait]
-impl<T: Config + Clone + Send + Sync + 'static> Provider for ConfigServiceManager<T> {
+impl<T: Config + Clone + Send + Sync + 'static> ProviderFactory for ConfigServiceManager<T> {
     async fn get_all_providers(
         &self,
-        _dependencies: &FxHashMap<String, Arc<Box<dyn ProviderTrait>>>,
-    ) -> FxHashMap<String, Arc<Box<dyn ProviderTrait>>> {
+        _dependencies: &FxHashMap<String, Arc<Box<dyn Provider>>>,
+    ) -> FxHashMap<String, Arc<Box<dyn Provider>>> {
         let mut providers = FxHashMap::default();
 
         // Register struct provider (instance injection pattern)
@@ -126,7 +126,7 @@ impl<T: Config + Clone + Send + Sync + 'static> Provider for ConfigServiceManage
 
         providers.insert(
             format!("ConfigService<{}>", std::any::type_name::<T>()),
-            Arc::new(Box::new(instance) as Box<dyn ProviderTrait>),
+            Arc::new(Box::new(instance) as Box<dyn Provider>),
         );
 
         providers

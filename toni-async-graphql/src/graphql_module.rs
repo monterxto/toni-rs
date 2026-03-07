@@ -3,7 +3,7 @@ use crate::graphql_controller::GraphQLControllerManager;
 use crate::graphql_service_manager::GraphQLServiceManager;
 use async_graphql::{ObjectType, Schema, SubscriptionType};
 use std::sync::Arc;
-use toni::traits_helpers::{Controller, ModuleMetadata, Provider};
+use toni::traits_helpers::{Controller, ModuleMetadata, ProviderFactory};
 
 /// GraphQL module for integrating async-graphql with Toni.
 ///
@@ -171,7 +171,7 @@ where
         "GraphQLModule".to_string()
     }
 
-    fn providers(&self) -> Option<Vec<Box<dyn Provider>>> {
+    fn providers(&self) -> Option<Vec<Box<dyn ProviderFactory>>> {
         Some(vec![Box::new(GraphQLServiceManager::new(
             self.schema.clone(),
             self.context_builder.clone(),

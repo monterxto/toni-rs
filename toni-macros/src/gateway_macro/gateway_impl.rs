@@ -220,7 +220,7 @@ fn generate_gateway_impl(
         }
     }
 
-    // Adds Clone derive and DI wiring, same as #[injectable]; is_gateway=true ensures as_gateway() is included in the ProviderTrait impl
+    // Adds Clone derive and DI wiring, same as #[injectable]; is_gateway=true ensures as_gateway() is included in the Provider impl
     let provider_system = generate_instance_provider_system(
         struct_def,
         &impl_def,

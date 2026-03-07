@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use std::any::Any;
 use std::sync::Arc;
-use toni::traits_helpers::ProviderTrait;
+use toni::traits_helpers::Provider;
 use toni::{HttpRequest, ProviderScope};
 
 /// Injectable GraphQL service that executes GraphQL queries.
@@ -92,9 +92,9 @@ where
     }
 }
 
-// Implement ProviderTrait to make it injectable
+// Implement Provider to make it injectable
 #[async_trait]
-impl<Query, Mutation, Subscription, Ctx> ProviderTrait
+impl<Query, Mutation, Subscription, Ctx> Provider
     for GraphQLService<Query, Mutation, Subscription, Ctx>
 where
     Query: ObjectType + 'static,

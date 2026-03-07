@@ -243,7 +243,7 @@ impl<T: Config> toni::traits_helpers::ModuleMetadata for ConfigModule<T> {
         None
     }
 
-    fn providers(&self) -> Option<Vec<Box<dyn toni::traits_helpers::Provider>>> {
+    fn providers(&self) -> Option<Vec<Box<dyn toni::traits_helpers::ProviderFactory>>> {
         Some(vec![Box::new(ConfigServiceManager::<T>::with_config(
             self.config.clone(),
         ))])

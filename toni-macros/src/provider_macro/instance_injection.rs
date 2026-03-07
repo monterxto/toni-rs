@@ -2,7 +2,7 @@
 //!
 //! Architecture:
 //! 1. User struct with REAL fields (unchanged)
-//! 2. Provider wrapper that stores Arc<Instance> (created once at startup)
+//! 2. ProviderFactory wrapper that stores Arc<Instance> (created once at startup)
 //! 3. Manager that creates the instance eagerly with dependency resolution
 //!
 //! Example transformation (Singleton):
@@ -25,7 +25,7 @@
 //!     instance: Arc<AppService>  // Created once at startup!
 //! }
 //!
-//! impl ProviderTrait for AppServiceProvider {
+//! impl Provider for AppServiceProvider {
 //!     async fn execute(&self, _: Vec<...>) -> Box<dyn Any> {
 //!         // Just clone the Arc - zero allocation!
 //!         Box::new(self.instance.clone())
@@ -37,7 +37,7 @@
 //! }
 //!
 //! // Manager creates instance at startup:
-//! impl Provider for AppServiceManager {
+//! impl ProviderFactory for AppServiceManager {
 //!     async fn get_all_providers(&self, dependencies: &FxHashMap<...>) -> FxHashMap<...> {
 //!         // Resolve dependencies (await naturally)
 //!         let config = dependencies.get("ConfigService").execute(vec![]).await...;
@@ -315,7 +315,7 @@ fn generate_enhancer_methods(traits: &EnhancerTraits) -> TokenStream {
     quote! { #(#methods)* }
 }
 
-/// Generate direct lifecycle method overrides on `ProviderTrait` for singleton providers.
+/// Generate direct lifecycle method overrides on `Provider` for singleton providers.
 ///
 /// Each override delegates to the user's annotated method on `self.instance`.
 /// Signal-bearing hooks receive the signal as the second argument.
@@ -366,7 +366,10 @@ fn generate_singleton_provider(
     enhancer_traits: &EnhancerTraits,
     lifecycle_hooks: &LifecycleHooks,
 ) -> TokenStream {
-    let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
+    let provider_name = Ident::new(
+        &format!("{}ProviderFactory", struct_name),
+        struct_name.span(),
+    );
     let enhancer_methods = generate_enhancer_methods(enhancer_traits);
     let lifecycle_methods = generate_lifecycle_direct_methods(lifecycle_hooks);
 
@@ -376,7 +379,7 @@ fn generate_singleton_provider(
         }
 
         #[::toni::async_trait]
-        impl ::toni::traits_helpers::ProviderTrait for #provider_name {
+        impl ::toni::traits_helpers::Provider for #provider_name {
             async fn execute(
                 &self,
                 _params: Vec<Box<dyn ::std::any::Any + Send>>,
@@ -408,7 +411,10 @@ fn generate_request_provider(
     dependencies: &DependencyInfo,
     enhancer_traits: &EnhancerTraits,
 ) -> TokenStream {
-    let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
+    let provider_name = Ident::new(
+        &format!("{}ProviderFactory", struct_name),
+        struct_name.span(),
+    );
     let enhancer_methods = generate_enhancer_methods(enhancer_traits);
 
     let (field_resolutions, field_names) = generate_field_resolutions(dependencies);
@@ -473,12 +479,12 @@ fn generate_request_provider(
         struct #provider_name {
             dependencies: ::toni::FxHashMap<
                 String,
-                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::ProviderTrait>>
+                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
             >,
         }
 
         #[::toni::async_trait]
-        impl ::toni::traits_helpers::ProviderTrait for #provider_name {
+        impl ::toni::traits_helpers::Provider for #provider_name {
             async fn execute(
                 &self,
                 _params: Vec<Box<dyn ::std::any::Any + Send>>,
@@ -515,7 +521,10 @@ fn generate_transient_provider(
     dependencies: &DependencyInfo,
     enhancer_traits: &EnhancerTraits,
 ) -> TokenStream {
-    let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
+    let provider_name = Ident::new(
+        &format!("{}ProviderFactory", struct_name),
+        struct_name.span(),
+    );
     let enhancer_methods = generate_enhancer_methods(enhancer_traits);
 
     let (field_resolutions, field_names) = generate_field_resolutions(dependencies);
@@ -551,12 +560,12 @@ fn generate_transient_provider(
         struct #provider_name {
             dependencies: ::toni::FxHashMap<
                 String,
-                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::ProviderTrait>>
+                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
             >,
         }
 
         #[::toni::async_trait]
-        impl ::toni::traits_helpers::ProviderTrait for #provider_name {
+        impl ::toni::traits_helpers::Provider for #provider_name {
             async fn execute(
                 &self,
                 _params: Vec<Box<dyn ::std::any::Any + Send>>,
@@ -848,7 +857,10 @@ fn generate_manager(
 
 fn generate_singleton_manager(struct_name: &Ident, dependencies: &DependencyInfo) -> TokenStream {
     let manager_name = Ident::new(&format!("{}Manager", struct_name), struct_name.span());
-    let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
+    let provider_name = Ident::new(
+        &format!("{}ProviderFactory", struct_name),
+        struct_name.span(),
+    );
 
     let (field_resolutions, field_names) = generate_manager_field_resolutions(dependencies);
 
@@ -972,16 +984,16 @@ fn generate_singleton_manager(struct_name: &Ident, dependencies: &DependencyInfo
         pub struct #manager_name;
 
         #[::toni::async_trait]
-        impl ::toni::traits_helpers::Provider for #manager_name {
+        impl ::toni::traits_helpers::ProviderFactory for #manager_name {
             async fn get_all_providers(
                 &self,
                 dependencies: &::toni::FxHashMap<
                     String,
-                    ::std::sync::Arc<Box<dyn ::toni::traits_helpers::ProviderTrait>>
+                    ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
                 >,
             ) -> ::toni::FxHashMap<
                 String,
-                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::ProviderTrait>>
+                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
             > {
                 let mut providers = ::toni::FxHashMap::default();
 
@@ -1000,7 +1012,7 @@ fn generate_singleton_manager(struct_name: &Ident, dependencies: &DependencyInfo
 
                 providers.insert(
                     ::std::any::type_name::<#struct_name>().to_string(),
-                    ::std::sync::Arc::new(Box::new(provider_wrapper) as Box<dyn ::toni::traits_helpers::ProviderTrait>)
+                    ::std::sync::Arc::new(Box::new(provider_wrapper) as Box<dyn ::toni::traits_helpers::Provider>)
                 );
 
                 providers
@@ -1023,7 +1035,10 @@ fn generate_singleton_manager(struct_name: &Ident, dependencies: &DependencyInfo
 
 fn generate_request_manager(struct_name: &Ident, dependencies: &DependencyInfo) -> TokenStream {
     let manager_name = Ident::new(&format!("{}Manager", struct_name), struct_name.span());
-    let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
+    let provider_name = Ident::new(
+        &format!("{}ProviderFactory", struct_name),
+        struct_name.span(),
+    );
 
     // Collect dependency tokens from both constructor params and #[inject] fields
     let dependency_tokens: Vec<_> = dependencies
@@ -1045,16 +1060,16 @@ fn generate_request_manager(struct_name: &Ident, dependencies: &DependencyInfo) 
         pub struct #manager_name;
 
         #[::toni::async_trait]
-        impl ::toni::traits_helpers::Provider for #manager_name {
+        impl ::toni::traits_helpers::ProviderFactory for #manager_name {
             async fn get_all_providers(
                 &self,
                 dependencies: &::toni::FxHashMap<
                     String,
-                    ::std::sync::Arc<Box<dyn ::toni::traits_helpers::ProviderTrait>>
+                    ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
                 >,
             ) -> ::toni::FxHashMap<
                 String,
-                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::ProviderTrait>>
+                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
             > {
                 let mut providers = ::toni::FxHashMap::default();
 
@@ -1065,7 +1080,7 @@ fn generate_request_manager(struct_name: &Ident, dependencies: &DependencyInfo) 
 
                 providers.insert(
                     ::std::any::type_name::<#struct_name>().to_string(),
-                    ::std::sync::Arc::new(Box::new(provider_wrapper) as Box<dyn ::toni::traits_helpers::ProviderTrait>)
+                    ::std::sync::Arc::new(Box::new(provider_wrapper) as Box<dyn ::toni::traits_helpers::Provider>)
                 );
 
                 providers
@@ -1088,7 +1103,10 @@ fn generate_request_manager(struct_name: &Ident, dependencies: &DependencyInfo) 
 
 fn generate_transient_manager(struct_name: &Ident, dependencies: &DependencyInfo) -> TokenStream {
     let manager_name = Ident::new(&format!("{}Manager", struct_name), struct_name.span());
-    let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
+    let provider_name = Ident::new(
+        &format!("{}ProviderFactory", struct_name),
+        struct_name.span(),
+    );
 
     // Collect dependency tokens from both constructor params and #[inject] fields
     let dependency_tokens: Vec<_> = dependencies
@@ -1107,16 +1125,16 @@ fn generate_transient_manager(struct_name: &Ident, dependencies: &DependencyInfo
         pub struct #manager_name;
 
         #[::toni::async_trait]
-        impl ::toni::traits_helpers::Provider for #manager_name {
+        impl ::toni::traits_helpers::ProviderFactory for #manager_name {
             async fn get_all_providers(
                 &self,
                 dependencies: &::toni::FxHashMap<
                     String,
-                    ::std::sync::Arc<Box<dyn ::toni::traits_helpers::ProviderTrait>>
+                    ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
                 >,
             ) -> ::toni::FxHashMap<
                 String,
-                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::ProviderTrait>>
+                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
             > {
                 let mut providers = ::toni::FxHashMap::default();
 
@@ -1127,7 +1145,7 @@ fn generate_transient_manager(struct_name: &Ident, dependencies: &DependencyInfo
 
                 providers.insert(
                     ::std::any::type_name::<#struct_name>().to_string(),
-                    ::std::sync::Arc::new(Box::new(provider_wrapper) as Box<dyn ::toni::traits_helpers::ProviderTrait>)
+                    ::std::sync::Arc::new(Box::new(provider_wrapper) as Box<dyn ::toni::traits_helpers::Provider>)
                 );
 
                 providers

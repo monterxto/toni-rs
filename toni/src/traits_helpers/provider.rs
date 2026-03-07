@@ -7,7 +7,7 @@ use super::{ErrorHandler, Guard, Interceptor, Pipe, middleware::Middleware};
 use crate::{ProviderScope, http_helpers::HttpRequest};
 
 #[async_trait]
-pub trait ProviderTrait: Send + Sync {
+pub trait Provider: Send + Sync {
     fn get_token(&self) -> String;
     async fn execute(
         &self,
@@ -51,11 +51,11 @@ pub trait ProviderTrait: Send + Sync {
 }
 
 #[async_trait]
-pub trait Provider {
+pub trait ProviderFactory {
     async fn get_all_providers(
         &self,
-        dependencies: &FxHashMap<String, Arc<Box<dyn ProviderTrait>>>,
-    ) -> FxHashMap<String, Arc<Box<dyn ProviderTrait>>>;
+        dependencies: &FxHashMap<String, Arc<Box<dyn Provider>>>,
+    ) -> FxHashMap<String, Arc<Box<dyn Provider>>>;
     fn get_name(&self) -> String;
     fn get_token(&self) -> String;
     fn get_dependencies(&self) -> Vec<String>;

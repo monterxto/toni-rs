@@ -181,12 +181,12 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                     instance: std::sync::Arc<#path>,
                 }
 
-                // Manager struct for Provider trait implementation
+                // Manager struct for ProviderFactory trait implementation
                 struct #manager_name;
 
-                // Implement ProviderTrait for the provider wrapper
+                // Implement Provider for the provider wrapper
                 #[toni::async_trait]
-                impl toni::traits_helpers::ProviderTrait for #provider_name {
+                impl toni::traits_helpers::Provider for #provider_name {
                     fn get_token(&self) -> String {
                         #token_expr
                     }
@@ -211,18 +211,18 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                     #enhancer_methods
                 }
 
-                // Implement Provider trait for the manager (used by module system)
+                // Implement ProviderFactory trait for the manager (used by module system)
                 #[toni::async_trait]
-                impl toni::traits_helpers::Provider for #manager_name {
+                impl toni::traits_helpers::ProviderFactory for #manager_name {
                     async fn get_all_providers(
                         &self,
                         _dependencies: &toni::FxHashMap<
                             String,
-                            std::sync::Arc<Box<dyn toni::traits_helpers::ProviderTrait>>,
+                            std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
                         >,
                     ) -> toni::FxHashMap<
                         String,
-                        std::sync::Arc<Box<dyn toni::traits_helpers::ProviderTrait>>,
+                        std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
                     > {
                         let mut providers = toni::FxHashMap::default();
 
@@ -238,7 +238,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                         providers.insert(
                             token,
                             std::sync::Arc::new(
-                                Box::new(provider_wrapper) as Box<dyn toni::traits_helpers::ProviderTrait>
+                                Box::new(provider_wrapper) as Box<dyn toni::traits_helpers::Provider>
                             ),
                         );
 
@@ -277,12 +277,12 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                             instance: std::sync::Arc<#type_path>,
                         }
 
-                        // Manager struct for Provider trait implementation
+                        // Manager struct for ProviderFactory trait implementation
                         struct #manager_name;
 
-                        // Implement ProviderTrait for the provider wrapper
+                        // Implement Provider for the provider wrapper
                         #[toni::async_trait]
-                        impl toni::traits_helpers::ProviderTrait for #provider_name {
+                        impl toni::traits_helpers::Provider for #provider_name {
                             fn get_token(&self) -> String {
                                 #token_expr
                             }
@@ -307,18 +307,18 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                             #enhancer_methods
                         }
 
-                        // Implement Provider trait for the manager (used by module system)
+                        // Implement ProviderFactory trait for the manager (used by module system)
                         #[toni::async_trait]
-                        impl toni::traits_helpers::Provider for #manager_name {
+                        impl toni::traits_helpers::ProviderFactory for #manager_name {
                             async fn get_all_providers(
                                 &self,
                                 _dependencies: &toni::FxHashMap<
                                     String,
-                                    std::sync::Arc<Box<dyn toni::traits_helpers::ProviderTrait>>,
+                                    std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
                                 >,
                             ) -> toni::FxHashMap<
                                 String,
-                                std::sync::Arc<Box<dyn toni::traits_helpers::ProviderTrait>>,
+                                std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
                             > {
                                 let mut providers = toni::FxHashMap::default();
 
@@ -334,7 +334,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                                 providers.insert(
                                     token,
                                     std::sync::Arc::new(
-                                        Box::new(provider_wrapper) as Box<dyn toni::traits_helpers::ProviderTrait>
+                                        Box::new(provider_wrapper) as Box<dyn toni::traits_helpers::Provider>
                                     ),
                                 );
 
@@ -366,12 +366,12 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                         #[derive(Clone)]
                         struct #provider_name;
 
-                        // Manager struct for Provider trait implementation
+                        // Manager struct for ProviderFactory trait implementation
                         struct #manager_name;
 
-                        // Implement ProviderTrait for the provider wrapper
+                        // Implement Provider for the provider wrapper
                         #[toni::async_trait]
-                        impl toni::traits_helpers::ProviderTrait for #provider_name {
+                        impl toni::traits_helpers::Provider for #provider_name {
                             fn get_token(&self) -> String {
                                 #token_expr
                             }
@@ -394,18 +394,18 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                             }
                         }
 
-                        // Implement Provider trait for the manager (used by module system)
+                        // Implement ProviderFactory trait for the manager (used by module system)
                         #[toni::async_trait]
-                        impl toni::traits_helpers::Provider for #manager_name {
+                        impl toni::traits_helpers::ProviderFactory for #manager_name {
                             async fn get_all_providers(
                                 &self,
                                 _dependencies: &toni::FxHashMap<
                                     String,
-                                    std::sync::Arc<Box<dyn toni::traits_helpers::ProviderTrait>>,
+                                    std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
                                 >,
                             ) -> toni::FxHashMap<
                                 String,
-                                std::sync::Arc<Box<dyn toni::traits_helpers::ProviderTrait>>,
+                                std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
                             > {
                                 let mut providers = toni::FxHashMap::default();
 
@@ -417,7 +417,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                                 providers.insert(
                                     token,
                                     std::sync::Arc::new(
-                                        Box::new(provider_wrapper) as Box<dyn toni::traits_helpers::ProviderTrait>
+                                        Box::new(provider_wrapper) as Box<dyn toni::traits_helpers::Provider>
                                     ),
                                 );
 
