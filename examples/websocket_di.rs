@@ -67,7 +67,7 @@ impl ChatGateway {
         &self,
         client: toni::WsClient,
         message: toni::WsMessage,
-    ) -> Result<Option<toni::WsMessage>, toni::WsError> {
+    ) -> toni::WsHandlerResult {
         let text = message
             .as_text()
             .ok_or_else(|| toni::WsError::InvalidMessage("Expected text message".into()))?;
@@ -88,7 +88,7 @@ impl ChatGateway {
         &self,
         _client: toni::WsClient,
         _message: toni::WsMessage,
-    ) -> Result<Option<toni::WsMessage>, toni::WsError> {
+    ) -> toni::WsHandlerResult {
         Ok(Some(toni::WsMessage::text("pong")))
     }
 }

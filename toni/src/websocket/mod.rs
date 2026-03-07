@@ -26,3 +26,6 @@ pub use ws_client::{WsClient, WsHandshake};
 pub(crate) use ws_client_map::WsClientMap;
 pub use ws_error::{DisconnectReason, WsError};
 pub use ws_message::WsMessage;
+
+/// Convenience alias for the return type of `#[subscribe_message]` handlers.
+pub type WsHandlerResult = Result<Option<WsMessage>, WsError>;
