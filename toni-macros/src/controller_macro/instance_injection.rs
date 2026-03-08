@@ -159,6 +159,7 @@ pub fn generate_instance_controller_system(
         scope,
         was_explicit,
     );
+    let factory_accessor = generate_controller_factory_accessor(struct_name);
 
     Ok(quote! {
         #[allow(dead_code)]
@@ -174,6 +175,7 @@ pub fn generate_instance_controller_system(
         #(#request_wrappers)*
 
         #factory
+        #factory_accessor
     })
 }
 
@@ -1128,6 +1130,18 @@ fn generate_request_controller_wrapper(
 
             fn get_body_dto(&self, _req: &::toni::http_helpers::HttpRequest) -> Option<Box<dyn ::toni::traits_helpers::validate::Validatable>> {
                 #body_dto_stream
+            }
+        }
+    }
+}
+
+fn generate_controller_factory_accessor(struct_name: &Ident) -> TokenStream {
+    let factory_name = Ident::new(&format!("{}ControllerFactory", struct_name), struct_name.span());
+    quote! {
+        impl #struct_name {
+            #[doc(hidden)]
+            pub fn __toni_controller_factory() -> impl ::toni::traits_helpers::ControllerFactory {
+                #factory_name
             }
         }
     }

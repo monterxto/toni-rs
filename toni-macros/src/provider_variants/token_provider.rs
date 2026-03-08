@@ -49,8 +49,6 @@ pub fn handle_provider_token(input: TokenStream) -> Result<TokenStream> {
     // Generate token expression for runtime
     let token_expr = token.to_token_expr();
 
-    // Extract the type path to construct the ProviderFactory name
-    // e.g. for DatabaseService, we need DatabaseServiceProviderFactory
     let type_path = match &provider_type {
         Type::Path(TypePath { path, .. }) => path.clone(),
         _ => {
@@ -60,14 +58,6 @@ pub fn handle_provider_token(input: TokenStream) -> Result<TokenStream> {
             ));
         }
     };
-
-    // Build the ProviderFactory path by appending "ProviderFactory" to the last segment
-    let mut factory_path = type_path.clone();
-    if let Some(last_segment) = factory_path.segments.last_mut() {
-        let type_ident = &last_segment.ident;
-        let factory_ident = format_ident!("{}ProviderFactory", type_ident);
-        last_segment.ident = factory_ident;
-    }
 
     // Generate unique struct names based on token
     let token_display = token.display_name();
@@ -85,8 +75,7 @@ pub fn handle_provider_token(input: TokenStream) -> Result<TokenStream> {
                 }
 
                 fn get_dependencies(&self) -> Vec<String> {
-                    let type_factory = #factory_path {};
-                    type_factory.get_dependencies()
+                    #type_path::__toni_provider_factory().get_dependencies()
                 }
 
                 async fn build(
@@ -96,9 +85,7 @@ pub fn handle_provider_token(input: TokenStream) -> Result<TokenStream> {
                         std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
                     >,
                 ) -> std::sync::Arc<Box<dyn toni::traits_helpers::Provider>> {
-                    // Delegate to the type's ProviderFactory to construct the inner provider
-                    let type_factory = #factory_path {};
-                    let inner_provider = type_factory.build(deps).await;
+                    let inner_provider = #type_path::__toni_provider_factory().build(deps).await;
 
                     // Wrap it under the custom token
                     #[derive(Clone)]

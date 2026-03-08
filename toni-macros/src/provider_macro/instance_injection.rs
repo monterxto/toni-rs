@@ -112,6 +112,7 @@ pub fn generate_instance_provider_system(
     );
 
     let factory = generate_factory(struct_name, dependencies, scope);
+    let factory_accessor = generate_provider_factory_accessor(struct_name);
 
     Ok(quote! {
         #[allow(dead_code)]
@@ -122,6 +123,7 @@ pub fn generate_instance_provider_system(
 
         #provider_wrapper
         #factory
+        #factory_accessor
     })
 }
 
@@ -196,6 +198,18 @@ fn meta_contains_clone(meta: &syn::Meta) -> bool {
             false
         }
         _ => false,
+    }
+}
+
+fn generate_provider_factory_accessor(struct_name: &Ident) -> TokenStream {
+    let factory_name = Ident::new(&format!("{}ProviderFactory", struct_name), struct_name.span());
+    quote! {
+        impl #struct_name {
+            #[doc(hidden)]
+            pub fn __toni_provider_factory() -> impl ::toni::traits_helpers::ProviderFactory {
+                #factory_name
+            }
+        }
     }
 }
 
