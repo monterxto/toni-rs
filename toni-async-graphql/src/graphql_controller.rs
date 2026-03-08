@@ -16,12 +16,12 @@ struct GraphQLRequest {
     variables: Option<serde_json::Value>,
 }
 
-/// ControllerFactory manager for GraphQL endpoints.
+/// `ControllerFactory` for GraphQL endpoints.
 ///
 /// This creates two endpoints:
 /// - POST /graphql - Execute GraphQL queries
 /// - GET /graphql - Serve GraphQL Playground (if enabled)
-pub struct GraphQLControllerManager<Query, Mutation, Subscription, Ctx>
+pub struct GraphQLControllerFactory<Query, Mutation, Subscription, Ctx>
 where
     Query: ObjectType + 'static,
     Mutation: ObjectType + 'static,
@@ -34,7 +34,7 @@ where
 }
 
 impl<Query, Mutation, Subscription, Ctx>
-    GraphQLControllerManager<Query, Mutation, Subscription, Ctx>
+    GraphQLControllerFactory<Query, Mutation, Subscription, Ctx>
 where
     Query: ObjectType + 'static,
     Mutation: ObjectType + 'static,
@@ -52,7 +52,7 @@ where
 
 #[async_trait]
 impl<Query, Mutation, Subscription, Ctx> ControllerFactory
-    for GraphQLControllerManager<Query, Mutation, Subscription, Ctx>
+    for GraphQLControllerFactory<Query, Mutation, Subscription, Ctx>
 where
     Query: ObjectType + 'static,
     Mutation: ObjectType + 'static,

@@ -62,30 +62,30 @@ pub fn handle_provider_token(input: TokenStream) -> Result<TokenStream> {
     };
 
     // Build the ProviderFactory path by appending "ProviderFactory" to the last segment
-    let mut manager_path = type_path.clone();
-    if let Some(last_segment) = manager_path.segments.last_mut() {
+    let mut factory_path = type_path.clone();
+    if let Some(last_segment) = factory_path.segments.last_mut() {
         let type_ident = &last_segment.ident;
-        let manager_ident = format_ident!("{}ProviderFactory", type_ident);
-        last_segment.ident = manager_ident;
+        let factory_ident = format_ident!("{}ProviderFactory", type_ident);
+        last_segment.ident = factory_ident;
     }
 
     // Generate unique struct names based on token
     let token_display = token.display_name();
     let sanitized_name = token_display.replace(['\"', ' ', '-', '.', ':', '/'], "_");
-    let wrapper_manager_name = format_ident!("__ToniTokenProviderFactory_{}", sanitized_name);
+    let wrapper_factory_name = format_ident!("__ToniTokenProviderFactory_{}", sanitized_name);
 
     let expanded = quote! {
         {
-            struct #wrapper_manager_name;
+            struct #wrapper_factory_name;
 
             #[toni::async_trait]
-            impl toni::traits_helpers::ProviderFactory for #wrapper_manager_name {
+            impl toni::traits_helpers::ProviderFactory for #wrapper_factory_name {
                 fn get_token(&self) -> String {
                     #token_expr
                 }
 
                 fn get_dependencies(&self) -> Vec<String> {
-                    let type_factory = #manager_path {};
+                    let type_factory = #factory_path {};
                     type_factory.get_dependencies()
                 }
 
@@ -97,7 +97,7 @@ pub fn handle_provider_token(input: TokenStream) -> Result<TokenStream> {
                     >,
                 ) -> std::sync::Arc<Box<dyn toni::traits_helpers::Provider>> {
                     // Delegate to the type's ProviderFactory to construct the inner provider
-                    let type_factory = #manager_path {};
+                    let type_factory = #factory_path {};
                     let inner_provider = type_factory.build(deps).await;
 
                     // Wrap it under the custom token
@@ -113,7 +113,7 @@ pub fn handle_provider_token(input: TokenStream) -> Result<TokenStream> {
                             self.custom_token.clone()
                         }
 
-                        fn get_token_manager(&self) -> String {
+                        fn get_token_factory(&self) -> String {
                             self.custom_token.clone()
                         }
 
@@ -153,7 +153,7 @@ pub fn handle_provider_token(input: TokenStream) -> Result<TokenStream> {
                 }
             }
 
-            #wrapper_manager_name
+            #wrapper_factory_name
         }
     };
 

@@ -120,8 +120,8 @@ where
         "GraphQLService".to_string()
     }
 
-    fn get_token_manager(&self) -> String {
-        "GraphQLServiceManager".to_string()
+    fn get_token_factory(&self) -> String {
+        "GraphQLServiceFactory".to_string()
     }
 
     fn get_scope(&self) -> ProviderScope {

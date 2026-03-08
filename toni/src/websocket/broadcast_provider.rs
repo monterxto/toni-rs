@@ -28,7 +28,7 @@ impl Provider for BroadcastServiceProvider {
         Box::new(self.instance.clone())
     }
 
-    fn get_token_manager(&self) -> String {
+    fn get_token_factory(&self) -> String {
         std::any::type_name::<BroadcastService>().to_string()
     }
 

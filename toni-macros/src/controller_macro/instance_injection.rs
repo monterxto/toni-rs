@@ -151,7 +151,7 @@ pub fn generate_instance_controller_system(
             }
         };
 
-    let manager = generate_manager(
+    let factory = generate_factory(
         struct_name,
         singleton_metadata,
         request_metadata,
@@ -173,7 +173,7 @@ pub fn generate_instance_controller_system(
         // Generate Request wrappers (only if controller has dependencies)
         #(#request_wrappers)*
 
-        #manager
+        #factory
     })
 }
 
@@ -1133,7 +1133,7 @@ fn generate_request_controller_wrapper(
     }
 }
 
-fn generate_manager(
+fn generate_factory(
     struct_name: &Ident,
     singleton_metadata: Vec<MetadataInfo>,
     request_metadata: Vec<MetadataInfo>,
@@ -1144,7 +1144,7 @@ fn generate_manager(
     use crate::shared::scope_parser::ControllerScope;
 
     match scope {
-        ControllerScope::Singleton => generate_singleton_manager(
+        ControllerScope::Singleton => generate_singleton_factory(
             struct_name,
             singleton_metadata,
             request_metadata,
@@ -1153,16 +1153,16 @@ fn generate_manager(
         ),
         ControllerScope::Request => {
             // Request-scoped controllers don't need elevation logic
-            generate_request_manager(struct_name, request_metadata, dependencies)
+            generate_request_factory(struct_name, request_metadata, dependencies)
         }
     }
 }
 
-/// Generate field resolutions for Singleton controller manager
+/// Generate field resolutions for singleton controller factory
 /// Applies scope-aware deduplication matching NestJS:
 /// - Singleton/Request: fields with same token share one instance
 /// - Transient: each field gets fresh instance
-fn generate_controller_manager_field_resolutions(
+fn generate_controller_factory_field_resolutions(
     dependencies: &DependencyInfo,
 ) -> (Vec<TokenStream>, Vec<Ident>) {
     let mut resolutions = Vec::new();
@@ -1287,16 +1287,16 @@ fn generate_controller_manager_field_resolutions(
     (resolutions, field_names)
 }
 
-// Singleton manager - creates controller instance AT STARTUP
+// Singleton factory - creates controller instance AT STARTUP
 // OR elevates to Request scope if dependencies require it
-fn generate_singleton_manager(
+fn generate_singleton_factory(
     struct_name: &Ident,
     singleton_metadata: Vec<MetadataInfo>,
     request_metadata: Vec<MetadataInfo>,
     dependencies: &DependencyInfo,
     was_explicit: bool,
 ) -> TokenStream {
-    let manager_name = Ident::new(
+    let factory_name = Ident::new(
         &format!("{}ControllerFactory", struct_name),
         struct_name.span(),
     );
@@ -1323,7 +1323,7 @@ fn generate_singleton_manager(
 
     // Generate field resolutions with scope-aware deduplication
     let (field_resolutions, field_names) =
-        generate_controller_manager_field_resolutions(dependencies);
+        generate_controller_factory_field_resolutions(dependencies);
     let struct_instantiation = if let Some(init_method_name) = &dependencies.init_method {
         // Constructor-based DI: call the constructor with resolved parameters
         let init_method = Ident::new(init_method_name, struct_name.span());
@@ -1456,10 +1456,10 @@ fn generate_singleton_manager(
         .collect();
 
     quote! {
-        pub struct #manager_name;
+        pub struct #factory_name;
 
         #[::toni::async_trait]
-        impl ::toni::traits_helpers::ControllerFactory for #manager_name {
+        impl ::toni::traits_helpers::ControllerFactory for #factory_name {
             fn get_token(&self) -> String {
                 #struct_token.to_string()
             }
@@ -1496,13 +1496,13 @@ fn generate_singleton_manager(
     }
 }
 
-// Request manager - stores dependencies, creates instance per request
-fn generate_request_manager(
+// Request factory - stores dependencies, creates instance per request
+fn generate_request_factory(
     struct_name: &Ident,
     metadata_list: Vec<MetadataInfo>,
     dependencies: &DependencyInfo,
 ) -> TokenStream {
-    let manager_name = Ident::new(
+    let factory_name = Ident::new(
         &format!("{}ControllerFactory", struct_name),
         struct_name.span(),
     );
@@ -1551,10 +1551,10 @@ fn generate_request_manager(
         .collect();
 
     quote! {
-        pub struct #manager_name;
+        pub struct #factory_name;
 
         #[::toni::async_trait]
-        impl ::toni::traits_helpers::ControllerFactory for #manager_name {
+        impl ::toni::traits_helpers::ControllerFactory for #factory_name {
             fn get_token(&self) -> String {
                 #struct_token.to_string()
             }

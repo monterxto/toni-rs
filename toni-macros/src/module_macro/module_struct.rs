@@ -86,22 +86,22 @@ impl Parse for ConfigParser {
                                     if let Some(last_segment) = path.segments.last() {
                                         let type_name = &last_segment.ident;
                                         // Create the ProviderFactory variant
-                                        let manager_ident = Ident::new(
+                                        let factory_ident = Ident::new(
                                             &format!("{}ProviderFactory", type_name),
                                             type_name.span(),
                                         );
 
                                         // Reconstruct the path with ProviderFactory suffix
-                                        let mut manager_path = path.clone();
-                                        if let Some(last) = manager_path.segments.last_mut() {
-                                            last.ident = manager_ident;
+                                        let mut factory_path = path.clone();
+                                        if let Some(last) = factory_path.segments.last_mut() {
+                                            last.ident = factory_ident;
                                         }
 
                                         // Return new expression with the ProviderFactory path
                                         return syn::Expr::Path(syn::ExprPath {
                                             attrs: vec![],
                                             qself: None,
-                                            path: manager_path,
+                                            path: factory_path,
                                         });
                                     }
                                 }
@@ -317,7 +317,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! {}
     };
 
-    let module_ref_manager_name = Ident::new(
+    let module_ref_factory_name = Ident::new(
         &format!("__ToniModuleRefProviderFactory_{}", input_name),
         Span::call_site(),
     );
@@ -328,11 +328,11 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         #user_impl_block
 
         // Generate unique ModuleRef ProviderFactory for this module
-        pub struct #module_ref_manager_name {
+        pub struct #module_ref_factory_name {
             module_token: String,
         }
 
-        impl #module_ref_manager_name {
+        impl #module_ref_factory_name {
             fn new() -> Self {
                 Self {
                     module_token: #input_name.to_string(),
@@ -341,7 +341,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         }
 
         #[::toni::async_trait]
-        impl ::toni::traits_helpers::ProviderFactory for #module_ref_manager_name {
+        impl ::toni::traits_helpers::ProviderFactory for #module_ref_factory_name {
             fn get_token(&self) -> String {
                 ::std::any::type_name::<::toni::ModuleRef>().to_string()
             }
@@ -401,7 +401,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
                     #(Box::new(#providers)),*
                 ];
                 // Auto-inject ModuleRef ProviderFactory for this module
-                providers_vec.push(Box::new(#module_ref_manager_name::new()));
+                providers_vec.push(Box::new(#module_ref_factory_name::new()));
                 Some(providers_vec)
             }
             fn exports(&self) -> Option<Vec<String>> {

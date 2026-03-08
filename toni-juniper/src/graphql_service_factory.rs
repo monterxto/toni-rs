@@ -9,12 +9,8 @@ use std::sync::Arc;
 use toni::traits_helpers::{Provider, ProviderFactory};
 use toni::FxHashMap;
 
-/// ProviderFactory manager for GraphQLService.
-///
-/// This follows Toni's two-tier provider pattern:
-/// - Manager (implements ProviderFactory) - registered during module scanning
-/// - Service (implements Provider) - actual injectable instance
-pub struct GraphQLServiceManager<Query, Mutation, Subscription, Ctx, S = DefaultScalarValue>
+/// `ProviderFactory` for `GraphQLService` — registered during module scanning.
+pub struct GraphQLServiceFactory<Query, Mutation, Subscription, Ctx, S = DefaultScalarValue>
 where
     Query: GraphQLType<S, Context = Ctx::Context>
         + GraphQLTypeAsync<S, Context = Ctx::Context>
@@ -43,7 +39,7 @@ where
 }
 
 impl<Query, Mutation, Subscription, Ctx, S>
-    GraphQLServiceManager<Query, Mutation, Subscription, Ctx, S>
+    GraphQLServiceFactory<Query, Mutation, Subscription, Ctx, S>
 where
     Query: GraphQLType<S, Context = Ctx::Context>
         + GraphQLTypeAsync<S, Context = Ctx::Context>
@@ -80,7 +76,7 @@ where
 
 #[async_trait]
 impl<Query, Mutation, Subscription, Ctx, S> ProviderFactory
-    for GraphQLServiceManager<Query, Mutation, Subscription, Ctx, S>
+    for GraphQLServiceFactory<Query, Mutation, Subscription, Ctx, S>
 where
     Query: GraphQLType<S, Context = Ctx::Context>
         + GraphQLTypeAsync<S, Context = Ctx::Context>

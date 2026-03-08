@@ -245,7 +245,7 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
     let token_display = token.display_name();
     let sanitized_name = token_display.replace(['\"', ' ', '-', '.', ':', '/'], "_");
     let provider_name = format_ident!("__ToniFactoryProvider_{}", sanitized_name);
-    let manager_name = format_ident!("__ToniFactoryProviderFactory_{}", sanitized_name);
+    let factory_name = format_ident!("__ToniFactoryProviderFactory_{}", sanitized_name);
 
     // Determine if we need to cache the instance (singleton scope or enhancers)
     let needs_caching = scope.as_deref() == Some("singleton") || !enhancers.is_empty();
@@ -270,10 +270,10 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
 
     let expanded = quote! {
         {
-            struct #manager_name;
+            struct #factory_name;
 
             #[toni::async_trait]
-            impl toni::traits_helpers::ProviderFactory for #manager_name {
+            impl toni::traits_helpers::ProviderFactory for #factory_name {
                 fn get_token(&self) -> String {
                     #token_expr
                 }
@@ -304,7 +304,7 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
                             #token_expr
                         }
 
-                        fn get_token_manager(&self) -> String {
+                        fn get_token_factory(&self) -> String {
                             #token_expr
                         }
 
@@ -332,7 +332,7 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
                 }
             }
 
-            #manager_name
+            #factory_name
         }
     };
 

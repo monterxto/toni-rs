@@ -157,7 +157,7 @@ impl Provider for Request {
         Box::new(Request::from_request(http_req))
     }
 
-    fn get_token_manager(&self) -> String {
+    fn get_token_factory(&self) -> String {
         std::any::type_name::<Request>().to_string()
     }
 
@@ -450,10 +450,10 @@ impl FromRequest for Request {
     }
 }
 
-pub struct RequestManager;
+pub struct RequestFactory;
 
 #[async_trait]
-impl ProviderFactory for RequestManager {
+impl ProviderFactory for RequestFactory {
     fn get_token(&self) -> String {
         std::any::type_name::<Request>().to_string()
     }

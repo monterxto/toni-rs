@@ -47,7 +47,7 @@ pub fn handle_provider_alias(input: TokenStream) -> Result<TokenStream> {
     let token_display = alias_token.display_name();
     let sanitized_name = token_display.replace(['\"', ' ', '-', '.', ':', '/'], "_");
     let provider_name = format_ident!("__ToniAliasProvider_{}", sanitized_name);
-    let manager_name = format_ident!("__ToniAliasProviderFactory_{}", sanitized_name);
+    let factory_name = format_ident!("__ToniAliasProviderFactory_{}", sanitized_name);
 
     // Generate the provider struct and implementation
     let expanded = quote! {
@@ -58,7 +58,7 @@ pub fn handle_provider_alias(input: TokenStream) -> Result<TokenStream> {
                 target_provider: std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
             }
 
-            struct #manager_name;
+            struct #factory_name;
 
             // Implement Provider for the alias provider wrapper
             #[toni::async_trait]
@@ -67,7 +67,7 @@ pub fn handle_provider_alias(input: TokenStream) -> Result<TokenStream> {
                     #alias_token_expr
                 }
 
-                fn get_token_manager(&self) -> String {
+                fn get_token_factory(&self) -> String {
                     #alias_token_expr
                 }
 
@@ -104,7 +104,7 @@ pub fn handle_provider_alias(input: TokenStream) -> Result<TokenStream> {
             }
 
             #[toni::async_trait]
-            impl toni::traits_helpers::ProviderFactory for #manager_name {
+            impl toni::traits_helpers::ProviderFactory for #factory_name {
                 fn get_token(&self) -> String {
                     #alias_token_expr
                 }
@@ -135,7 +135,7 @@ pub fn handle_provider_alias(input: TokenStream) -> Result<TokenStream> {
                 }
             }
 
-            #manager_name
+            #factory_name
         }
     };
 

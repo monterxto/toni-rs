@@ -75,7 +75,7 @@ impl Module {
         self.exports_instances.insert(provider_token);
     }
 
-    pub fn get_providers_manager(&self) -> &FxHashMap<String, Box<dyn ProviderFactory>> {
+    pub fn get_providers_factory(&self) -> &FxHashMap<String, Box<dyn ProviderFactory>> {
         &self.providers
     }
 
@@ -96,7 +96,7 @@ impl Module {
         self.providers_instances.get(provider_token)
     }
 
-    pub fn get_controllers_manager(&self) -> &FxHashMap<String, Box<dyn ControllerFactory>> {
+    pub fn get_controllers_factory(&self) -> &FxHashMap<String, Box<dyn ControllerFactory>> {
         &self.controllers
     }
 

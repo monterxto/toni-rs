@@ -25,7 +25,7 @@ impl DependencyGraph {
     pub fn get_ordered_providers_token(mut self) -> Result<Vec<String>> {
         let providers = {
             let container = self.container.borrow();
-            let providers_map = container.get_providers_manager(&self.module_token)?;
+            let providers_map = container.get_providers_factory(&self.module_token)?;
             providers_map
                 .iter()
                 .map(|(token, provider)| (token.clone(), provider.get_dependencies()))

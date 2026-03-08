@@ -197,7 +197,7 @@ impl ToniContainer {
         Ok(())
     }
 
-    pub fn get_providers_manager(
+    pub fn get_providers_factory(
         &self,
         module_ref_token: &String,
     ) -> Result<&FxHashMap<String, Box<dyn ProviderFactory>>> {
@@ -205,10 +205,10 @@ impl ToniContainer {
             .modules
             .get(module_ref_token)
             .ok_or_else(|| anyhow!("Module not found"))?;
-        Ok(module_ref.get_providers_manager())
+        Ok(module_ref.get_providers_factory())
     }
 
-    pub fn get_controllers_manager(
+    pub fn get_controllers_factory(
         &self,
         module_ref_token: &String,
     ) -> Result<&FxHashMap<String, Box<dyn ControllerFactory>>> {
@@ -216,7 +216,7 @@ impl ToniContainer {
             .modules
             .get(module_ref_token)
             .ok_or_else(|| anyhow!("Module not found"))?;
-        Ok(module_ref.get_controllers_manager())
+        Ok(module_ref.get_controllers_factory())
     }
 
     pub fn get_providers_instance(

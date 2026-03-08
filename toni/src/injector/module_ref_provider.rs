@@ -62,7 +62,7 @@ impl Provider for ModuleRefProvider {
         std::any::type_name::<ModuleRef>().to_string()
     }
 
-    fn get_token_manager(&self) -> String {
+    fn get_token_factory(&self) -> String {
         std::any::type_name::<ModuleRef>().to_string()
     }
 

@@ -154,7 +154,7 @@ pub use toni_macros::Config;
 pub use validator;
 
 mod config_service;
-pub use config_service::{ConfigService, ConfigServiceManager};
+pub use config_service::{ConfigService, ConfigServiceFactory};
 
 /// Configuration module that handles loading and validation
 pub struct ConfigModule<T: Config> {
@@ -244,7 +244,7 @@ impl<T: Config> toni::traits_helpers::ModuleMetadata for ConfigModule<T> {
     }
 
     fn providers(&self) -> Option<Vec<Box<dyn toni::traits_helpers::ProviderFactory>>> {
-        Some(vec![Box::new(ConfigServiceManager::<T>::with_config(
+        Some(vec![Box::new(ConfigServiceFactory::<T>::with_config(
             self.config.clone(),
         ))])
     }

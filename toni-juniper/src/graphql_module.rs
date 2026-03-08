@@ -1,6 +1,6 @@
 use crate::context_builder::ContextBuilder;
-use crate::graphql_controller::GraphQLControllerManager;
-use crate::graphql_service_manager::GraphQLServiceManager;
+use crate::graphql_controller::GraphQLControllerFactory;
+use crate::graphql_service_factory::GraphQLServiceFactory;
 use juniper::{
     DefaultScalarValue, GraphQLSubscriptionType, GraphQLType, GraphQLTypeAsync, RootNode,
     ScalarValue,
@@ -183,14 +183,14 @@ where
     }
 
     fn providers(&self) -> Option<Vec<Box<dyn ProviderFactory>>> {
-        Some(vec![Box::new(GraphQLServiceManager::new(
+        Some(vec![Box::new(GraphQLServiceFactory::new(
             self.schema.clone(),
             self.context_builder.clone(),
         ))])
     }
 
     fn controllers(&self) -> Option<Vec<Box<dyn ControllerFactory>>> {
-        Some(vec![Box::new(GraphQLControllerManager::<
+        Some(vec![Box::new(GraphQLControllerFactory::<
             Query,
             Mutation,
             Subscription,

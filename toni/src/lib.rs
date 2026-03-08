@@ -37,7 +37,7 @@ pub use websocket::{
 };
 
 // Re-export built-in providers
-pub use request::{Request, RequestManager};
+pub use request::{Request, RequestFactory};
 
 // Re-export ModuleRef for dynamic DI resolution
 pub use injector::{Context, IntoToken, ModuleRef};

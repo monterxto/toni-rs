@@ -3,7 +3,7 @@
 //! This module provides built-in providers that should be globally available
 //! to all modules without requiring explicit imports.
 
-use crate::RequestManager;
+use crate::RequestFactory;
 use crate::module_helpers::module_enum::ModuleDefinition;
 use crate::traits_helpers::{ControllerFactory, ModuleMetadata, ProviderFactory};
 
@@ -35,7 +35,7 @@ impl ModuleMetadata for BuiltinModule {
     }
 
     fn providers(&self) -> Option<Vec<Box<dyn ProviderFactory>>> {
-        Some(vec![Box::new(RequestManager)])
+        Some(vec![Box::new(RequestFactory)])
     }
 
     fn exports(&self) -> Option<Vec<String>> {

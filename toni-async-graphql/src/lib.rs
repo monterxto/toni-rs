@@ -118,7 +118,7 @@ mod context_builder;
 mod graphql_controller;
 mod graphql_module;
 mod graphql_service;
-mod graphql_service_manager;
+mod graphql_service_factory;
 
 // Re-export key types
 pub use context_builder::{ContextBuilder, DefaultContextBuilder};

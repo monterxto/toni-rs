@@ -154,7 +154,7 @@ mod context_builder;
 mod graphql_controller;
 mod graphql_module;
 mod graphql_service;
-mod graphql_service_manager;
+mod graphql_service_factory;
 
 pub use context_builder::{ContextBuilder, DefaultContext, DefaultContextBuilder};
 pub use graphql_module::GraphQLModule;

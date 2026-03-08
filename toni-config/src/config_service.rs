@@ -89,8 +89,7 @@ impl<T: Config> Provider for ConfigService<T> {
         format!("ConfigService<{}>", std::any::type_name::<T>())
     }
 
-    fn get_token_manager(&self) -> String {
-        // Manager token is the same as instance token for generics
+    fn get_token_factory(&self) -> String {
         format!("ConfigService<{}>", std::any::type_name::<T>())
     }
 }
@@ -99,19 +98,19 @@ impl<T: Config> Provider for ConfigService<T> {
 // ProviderFactory Implementation for DI System
 // ============================================================================
 
-/// Manager for ConfigService - handles registration with the DI system
-pub struct ConfigServiceManager<T: Config> {
+/// `ProviderFactory` for `ConfigService` — registered with the DI system by `ConfigModule`.
+pub struct ConfigServiceFactory<T: Config> {
     config: Arc<T>,
 }
 
-impl<T: Config> ConfigServiceManager<T> {
+impl<T: Config> ConfigServiceFactory<T> {
     pub fn with_config(config: Arc<T>) -> Self {
         Self { config }
     }
 }
 
 #[async_trait]
-impl<T: Config + Clone + Send + Sync + 'static> ProviderFactory for ConfigServiceManager<T> {
+impl<T: Config + Clone + Send + Sync + 'static> ProviderFactory for ConfigServiceFactory<T> {
     fn get_token(&self) -> String {
         format!("ConfigService<{}>", std::any::type_name::<T>())
     }

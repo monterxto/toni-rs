@@ -244,9 +244,9 @@ impl ToniInstanceLoader {
         let mut container = self.container.borrow_mut();
         let mut providers_tokens = Vec::new();
         for (provider_instance_token, provider_instance) in providers_instances {
-            let token_manager = provider_instance.get_token_manager().clone();
+            let token_factory = provider_instance.get_token_factory().clone();
             container.add_provider_instance(module_token, provider_instance)?;
-            providers_tokens.push((token_manager, provider_instance_token));
+            providers_tokens.push((token_factory, provider_instance_token));
         }
 
         self.resolve_exports(module_token, providers_tokens, container)?;
@@ -271,8 +271,8 @@ impl ToniInstanceLoader {
         exports: Vec<String>,
         mut container: RefMut<'_, ToniContainer>,
     ) -> Result<()> {
-        for (provider_manager_token, provider_instance_token) in providers_tokens {
-            if exports.contains(&provider_manager_token) {
+        for (provider_factory_token, provider_instance_token) in providers_tokens {
+            if exports.contains(&provider_factory_token) {
                 container.add_export_instance(module_token, provider_instance_token)?;
             }
         }
@@ -283,9 +283,9 @@ impl ToniInstanceLoader {
         let controllers_instances = {
             let container = self.container.borrow();
             let mut instances = Vec::new();
-            let controllers_manager = container.get_controllers_manager(&module_token)?;
+            let controllers_factory = container.get_controllers_factory(&module_token)?;
 
-            for controller_factory in controllers_manager.values() {
+            for controller_factory in controllers_factory.values() {
                 let dependencies = controller_factory.get_dependencies();
                 let resolved_dependencies =
                     self.resolve_dependencies(&module_token, dependencies, None)?;

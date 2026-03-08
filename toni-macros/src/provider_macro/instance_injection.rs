@@ -111,7 +111,7 @@ pub fn generate_instance_provider_system(
         &lifecycle_hooks,
     );
 
-    let manager = generate_manager(struct_name, dependencies, scope);
+    let factory = generate_factory(struct_name, dependencies, scope);
 
     Ok(quote! {
         #[allow(dead_code)]
@@ -121,7 +121,7 @@ pub fn generate_instance_provider_system(
         #impl_def
 
         #provider_wrapper
-        #manager
+        #factory
     })
 }
 
@@ -343,7 +343,7 @@ fn generate_singleton_provider(
                 ::std::any::type_name::<#struct_name>().to_string()
             }
 
-            fn get_token_manager(&self) -> String {
+            fn get_token_factory(&self) -> String {
                 ::std::any::type_name::<#struct_name>().to_string()
             }
 
@@ -451,7 +451,7 @@ fn generate_request_provider(
                 ::std::any::type_name::<#struct_name>().to_string()
             }
 
-            fn get_token_manager(&self) -> String {
+            fn get_token_factory(&self) -> String {
                 ::std::any::type_name::<#struct_name>().to_string()
             }
 
@@ -529,7 +529,7 @@ fn generate_transient_provider(
                 ::std::any::type_name::<#struct_name>().to_string()
             }
 
-            fn get_token_manager(&self) -> String {
+            fn get_token_factory(&self) -> String {
                 ::std::any::type_name::<#struct_name>().to_string()
             }
 
@@ -664,8 +664,8 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
     (resolutions, field_names)
 }
 
-/// Generate field resolutions for Singleton manager (uses dependencies parameter)
-fn generate_manager_field_resolutions(
+/// Generate field resolutions for singleton factory (uses dependencies parameter)
+fn generate_factory_field_resolutions(
     dependencies: &DependencyInfo,
 ) -> (Vec<TokenStream>, Vec<Ident>) {
     let mut resolutions = Vec::new();
@@ -788,26 +788,26 @@ fn generate_manager_field_resolutions(
     (resolutions, field_names)
 }
 
-fn generate_manager(
+fn generate_factory(
     struct_name: &Ident,
     dependencies: &DependencyInfo,
     scope: ProviderScope,
 ) -> TokenStream {
     match scope {
-        ProviderScope::Singleton => generate_singleton_manager(struct_name, dependencies),
-        ProviderScope::Request => generate_request_manager(struct_name, dependencies),
-        ProviderScope::Transient => generate_transient_manager(struct_name, dependencies),
+        ProviderScope::Singleton => generate_singleton_factory(struct_name, dependencies),
+        ProviderScope::Request => generate_request_factory(struct_name, dependencies),
+        ProviderScope::Transient => generate_transient_factory(struct_name, dependencies),
     }
 }
 
-fn generate_singleton_manager(struct_name: &Ident, dependencies: &DependencyInfo) -> TokenStream {
-    let manager_name = Ident::new(
+fn generate_singleton_factory(struct_name: &Ident, dependencies: &DependencyInfo) -> TokenStream {
+    let factory_name = Ident::new(
         &format!("{}ProviderFactory", struct_name),
         struct_name.span(),
     );
     let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
 
-    let (field_resolutions, field_names) = generate_manager_field_resolutions(dependencies);
+    let (field_resolutions, field_names) = generate_factory_field_resolutions(dependencies);
 
     // Generate struct instantiation code (either custom init or struct literal)
     let struct_instantiation = if let Some(init_fn) = &dependencies.init_method {
@@ -926,10 +926,10 @@ fn generate_singleton_manager(struct_name: &Ident, dependencies: &DependencyInfo
     };
 
     quote! {
-        pub struct #manager_name;
+        pub struct #factory_name;
 
         #[::toni::async_trait]
-        impl ::toni::traits_helpers::ProviderFactory for #manager_name {
+        impl ::toni::traits_helpers::ProviderFactory for #factory_name {
             fn get_token(&self) -> String {
                 ::std::any::type_name::<#struct_name>().to_string()
             }
@@ -961,8 +961,8 @@ fn generate_singleton_manager(struct_name: &Ident, dependencies: &DependencyInfo
     }
 }
 
-fn generate_request_manager(struct_name: &Ident, dependencies: &DependencyInfo) -> TokenStream {
-    let manager_name = Ident::new(
+fn generate_request_factory(struct_name: &Ident, dependencies: &DependencyInfo) -> TokenStream {
+    let factory_name = Ident::new(
         &format!("{}ProviderFactory", struct_name),
         struct_name.span(),
     );
@@ -982,10 +982,10 @@ fn generate_request_manager(struct_name: &Ident, dependencies: &DependencyInfo) 
         .collect();
 
     quote! {
-        pub struct #manager_name;
+        pub struct #factory_name;
 
         #[::toni::async_trait]
-        impl ::toni::traits_helpers::ProviderFactory for #manager_name {
+        impl ::toni::traits_helpers::ProviderFactory for #factory_name {
             fn get_token(&self) -> String {
                 ::std::any::type_name::<#struct_name>().to_string()
             }
@@ -1009,8 +1009,8 @@ fn generate_request_manager(struct_name: &Ident, dependencies: &DependencyInfo) 
     }
 }
 
-fn generate_transient_manager(struct_name: &Ident, dependencies: &DependencyInfo) -> TokenStream {
-    let manager_name = Ident::new(
+fn generate_transient_factory(struct_name: &Ident, dependencies: &DependencyInfo) -> TokenStream {
+    let factory_name = Ident::new(
         &format!("{}ProviderFactory", struct_name),
         struct_name.span(),
     );
@@ -1030,10 +1030,10 @@ fn generate_transient_manager(struct_name: &Ident, dependencies: &DependencyInfo
         .collect();
 
     quote! {
-        pub struct #manager_name;
+        pub struct #factory_name;
 
         #[::toni::async_trait]
-        impl ::toni::traits_helpers::ProviderFactory for #manager_name {
+        impl ::toni::traits_helpers::ProviderFactory for #factory_name {
             fn get_token(&self) -> String {
                 ::std::any::type_name::<#struct_name>().to_string()
             }

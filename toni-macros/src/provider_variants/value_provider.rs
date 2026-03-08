@@ -165,7 +165,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
     let token_display = token.display_name();
     let sanitized_name = token_display.replace(['\"', ' ', '-', '.', ':', '/'], "_");
     let provider_name = format_ident!("__ToniValueProvider_{}", sanitized_name);
-    let manager_name = format_ident!("__ToniValueProviderFactory_{}", sanitized_name);
+    let factory_name = format_ident!("__ToniValueProviderFactory_{}", sanitized_name);
 
     // Generate enhancer method implementations
     let enhancer_methods = generate_enhancer_methods(&token, &type_hint, &enhancers)?;
@@ -181,7 +181,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                     instance: std::sync::Arc<#path>,
                 }
 
-                struct #manager_name;
+                struct #factory_name;
 
                 // Implement Provider for the provider wrapper
                 #[toni::async_trait]
@@ -190,7 +190,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                         #token_expr
                     }
 
-                    fn get_token_manager(&self) -> String {
+                    fn get_token_factory(&self) -> String {
                         #token_expr
                     }
 
@@ -211,7 +211,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                 }
 
                 #[toni::async_trait]
-                impl toni::traits_helpers::ProviderFactory for #manager_name {
+                impl toni::traits_helpers::ProviderFactory for #factory_name {
                     fn get_token(&self) -> String {
                         #token_expr
                     }
@@ -230,7 +230,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                     }
                 }
 
-                #manager_name
+                #factory_name
             }
         },
 
@@ -245,7 +245,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                             instance: std::sync::Arc<#type_path>,
                         }
 
-                        struct #manager_name;
+                        struct #factory_name;
 
                         #[toni::async_trait]
                         impl toni::traits_helpers::Provider for #provider_name {
@@ -253,7 +253,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                                 #token_expr
                             }
 
-                            fn get_token_manager(&self) -> String {
+                            fn get_token_factory(&self) -> String {
                                 #token_expr
                             }
 
@@ -273,7 +273,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                         }
 
                         #[toni::async_trait]
-                        impl toni::traits_helpers::ProviderFactory for #manager_name {
+                        impl toni::traits_helpers::ProviderFactory for #factory_name {
                             fn get_token(&self) -> String {
                                 #token_expr
                             }
@@ -292,7 +292,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                             }
                         }
 
-                        #manager_name
+                        #factory_name
                     }
                 }
             } else {
@@ -301,7 +301,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                         #[derive(Clone)]
                         struct #provider_name;
 
-                        struct #manager_name;
+                        struct #factory_name;
 
                         #[toni::async_trait]
                         impl toni::traits_helpers::Provider for #provider_name {
@@ -309,7 +309,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                                 #token_expr
                             }
 
-                            fn get_token_manager(&self) -> String {
+                            fn get_token_factory(&self) -> String {
                                 #token_expr
                             }
 
@@ -327,7 +327,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                         }
 
                         #[toni::async_trait]
-                        impl toni::traits_helpers::ProviderFactory for #manager_name {
+                        impl toni::traits_helpers::ProviderFactory for #factory_name {
                             fn get_token(&self) -> String {
                                 #token_expr
                             }
@@ -345,7 +345,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                             }
                         }
 
-                        #manager_name
+                        #factory_name
                     }
                 }
             }

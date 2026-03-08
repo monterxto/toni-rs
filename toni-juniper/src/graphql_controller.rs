@@ -18,12 +18,12 @@ struct GraphQLRequest {
     variables: Option<serde_json::Value>,
 }
 
-/// ControllerFactory manager for GraphQL endpoints.
+/// `ControllerFactory` for GraphQL endpoints.
 ///
 /// This creates two endpoints:
 /// - POST /graphql - Execute GraphQL queries
 /// - GET /graphql - Serve GraphQL Playground (if enabled)
-pub struct GraphQLControllerManager<Query, Mutation, Subscription, Ctx, S = DefaultScalarValue>
+pub struct GraphQLControllerFactory<Query, Mutation, Subscription, Ctx, S = DefaultScalarValue>
 where
     Query: GraphQLType<S, Context = Ctx::Context>
         + GraphQLTypeAsync<S, Context = Ctx::Context>
@@ -53,7 +53,7 @@ where
 }
 
 impl<Query, Mutation, Subscription, Ctx, S>
-    GraphQLControllerManager<Query, Mutation, Subscription, Ctx, S>
+    GraphQLControllerFactory<Query, Mutation, Subscription, Ctx, S>
 where
     Query: GraphQLType<S, Context = Ctx::Context>
         + GraphQLTypeAsync<S, Context = Ctx::Context>
@@ -88,7 +88,7 @@ where
 
 #[async_trait]
 impl<Query, Mutation, Subscription, Ctx, S> ControllerFactory
-    for GraphQLControllerManager<Query, Mutation, Subscription, Ctx, S>
+    for GraphQLControllerFactory<Query, Mutation, Subscription, Ctx, S>
 where
     Query: GraphQLType<S, Context = Ctx::Context>
         + GraphQLTypeAsync<S, Context = Ctx::Context>
