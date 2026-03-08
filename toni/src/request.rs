@@ -450,26 +450,20 @@ impl FromRequest for Request {
     }
 }
 
-/// Manager for the built-in Request provider.
-///
-/// This manager is used internally by the framework to register the Request
-/// provider in the dependency injection container. Users don't need to interact
-/// with this directly - Request is automatically available in all modules.
 pub struct RequestManager;
 
 #[async_trait]
 impl ProviderFactory for RequestManager {
-    async fn get_all_providers(
-        &self,
-        _dependencies: &FxHashMap<String, Arc<Box<dyn Provider>>>,
-    ) -> FxHashMap<String, Arc<Box<dyn Provider>>> {
-        let mut providers = FxHashMap::default();
+    fn get_token(&self) -> String {
+        std::any::type_name::<Request>().to_string()
+    }
 
-        // Request scope: Create a Request instance wrapper
-        // Dependencies are empty since Request has no injectable dependencies
-        // Note: This is a placeholder instance - the actual instance is created
-        // in the execute() method with the real HttpRequest
-        let provider_wrapper = Request {
+    async fn build(
+        &self,
+        _deps: FxHashMap<String, Arc<Box<dyn Provider>>>,
+    ) -> Arc<Box<dyn Provider>> {
+        // Placeholder — the real instance is created per-request in execute()
+        let provider = Request {
             inner: Arc::new(HttpRequest {
                 body: Body::Text(String::new()),
                 headers: vec![],
@@ -480,25 +474,7 @@ impl ProviderFactory for RequestManager {
                 extensions: Extensions::new(),
             }),
         };
-
-        providers.insert(
-            std::any::type_name::<Request>().to_string(),
-            Arc::new(Box::new(provider_wrapper) as Box<dyn Provider>),
-        );
-
-        providers
-    }
-
-    fn get_name(&self) -> String {
-        std::any::type_name::<Request>().to_string()
-    }
-
-    fn get_token(&self) -> String {
-        std::any::type_name::<Request>().to_string()
-    }
-
-    fn get_dependencies(&self) -> Vec<String> {
-        vec![] // Request has no dependencies
+        Arc::new(Box::new(provider) as Box<dyn Provider>)
     }
 }
 

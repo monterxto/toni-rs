@@ -66,34 +66,20 @@ pub trait Controller: Send + Sync {
         ""
     }
 
-    /// Called after dependency injection is complete.
-    ///
-    /// Use when initialization requires injected dependencies.
     async fn on_module_init(&self) {}
-
-    /// Called after the application is fully initialized but before it starts listening.
-    ///
-    /// This is the last hook before the server begins accepting connections.
     async fn on_application_bootstrap(&self) {}
-
-    /// Called before application shutdown begins.
-    ///
-    /// Use to stop accepting new work and prepare for shutdown.
     async fn before_application_shutdown(&self, _signal: Option<String>) {}
-
-    /// Called during module destruction.
     async fn on_module_destroy(&self) {}
-
-    /// Called during application shutdown.
     async fn on_application_shutdown(&self, _signal: Option<String>) {}
 }
 #[async_trait]
 pub trait ControllerFactory {
-    async fn get_all_controllers(
-        &self,
-        dependencies: &FxHashMap<String, Arc<Box<dyn Provider>>>,
-    ) -> FxHashMap<String, Arc<Box<dyn Controller>>>;
-    fn get_name(&self) -> String;
     fn get_token(&self) -> String;
-    fn get_dependencies(&self) -> Vec<String>;
+    fn get_dependencies(&self) -> Vec<String> {
+        vec![]
+    }
+    async fn build(
+        &self,
+        deps: FxHashMap<String, Arc<Box<dyn Provider>>>,
+    ) -> Vec<Arc<Box<dyn Controller>>>;
 }

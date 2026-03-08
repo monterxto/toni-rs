@@ -65,7 +65,9 @@ impl Parse for ConfigParser {
                     let fields = Punctuated::<Ident, Token![,]>::parse_terminated(&content)?;
                     config.controllers = fields
                         .into_iter()
-                        .map(|field| Ident::new(&format!("{}Manager", field), field.span()))
+                        .map(|field| {
+                            Ident::new(&format!("{}ControllerFactory", field), field.span())
+                        })
                         .collect()
                 }
                 "providers" => {
@@ -74,7 +76,7 @@ impl Parse for ConfigParser {
                     config.providers = fields
                         .into_iter()
                         .map(|expr| {
-                            // Smart detection: if it's a simple identifier/path, append "Manager"
+                            // Smart detection: if it's a simple identifier/path, append "ProviderFactory"
                             // This keeps backward compatibility with: providers: [ConfigService]
                             if let syn::Expr::Path(ref expr_path) = expr {
                                 // Check if it's a simple path (not a macro call or complex expression)
@@ -83,19 +85,19 @@ impl Parse for ConfigParser {
                                     // Get the last segment (the actual type name)
                                     if let Some(last_segment) = path.segments.last() {
                                         let type_name = &last_segment.ident;
-                                        // Create the Manager variant
+                                        // Create the ProviderFactory variant
                                         let manager_ident = Ident::new(
-                                            &format!("{}Manager", type_name),
+                                            &format!("{}ProviderFactory", type_name),
                                             type_name.span(),
                                         );
 
-                                        // Reconstruct the path with Manager suffix
+                                        // Reconstruct the path with ProviderFactory suffix
                                         let mut manager_path = path.clone();
                                         if let Some(last) = manager_path.segments.last_mut() {
                                             last.ident = manager_ident;
                                         }
 
-                                        // Return new expression with the Manager path
+                                        // Return new expression with the ProviderFactory path
                                         return syn::Expr::Path(syn::ExprPath {
                                             attrs: vec![],
                                             qself: None,
@@ -315,9 +317,8 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! {}
     };
 
-    // Generate a unique ModuleRefManager for this module
     let module_ref_manager_name = Ident::new(
-        &format!("__ToniModuleRefManager_{}", input_name),
+        &format!("__ToniModuleRefProviderFactory_{}", input_name),
         Span::call_site(),
     );
 
@@ -326,7 +327,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         #user_impl_block
 
-        // Generate unique ModuleRefManager for this module
+        // Generate unique ModuleRef ProviderFactory for this module
         pub struct #module_ref_manager_name {
             module_token: String,
         }
@@ -341,35 +342,20 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         #[::toni::async_trait]
         impl ::toni::traits_helpers::ProviderFactory for #module_ref_manager_name {
-            async fn get_all_providers(
+            fn get_token(&self) -> String {
+                ::std::any::type_name::<::toni::ModuleRef>().to_string()
+            }
+
+            async fn build(
                 &self,
-                _dependencies: &::toni::FxHashMap<
+                _deps: ::toni::FxHashMap<
                     String,
                     ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
                 >,
-            ) -> ::toni::FxHashMap<
-                String,
-                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
-            > {
-                // Return the pre-configured ModuleRefManager
-                let mut providers = ::toni::FxHashMap::default();
-               // NOTE: The container is accessed via thread-local storage when ModuleRef methods are called
-               // The module token is used to scope provider resolution to this module
-                providers.insert(
-                    ::std::any::type_name::<::toni::ModuleRef>().to_string(),
-                    ::std::sync::Arc::new(Box::new(
-                        ::toni::injector::ModuleRefProvider::new(self.module_token.clone())
-                    ) as Box<dyn ::toni::traits_helpers::Provider>)
-                );
-                providers
-            }
-
-            fn get_name(&self) -> String {
-                ::std::any::type_name::<::toni::ModuleRef>().to_string()
-            }
-
-            fn get_token(&self) -> String {
-                ::std::any::type_name::<::toni::ModuleRef>().to_string()
+            ) -> ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>> {
+                ::std::sync::Arc::new(Box::new(
+                    ::toni::injector::ModuleRefProvider::new(self.module_token.clone())
+                ) as Box<dyn ::toni::traits_helpers::Provider>)
             }
 
             fn get_dependencies(&self) -> Vec<String> {
@@ -414,7 +400,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
                 let mut providers_vec: Vec<Box<dyn ::toni::traits_helpers::ProviderFactory>> = vec![
                     #(Box::new(#providers)),*
                 ];
-                // Auto-inject ModuleRefManager for this module
+                // Auto-inject ModuleRef ProviderFactory for this module
                 providers_vec.push(Box::new(#module_ref_manager_name::new()));
                 Some(providers_vec)
             }

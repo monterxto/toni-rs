@@ -47,7 +47,7 @@ pub fn handle_provider_alias(input: TokenStream) -> Result<TokenStream> {
     let token_display = alias_token.display_name();
     let sanitized_name = token_display.replace(['\"', ' ', '-', '.', ':', '/'], "_");
     let provider_name = format_ident!("__ToniAliasProvider_{}", sanitized_name);
-    let manager_name = format_ident!("__ToniAliasProviderManager_{}", sanitized_name);
+    let manager_name = format_ident!("__ToniAliasProviderFactory_{}", sanitized_name);
 
     // Generate the provider struct and implementation
     let expanded = quote! {
@@ -58,7 +58,6 @@ pub fn handle_provider_alias(input: TokenStream) -> Result<TokenStream> {
                 target_provider: std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
             }
 
-            // Manager struct for ProviderFactory trait implementation
             struct #manager_name;
 
             // Implement Provider for the alias provider wrapper
@@ -104,24 +103,25 @@ pub fn handle_provider_alias(input: TokenStream) -> Result<TokenStream> {
                 }
             }
 
-            // Implement ProviderFactory trait for the manager (used by module system)
             #[toni::async_trait]
             impl toni::traits_helpers::ProviderFactory for #manager_name {
-                async fn get_all_providers(
+                fn get_token(&self) -> String {
+                    #alias_token_expr
+                }
+
+                fn get_dependencies(&self) -> Vec<String> {
+                    vec![#existing_token_expr]
+                }
+
+                async fn build(
                     &self,
-                    _dependencies: &toni::FxHashMap<
+                    deps: toni::FxHashMap<
                         String,
                         std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
                     >,
-                ) -> toni::FxHashMap<
-                    String,
-                    std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
-                > {
-                    let mut providers = toni::FxHashMap::default();
-
-                    // Find the existing provider
+                ) -> std::sync::Arc<Box<dyn toni::traits_helpers::Provider>> {
                     let existing_token = #existing_token_expr;
-                    let target_provider = _dependencies
+                    let target_provider = deps
                         .get(&existing_token)
                         .expect(&format!(
                             "Provider alias target not found: {}. Make sure the target provider is registered before the alias.",
@@ -129,38 +129,12 @@ pub fn handle_provider_alias(input: TokenStream) -> Result<TokenStream> {
                         ))
                         .clone();
 
-                    // Create the alias provider wrapper
-                    let provider_wrapper = #provider_name {
-                        target_provider: target_provider.clone(),
-                    };
-
-                    // Register the alias with its token
-                    let alias_token = #alias_token_expr;
-                    providers.insert(
-                        alias_token,
-                        std::sync::Arc::new(
-                            Box::new(provider_wrapper) as Box<dyn toni::traits_helpers::Provider>
-                        ),
-                    );
-
-                    providers
-                }
-
-                fn get_name(&self) -> String {
-                    #alias_token_expr
-                }
-
-                fn get_token(&self) -> String {
-                    #alias_token_expr
-                }
-
-                fn get_dependencies(&self) -> Vec<String> {
-                    // The alias depends on the existing provider
-                    vec![#existing_token_expr]
+                    std::sync::Arc::new(
+                        Box::new(#provider_name { target_provider }) as Box<dyn toni::traits_helpers::Provider>
+                    )
                 }
             }
 
-            // Return the manager instance
             #manager_name
         }
     };

@@ -112,56 +112,45 @@ where
     Mutation::TypeInfo: Send + Sync,
     Subscription::TypeInfo: Send + Sync,
 {
-    async fn get_all_controllers(
-        &self,
-        dependencies: &FxHashMap<String, Arc<Box<dyn Provider>>>,
-    ) -> FxHashMap<String, Arc<Box<dyn Controller>>> {
-        let mut controllers = FxHashMap::default();
-
-        // Get GraphQLService from dependencies
-        let graphql_service = dependencies
-            .get("GraphQLService")
-            .expect("GraphQLService not found in dependencies")
-            .clone();
-
-        // POST endpoint for executing queries
-        let post_controller = GraphQLPostController::<Query, Mutation, Subscription, Ctx, S> {
-            path: self.path.clone(),
-            graphql_service: graphql_service.clone(),
-            _phantom: std::marker::PhantomData,
-        };
-
-        controllers.insert(
-            format!("GraphQLPostController_{}", self.path),
-            Arc::new(Box::new(post_controller) as Box<dyn Controller>),
-        );
-
-        // GET endpoint for playground (if enabled)
-        if self.playground_enabled {
-            let get_controller = GraphQLPlaygroundController {
-                path: self.path.clone(),
-                playground_html: include_str!("playground.html").to_string(),
-            };
-
-            controllers.insert(
-                format!("GraphQLPlaygroundController_{}", self.path),
-                Arc::new(Box::new(get_controller) as Box<dyn Controller>),
-            );
-        }
-
-        controllers
-    }
-
-    fn get_name(&self) -> String {
-        "GraphQLControllerManager".to_string()
-    }
-
     fn get_token(&self) -> String {
         format!("GraphQLController_{}", self.path)
     }
 
     fn get_dependencies(&self) -> Vec<String> {
         vec!["GraphQLService".to_string()]
+    }
+
+    async fn build(
+        &self,
+        dependencies: FxHashMap<String, Arc<Box<dyn Provider>>>,
+    ) -> Vec<Arc<Box<dyn Controller>>> {
+        let mut controllers = Vec::new();
+
+        let graphql_service = dependencies
+            .get("GraphQLService")
+            .expect("GraphQLService not found in dependencies")
+            .clone();
+
+        controllers.push(Arc::new(Box::new(GraphQLPostController::<
+            Query,
+            Mutation,
+            Subscription,
+            Ctx,
+            S,
+        > {
+            path: self.path.clone(),
+            graphql_service: graphql_service.clone(),
+            _phantom: std::marker::PhantomData,
+        }) as Box<dyn Controller>));
+
+        if self.playground_enabled {
+            controllers.push(Arc::new(Box::new(GraphQLPlaygroundController {
+                path: self.path.clone(),
+                playground_html: include_str!("playground.html").to_string(),
+            }) as Box<dyn Controller>));
+        }
+
+        controllers
     }
 }
 

@@ -219,18 +219,16 @@ impl ToniInstanceLoader {
             let mut instances = FxHashMap::default();
 
             for provider_token in ordered_providers_token {
-                let provider_manager = container
+                let provider_factory = container
                     .get_provider_by_token(&module_token, &provider_token)?
                     .ok_or_else(|| anyhow!("Provider not found: {}", provider_token))?;
 
-                let dependencies = provider_manager.get_dependencies();
+                let dependencies = provider_factory.get_dependencies();
                 let resolved_dependencies =
                     self.resolve_dependencies(&module_token, dependencies, Some(&instances))?;
 
-                let provider_instances = provider_manager
-                    .get_all_providers(&resolved_dependencies)
-                    .await;
-                instances.extend(provider_instances);
+                let provider = provider_factory.build(resolved_dependencies).await;
+                instances.insert(provider.get_token(), provider);
             }
             instances
         };
@@ -284,17 +282,15 @@ impl ToniInstanceLoader {
     async fn create_instances_of_controllers(&self, module_token: String) -> Result<()> {
         let controllers_instances = {
             let container = self.container.borrow();
-            let mut instances = FxHashMap::default();
+            let mut instances = Vec::new();
             let controllers_manager = container.get_controllers_manager(&module_token)?;
 
-            for controller_manager in controllers_manager.values() {
-                let dependencies = controller_manager.get_dependencies();
+            for controller_factory in controllers_manager.values() {
+                let dependencies = controller_factory.get_dependencies();
                 let resolved_dependencies =
                     self.resolve_dependencies(&module_token, dependencies, None)?;
-                let controllers_instances = controller_manager
-                    .get_all_controllers(&resolved_dependencies)
-                    .await;
-                instances.extend(controllers_instances);
+                let mut built = controller_factory.build(resolved_dependencies).await;
+                instances.append(&mut built);
             }
             instances
         };
@@ -305,16 +301,13 @@ impl ToniInstanceLoader {
     fn add_controllers_instances(
         &self,
         module_token: String,
-        controllers_instances: FxHashMap<String, Arc<Box<dyn Controller>>>,
+        controllers_instances: Vec<Arc<Box<dyn Controller>>>,
     ) -> Result<()> {
         let mut container_mut = self.container.borrow_mut();
 
-        // Get providers from the module to resolve enhancers
         let providers = container_mut.get_providers_instance(&module_token)?.clone();
 
-        for (_controller_instance_token, controller_instance) in controllers_instances {
-            // Resolve enhancers from DI using tokens (supports DI)
-            // Falls back to direct instantiation for enhancers not in DI (no DI)
+        for controller_instance in controllers_instances {
             let enhancer_metadata =
                 self.resolve_enhancers_from_tokens(&controller_instance, &providers)?;
 

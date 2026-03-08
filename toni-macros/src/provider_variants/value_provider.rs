@@ -165,7 +165,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
     let token_display = token.display_name();
     let sanitized_name = token_display.replace(['\"', ' ', '-', '.', ':', '/'], "_");
     let provider_name = format_ident!("__ToniValueProvider_{}", sanitized_name);
-    let manager_name = format_ident!("__ToniValueProviderManager_{}", sanitized_name);
+    let manager_name = format_ident!("__ToniValueProviderFactory_{}", sanitized_name);
 
     // Generate enhancer method implementations
     let enhancer_methods = generate_enhancer_methods(&token, &type_hint, &enhancers)?;
@@ -181,7 +181,6 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                     instance: std::sync::Arc<#path>,
                 }
 
-                // Manager struct for ProviderFactory trait implementation
                 struct #manager_name;
 
                 // Implement Provider for the provider wrapper
@@ -211,76 +210,43 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                     #enhancer_methods
                 }
 
-                // Implement ProviderFactory trait for the manager (used by module system)
                 #[toni::async_trait]
                 impl toni::traits_helpers::ProviderFactory for #manager_name {
-                    async fn get_all_providers(
-                        &self,
-                        _dependencies: &toni::FxHashMap<
-                            String,
-                            std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
-                        >,
-                    ) -> toni::FxHashMap<
-                        String,
-                        std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
-                    > {
-                        let mut providers = toni::FxHashMap::default();
-
-                        // Create the value instance with concrete type
-                        let value = #value_expr;
-                        let instance = std::sync::Arc::new(value);
-
-                        // Create the provider wrapper
-                        let provider_wrapper = #provider_name { instance };
-
-                        // Register the provider with its token
-                        let token = #token_expr;
-                        providers.insert(
-                            token,
-                            std::sync::Arc::new(
-                                Box::new(provider_wrapper) as Box<dyn toni::traits_helpers::Provider>
-                            ),
-                        );
-
-                        providers
-                    }
-
-                    fn get_name(&self) -> String {
-                        #token_expr
-                    }
-
                     fn get_token(&self) -> String {
                         #token_expr
                     }
 
-                    fn get_dependencies(&self) -> Vec<String> {
-                        Vec::new()
+                    async fn build(
+                        &self,
+                        _deps: toni::FxHashMap<
+                            String,
+                            std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
+                        >,
+                    ) -> std::sync::Arc<Box<dyn toni::traits_helpers::Provider>> {
+                        let instance = std::sync::Arc::new(#value_expr);
+                        std::sync::Arc::new(
+                            Box::new(#provider_name { instance }) as Box<dyn toni::traits_helpers::Provider>
+                        )
                     }
                 }
 
-                // Return the manager instance
                 #manager_name
             }
         },
 
-        // For String/Const tokens: Re-evaluate expression (we don't know the type)
         TokenType::String(_) | TokenType::Const(_) => {
-            // If enhancers are present, we need a type hint to store the instance
             if !enhancers.is_empty() {
-                let type_path = type_hint.as_ref().unwrap(); // Already validated in generate_enhancer_methods
+                let type_path = type_hint.as_ref().unwrap();
 
                 quote! {
                     {
-                        // Value provider struct that stores the concrete type (for enhancers)
                         #[derive(Clone)]
                         struct #provider_name {
                             instance: std::sync::Arc<#type_path>,
                         }
 
-                        // Manager struct for ProviderFactory trait implementation
                         struct #manager_name;
 
-                        // Implement Provider for the provider wrapper
                         #[toni::async_trait]
                         impl toni::traits_helpers::Provider for #provider_name {
                             fn get_token(&self) -> String {
@@ -300,76 +266,43 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                                 _params: Vec<Box<dyn std::any::Any + Send>>,
                                 _req: Option<&toni::HttpRequest>,
                             ) -> Box<dyn std::any::Any + Send> {
-                                // Clone the concrete type directly (same as Type tokens)
                                 Box::new((*self.instance).clone())
                             }
 
                             #enhancer_methods
                         }
 
-                        // Implement ProviderFactory trait for the manager (used by module system)
                         #[toni::async_trait]
                         impl toni::traits_helpers::ProviderFactory for #manager_name {
-                            async fn get_all_providers(
-                                &self,
-                                _dependencies: &toni::FxHashMap<
-                                    String,
-                                    std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
-                                >,
-                            ) -> toni::FxHashMap<
-                                String,
-                                std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
-                            > {
-                                let mut providers = toni::FxHashMap::default();
-
-                                // Create the value instance with concrete type
-                                let value = #value_expr;
-                                let instance = std::sync::Arc::new(value);
-
-                                // Create the provider wrapper
-                                let provider_wrapper = #provider_name { instance };
-
-                                // Register the provider with its token
-                                let token = #token_expr;
-                                providers.insert(
-                                    token,
-                                    std::sync::Arc::new(
-                                        Box::new(provider_wrapper) as Box<dyn toni::traits_helpers::Provider>
-                                    ),
-                                );
-
-                                providers
-                            }
-
-                            fn get_name(&self) -> String {
-                                #token_expr
-                            }
-
                             fn get_token(&self) -> String {
                                 #token_expr
                             }
 
-                            fn get_dependencies(&self) -> Vec<String> {
-                                Vec::new()
+                            async fn build(
+                                &self,
+                                _deps: toni::FxHashMap<
+                                    String,
+                                    std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
+                                >,
+                            ) -> std::sync::Arc<Box<dyn toni::traits_helpers::Provider>> {
+                                let instance = std::sync::Arc::new(#value_expr);
+                                std::sync::Arc::new(
+                                    Box::new(#provider_name { instance }) as Box<dyn toni::traits_helpers::Provider>
+                                )
                             }
                         }
 
-                        // Return the manager instance
                         #manager_name
                     }
                 }
             } else {
-                // No enhancers: re-evaluate expression (current behavior)
                 quote! {
                     {
-                        // Value provider struct that re-evaluates on each call
                         #[derive(Clone)]
                         struct #provider_name;
 
-                        // Manager struct for ProviderFactory trait implementation
                         struct #manager_name;
 
-                        // Implement Provider for the provider wrapper
                         #[toni::async_trait]
                         impl toni::traits_helpers::Provider for #provider_name {
                             fn get_token(&self) -> String {
@@ -389,55 +322,29 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                                 _params: Vec<Box<dyn std::any::Any + Send>>,
                                 _req: Option<&toni::HttpRequest>,
                             ) -> Box<dyn std::any::Any + Send> {
-                                // Re-evaluate the expression to get the concrete type
                                 Box::new(#value_expr)
                             }
                         }
 
-                        // Implement ProviderFactory trait for the manager (used by module system)
                         #[toni::async_trait]
                         impl toni::traits_helpers::ProviderFactory for #manager_name {
-                            async fn get_all_providers(
-                                &self,
-                                _dependencies: &toni::FxHashMap<
-                                    String,
-                                    std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
-                                >,
-                            ) -> toni::FxHashMap<
-                                String,
-                                std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
-                            > {
-                                let mut providers = toni::FxHashMap::default();
-
-                                // Create the provider wrapper (no instance needed)
-                                let provider_wrapper = #provider_name;
-
-                                // Register the provider with its token
-                                let token = #token_expr;
-                                providers.insert(
-                                    token,
-                                    std::sync::Arc::new(
-                                        Box::new(provider_wrapper) as Box<dyn toni::traits_helpers::Provider>
-                                    ),
-                                );
-
-                                providers
-                            }
-
-                            fn get_name(&self) -> String {
-                                #token_expr
-                            }
-
                             fn get_token(&self) -> String {
                                 #token_expr
                             }
 
-                            fn get_dependencies(&self) -> Vec<String> {
-                                Vec::new()
+                            async fn build(
+                                &self,
+                                _deps: toni::FxHashMap<
+                                    String,
+                                    std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
+                                >,
+                            ) -> std::sync::Arc<Box<dyn toni::traits_helpers::Provider>> {
+                                std::sync::Arc::new(
+                                    Box::new(#provider_name) as Box<dyn toni::traits_helpers::Provider>
+                                )
                             }
                         }
 
-                        // Return the manager instance
                         #manager_name
                     }
                 }

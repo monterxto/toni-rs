@@ -39,11 +39,11 @@ impl Module {
 }
 impl Module {
     pub fn add_controller(&mut self, controller: Box<dyn ControllerFactory>) {
-        self.controllers.insert(controller.get_name(), controller);
+        self.controllers.insert(controller.get_token(), controller);
     }
 
     pub fn add_provider(&mut self, provider: Box<dyn ProviderFactory>) {
-        self.providers.insert(provider.get_name(), provider);
+        self.providers.insert(provider.get_token(), provider);
     }
 
     pub fn add_import(&mut self, module_token: String) {

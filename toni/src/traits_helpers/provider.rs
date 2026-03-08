@@ -44,7 +44,6 @@ pub trait Provider: Send + Sync {
     async fn before_application_shutdown(&self, _signal: Option<String>) {}
     async fn on_application_shutdown(&self, _signal: Option<String>) {}
 
-    /// Returns this provider as a Gateway if it implements the GatewayTrait
     fn as_gateway(&self) -> Option<Arc<Box<dyn crate::websocket::GatewayTrait>>> {
         None
     }
@@ -52,11 +51,12 @@ pub trait Provider: Send + Sync {
 
 #[async_trait]
 pub trait ProviderFactory {
-    async fn get_all_providers(
-        &self,
-        dependencies: &FxHashMap<String, Arc<Box<dyn Provider>>>,
-    ) -> FxHashMap<String, Arc<Box<dyn Provider>>>;
-    fn get_name(&self) -> String;
     fn get_token(&self) -> String;
-    fn get_dependencies(&self) -> Vec<String>;
+    fn get_dependencies(&self) -> Vec<String> {
+        vec![]
+    }
+    async fn build(
+        &self,
+        deps: FxHashMap<String, Arc<Box<dyn Provider>>>,
+    ) -> Arc<Box<dyn Provider>>;
 }

@@ -104,31 +104,17 @@ where
     Mutation::TypeInfo: Send + Sync,
     Subscription::TypeInfo: Send + Sync,
 {
-    async fn get_all_providers(
-        &self,
-        _dependencies: &FxHashMap<String, Arc<Box<dyn Provider>>>,
-    ) -> FxHashMap<String, Arc<Box<dyn Provider>>> {
-        let service = GraphQLService::new(self.schema.clone(), self.context_builder.clone());
-
-        let mut providers = FxHashMap::default();
-        providers.insert(
-            "GraphQLService".to_string(),
-            Arc::new(Box::new(service) as Box<dyn Provider>),
-        );
-
-        providers
-    }
-
-    fn get_name(&self) -> String {
-        "GraphQLServiceManager".to_string()
-    }
-
     fn get_token(&self) -> String {
         "GraphQLService".to_string()
     }
 
-    fn get_dependencies(&self) -> Vec<String> {
-        // No dependencies - schema and context builder are already provided
-        vec![]
+    async fn build(
+        &self,
+        _deps: FxHashMap<String, Arc<Box<dyn Provider>>>,
+    ) -> Arc<Box<dyn Provider>> {
+        Arc::new(Box::new(GraphQLService::new(
+            self.schema.clone(),
+            self.context_builder.clone(),
+        )) as Box<dyn Provider>)
     }
 }

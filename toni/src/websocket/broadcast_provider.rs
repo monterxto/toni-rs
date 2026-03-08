@@ -45,37 +45,20 @@ impl Clone for BroadcastServiceProvider {
     }
 }
 
-/// Framework-internal manager that creates the `BroadcastService` singleton during
-/// DI initialisation. Registered by `BuiltinModule` so no user module is needed.
 pub(crate) struct BroadcastServiceManager;
 
 #[async_trait]
 impl ProviderFactory for BroadcastServiceManager {
-    async fn get_all_providers(
-        &self,
-        _dependencies: &FxHashMap<String, Arc<Box<dyn Provider>>>,
-    ) -> FxHashMap<String, Arc<Box<dyn Provider>>> {
-        let mut providers = FxHashMap::default();
-
-        let service = BroadcastService::new();
-
-        providers.insert(
-            std::any::type_name::<BroadcastService>().to_string(),
-            Arc::new(Box::new(BroadcastServiceProvider { instance: service }) as Box<dyn Provider>),
-        );
-
-        providers
-    }
-
-    fn get_name(&self) -> String {
-        std::any::type_name::<BroadcastService>().to_string()
-    }
-
     fn get_token(&self) -> String {
         std::any::type_name::<BroadcastService>().to_string()
     }
 
-    fn get_dependencies(&self) -> Vec<String> {
-        vec![]
+    async fn build(
+        &self,
+        _deps: FxHashMap<String, Arc<Box<dyn Provider>>>,
+    ) -> Arc<Box<dyn Provider>> {
+        Arc::new(Box::new(BroadcastServiceProvider {
+            instance: BroadcastService::new(),
+        }) as Box<dyn Provider>)
     }
 }

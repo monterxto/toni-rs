@@ -3,7 +3,7 @@
 //! Architecture:
 //! 1. User struct with REAL fields (unchanged)
 //! 2. Controller wrapper per handler method that lazily creates instances with dependency resolution
-//! 3. Manager that returns controller wrappers
+//! 3. `XControllerFactory` (implements `ControllerFactory`) — builds and returns all controller wrappers
 //!
 //! Example transformation:
 //! ```rust,ignore
@@ -317,7 +317,7 @@ fn generate_controller_wrapper(
     };
     let controller_name = Ident::new(
         &format!(
-            "{}{}ControllerFactory{}",
+            "{}{}Controller{}",
             struct_name,
             capitalize_first(method_name.to_string()),
             scope_suffix
@@ -1296,7 +1296,10 @@ fn generate_singleton_manager(
     dependencies: &DependencyInfo,
     was_explicit: bool,
 ) -> TokenStream {
-    let manager_name = Ident::new(&format!("{}Manager", struct_name), struct_name.span());
+    let manager_name = Ident::new(
+        &format!("{}ControllerFactory", struct_name),
+        struct_name.span(),
+    );
     let struct_token = struct_name.to_string();
 
     // Collect dependency tokens from both constructor params and #[inject] fields
@@ -1353,30 +1356,20 @@ fn generate_singleton_manager(
         .iter()
         .map(|metadata| {
             let controller_name = &metadata.struct_name;
-            let controller_token = controller_name.to_string();
 
             if metadata.is_static {
-                // Static method: no instance field needed
                 quote! {
-                    controllers.insert(
-                        #controller_token.to_string(),
-                        ::std::sync::Arc::new(
-                            Box::new(#controller_name {
-                            }) as Box<dyn ::toni::traits_helpers::Controller>
-                        )
-                    );
+                    controllers.push(::std::sync::Arc::new(
+                        Box::new(#controller_name {}) as Box<dyn ::toni::traits_helpers::Controller>
+                    ));
                 }
             } else {
-                // Instance method: pass the shared instance
                 quote! {
-                    controllers.insert(
-                        #controller_token.to_string(),
-                        ::std::sync::Arc::new(
-                            Box::new(#controller_name {
-                                instance: controller_instance.clone(),
-                            }) as Box<dyn ::toni::traits_helpers::Controller>
-                        )
-                    );
+                    controllers.push(::std::sync::Arc::new(
+                        Box::new(#controller_name {
+                            instance: controller_instance.clone(),
+                        }) as Box<dyn ::toni::traits_helpers::Controller>
+                    ));
                 }
             }
         })
@@ -1443,30 +1436,20 @@ fn generate_singleton_manager(
         .iter()
         .map(|metadata| {
             let controller_name = &metadata.struct_name;
-            let controller_token = controller_name.to_string();
 
             if metadata.is_static {
-                // Static method: no dependencies field needed
                 quote! {
-                    (
-                        #controller_token.to_string(),
-                        ::std::sync::Arc::new(
-                            Box::new(#controller_name {
-                            }) as Box<dyn ::toni::traits_helpers::Controller>
-                        )
-                    )
+                    controllers.push(::std::sync::Arc::new(
+                        Box::new(#controller_name {}) as Box<dyn ::toni::traits_helpers::Controller>
+                    ));
                 }
             } else {
-                // Instance method: pass dependencies
                 quote! {
-                    (
-                        #controller_token.to_string(),
-                        ::std::sync::Arc::new(
-                            Box::new(#controller_name {
-                                dependencies: dependencies.clone(),
-                            }) as Box<dyn ::toni::traits_helpers::Controller>
-                        )
-                    )
+                    controllers.push(::std::sync::Arc::new(
+                        Box::new(#controller_name {
+                            dependencies: dependencies.clone(),
+                        }) as Box<dyn ::toni::traits_helpers::Controller>
+                    ));
                 }
             }
         })
@@ -1477,56 +1460,37 @@ fn generate_singleton_manager(
 
         #[::toni::async_trait]
         impl ::toni::traits_helpers::ControllerFactory for #manager_name {
-            async fn get_all_controllers(
-                &self,
-                dependencies: &::toni::FxHashMap<
-                    String,
-                    ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
-                >,
-            ) -> ::toni::FxHashMap<
-                String,
-                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Controller>>
-            > {
-                let mut controllers = ::toni::FxHashMap::default();
-
-                // CHECK IF ELEVATION TO REQUEST SCOPE IS NEEDED
-                #scope_check_code
-
-                // EMIT WARNINGS BASED ON STRATEGY
-                #warning_code
-
-                // BRANCH: Use Request-scoped logic if elevation needed, otherwise Singleton
-                if needs_elevation {
-                    // ELEVATED TO REQUEST SCOPE - use Request-scoped wrappers
-                    #(
-                        let (key, value): (String, ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Controller>>) = #request_controller_instances;
-                        controllers.insert(key, value);
-                    )*
-                } else {
-                    // TRUE SINGLETON - create instance once at startup
-                    // RESOLVE DEPENDENCIES AT STARTUP
-                    #(#field_resolutions)*
-
-                    // CREATE CONTROLLER INSTANCE AT STARTUP
-                    let controller_instance: ::std::sync::Arc<dyn ::std::any::Any + Send + Sync> = ::std::sync::Arc::new(#struct_instantiation);
-
-                    // CREATE ALL HANDLER WRAPPERS THAT SHARE THE SAME ARC
-                    #(#controller_wrapper_creations)*
-                }
-
-                controllers
-            }
-
-            fn get_name(&self) -> String {
-                #struct_token.to_string()
-            }
-
             fn get_token(&self) -> String {
                 #struct_token.to_string()
             }
 
             fn get_dependencies(&self) -> Vec<String> {
                 vec![#(#unique_tokens),*]
+            }
+
+            async fn build(
+                &self,
+                dependencies: ::toni::FxHashMap<
+                    String,
+                    ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
+                >,
+            ) -> Vec<::std::sync::Arc<Box<dyn ::toni::traits_helpers::Controller>>> {
+                let mut controllers = Vec::new();
+
+                #scope_check_code
+                #warning_code
+
+                if needs_elevation {
+                    #(#request_controller_instances)*
+                } else {
+                    #(#field_resolutions)*
+
+                    let controller_instance: ::std::sync::Arc<dyn ::std::any::Any + Send + Sync> = ::std::sync::Arc::new(#struct_instantiation);
+
+                    #(#controller_wrapper_creations)*
+                }
+
+                controllers
             }
         }
     }
@@ -1538,7 +1502,10 @@ fn generate_request_manager(
     metadata_list: Vec<MetadataInfo>,
     dependencies: &DependencyInfo,
 ) -> TokenStream {
-    let manager_name = Ident::new(&format!("{}Manager", struct_name), struct_name.span());
+    let manager_name = Ident::new(
+        &format!("{}ControllerFactory", struct_name),
+        struct_name.span(),
+    );
     let struct_token = struct_name.to_string();
 
     // Collect dependency tokens from both constructor params and #[inject] fields
@@ -1564,30 +1531,20 @@ fn generate_request_manager(
         .iter()
         .map(|metadata| {
             let controller_name = &metadata.struct_name;
-            let controller_token = controller_name.to_string();
 
             if metadata.is_static {
-                // Static method: no dependencies field needed
                 quote! {
-                    (
-                        #controller_token.to_string(),
-                        ::std::sync::Arc::new(
-                            Box::new(#controller_name {
-                            }) as Box<dyn ::toni::traits_helpers::Controller>
-                        )
-                    )
+                    controllers.push(::std::sync::Arc::new(
+                        Box::new(#controller_name {}) as Box<dyn ::toni::traits_helpers::Controller>
+                    ));
                 }
             } else {
-                // Instance method: pass dependencies
                 quote! {
-                    (
-                        #controller_token.to_string(),
-                        ::std::sync::Arc::new(
-                            Box::new(#controller_name {
-                                dependencies: dependencies.clone(),
-                            }) as Box<dyn ::toni::traits_helpers::Controller>
-                        )
-                    )
+                    controllers.push(::std::sync::Arc::new(
+                        Box::new(#controller_name {
+                            dependencies: dependencies.clone(),
+                        }) as Box<dyn ::toni::traits_helpers::Controller>
+                    ));
                 }
             }
         })
@@ -1598,36 +1555,26 @@ fn generate_request_manager(
 
         #[::toni::async_trait]
         impl ::toni::traits_helpers::ControllerFactory for #manager_name {
-            async fn get_all_controllers(
-                &self,
-                dependencies: &::toni::FxHashMap<
-                    String,
-                    ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
-                >,
-            ) -> ::toni::FxHashMap<
-                String,
-                ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Controller>>
-            > {
-                let mut controllers = ::toni::FxHashMap::default();
-
-                #(
-                    let (key, value): (String, ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Controller>>) = #controller_instances;
-                    controllers.insert(key, value);
-                )*
-
-                controllers
-            }
-
-            fn get_name(&self) -> String {
-                #struct_token.to_string()
-            }
-
             fn get_token(&self) -> String {
                 #struct_token.to_string()
             }
 
             fn get_dependencies(&self) -> Vec<String> {
                 vec![#(#unique_tokens),*]
+            }
+
+            async fn build(
+                &self,
+                dependencies: ::toni::FxHashMap<
+                    String,
+                    ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
+                >,
+            ) -> Vec<::std::sync::Arc<Box<dyn ::toni::traits_helpers::Controller>>> {
+                let mut controllers = Vec::new();
+
+                #(#controller_instances)*
+
+                controllers
             }
         }
     }

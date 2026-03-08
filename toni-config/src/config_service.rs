@@ -112,35 +112,16 @@ impl<T: Config> ConfigServiceManager<T> {
 
 #[async_trait]
 impl<T: Config + Clone + Send + Sync + 'static> ProviderFactory for ConfigServiceManager<T> {
-    async fn get_all_providers(
-        &self,
-        _dependencies: &FxHashMap<String, Arc<Box<dyn Provider>>>,
-    ) -> FxHashMap<String, Arc<Box<dyn Provider>>> {
-        let mut providers = FxHashMap::default();
-
-        // Register struct provider (instance injection pattern)
-        // Token: "ConfigService" (matches get_token() and provider lookup)
-        let instance = ConfigService {
-            config: self.config.clone(),
-        };
-
-        providers.insert(
-            format!("ConfigService<{}>", std::any::type_name::<T>()),
-            Arc::new(Box::new(instance) as Box<dyn Provider>),
-        );
-
-        providers
-    }
-
-    fn get_name(&self) -> String {
-        format!("ConfigService<{}>", std::any::type_name::<T>())
-    }
-
     fn get_token(&self) -> String {
         format!("ConfigService<{}>", std::any::type_name::<T>())
     }
 
-    fn get_dependencies(&self) -> Vec<String> {
-        vec![] // No dependencies - config is stored in Arc
+    async fn build(
+        &self,
+        _deps: FxHashMap<String, Arc<Box<dyn Provider>>>,
+    ) -> Arc<Box<dyn Provider>> {
+        Arc::new(Box::new(ConfigService {
+            config: self.config.clone(),
+        }) as Box<dyn Provider>)
     }
 }

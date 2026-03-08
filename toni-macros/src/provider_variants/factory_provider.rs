@@ -245,7 +245,7 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
     let token_display = token.display_name();
     let sanitized_name = token_display.replace(['\"', ' ', '-', '.', ':', '/'], "_");
     let provider_name = format_ident!("__ToniFactoryProvider_{}", sanitized_name);
-    let manager_name = format_ident!("__ToniFactoryProviderManager_{}", sanitized_name);
+    let manager_name = format_ident!("__ToniFactoryProviderFactory_{}", sanitized_name);
 
     // Determine if we need to cache the instance (singleton scope or enhancers)
     let needs_caching = scope.as_deref() == Some("singleton") || !enhancers.is_empty();
@@ -268,58 +268,27 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
         &factory_invocation,
     )?;
 
-    // Generate the provider struct and implementation
     let expanded = quote! {
         {
-            // Factory provider struct
-            #[derive(Clone)]
-            struct #provider_name;
-
-            // Manager struct for ProviderFactory trait implementation
             struct #manager_name;
 
-            // Implement Provider for the provider wrapper
             #[toni::async_trait]
-            impl toni::traits_helpers::Provider for #provider_name {
+            impl toni::traits_helpers::ProviderFactory for #manager_name {
                 fn get_token(&self) -> String {
                     #token_expr
                 }
 
-                fn get_token_manager(&self) -> String {
-                    #token_expr
+                fn get_dependencies(&self) -> Vec<String> {
+                    vec![#(#dep_tokens),*]
                 }
 
-                fn get_scope(&self) -> toni::ProviderScope {
-                    #scope_expr
-                }
-
-                async fn execute(
+                async fn build(
                     &self,
-                    _params: Vec<Box<dyn std::any::Any + Send>>,
-                    _req: Option<&toni::HttpRequest>,
-                ) -> Box<dyn std::any::Any + Send> {
-                    // This will be called by the DI system, but we need dependencies
-                    // For now, just panic - proper resolution happens via get_all_providers
-                    panic!("Factory providers must be resolved through get_all_providers with dependencies")
-                }
-            }
-
-            // Implement ProviderFactory trait for the manager (used by module system)
-            #[toni::async_trait]
-            impl toni::traits_helpers::ProviderFactory for #manager_name {
-                async fn get_all_providers(
-                    &self,
-                    _dependencies: &toni::FxHashMap<
+                    _dependencies: toni::FxHashMap<
                         String,
                         std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
                     >,
-                ) -> toni::FxHashMap<
-                    String,
-                    std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
-                > {
-                    let mut providers = toni::FxHashMap::default();
-
-                    // Create a factory provider that captures dependencies
+                ) -> std::sync::Arc<Box<dyn toni::traits_helpers::Provider>> {
                     #[derive(Clone)]
                     struct FactoryProviderWithDeps {
                         deps: std::sync::Arc<toni::FxHashMap<
@@ -354,41 +323,15 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
                         #enhancer_methods
                     }
 
-                    // Register the provider with its token
-                    let token = #token_expr;
-
-                    // Initialize instance for enhancer support (only for Type tokens)
                     #factory_struct_init
 
-                    let provider_instance = FactoryProviderWithDeps {
-                        deps: std::sync::Arc::new(_dependencies.clone()),
+                    std::sync::Arc::new(Box::new(FactoryProviderWithDeps {
+                        deps: std::sync::Arc::new(_dependencies),
                         #factory_instance_field
-                    };
-
-                    providers.insert(
-                        token,
-                        std::sync::Arc::new(
-                            Box::new(provider_instance) as Box<dyn toni::traits_helpers::Provider>
-                        ),
-                    );
-
-                    providers
-                }
-
-                fn get_name(&self) -> String {
-                    #token_expr
-                }
-
-                fn get_token(&self) -> String {
-                    #token_expr
-                }
-
-                fn get_dependencies(&self) -> Vec<String> {
-                    vec![#(#dep_tokens),*]
+                    }) as Box<dyn toni::traits_helpers::Provider>)
                 }
             }
 
-            // Return the manager instance
             #manager_name
         }
     };
