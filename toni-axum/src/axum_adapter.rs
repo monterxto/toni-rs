@@ -243,8 +243,23 @@ impl HttpAdapter for AxumAdapter {
 
         println!("Listening on {}", addr);
 
+        let router = self.instance.fallback(|req: Request<Body>| async move {
+            let method = req.method().as_str().to_uppercase();
+            let path = req.uri().path().to_owned();
+            let body = serde_json::json!({
+                "statusCode": 404,
+                "message": format!("Cannot {} {}", method, path),
+                "error": "Not Found"
+            });
+            Response::builder()
+                .status(StatusCode::NOT_FOUND)
+                .header("Content-Type", "application/json")
+                .body(Body::from(body.to_string()))
+                .unwrap()
+        });
+
         let mut shutdown_rx = self.shutdown_tx.subscribe();
-        axum::serve(listener, self.instance)
+        axum::serve(listener, router)
             .with_graceful_shutdown(async move {
                 let _ = shutdown_rx.wait_for(|v| *v).await;
             })
