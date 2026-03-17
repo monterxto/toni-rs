@@ -1136,7 +1136,10 @@ fn generate_request_controller_wrapper(
 }
 
 fn generate_controller_factory_accessor(struct_name: &Ident) -> TokenStream {
-    let factory_name = Ident::new(&format!("{}ControllerFactory", struct_name), struct_name.span());
+    let factory_name = Ident::new(
+        &format!("{}ControllerFactory", struct_name),
+        struct_name.span(),
+    );
     quote! {
         impl #struct_name {
             #[doc(hidden)]

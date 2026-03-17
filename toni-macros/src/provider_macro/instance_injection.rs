@@ -202,7 +202,10 @@ fn meta_contains_clone(meta: &syn::Meta) -> bool {
 }
 
 fn generate_provider_factory_accessor(struct_name: &Ident) -> TokenStream {
-    let factory_name = Ident::new(&format!("{}ProviderFactory", struct_name), struct_name.span());
+    let factory_name = Ident::new(
+        &format!("{}ProviderFactory", struct_name),
+        struct_name.span(),
+    );
     quote! {
         impl #struct_name {
             #[doc(hidden)]
