@@ -35,6 +35,9 @@ pub trait GatewayTrait: Send + Sync {
         None
     }
 
+    /// Called once after the gateway path is registered with the adapter, before any connections.
+    async fn after_init(&self) {}
+
     /// Connection lifecycle: called when a client connects
     async fn on_connect(&self, client: &WsClient, context: &Context) -> Result<(), WsError> {
         // Default implementation: allow all connections

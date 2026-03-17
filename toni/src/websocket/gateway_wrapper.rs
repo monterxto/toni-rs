@@ -317,6 +317,10 @@ impl GatewayWrapper {
         self.clients.read().await.get(client_id).cloned()
     }
 
+    pub async fn call_after_init(&self) {
+        self.gateway.after_init().await;
+    }
+
     pub fn get_path(&self) -> String {
         self.gateway.get_path()
     }

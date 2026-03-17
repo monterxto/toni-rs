@@ -204,6 +204,8 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
             ));
             if let Err(e) = self.http_adapter.bind_ws(path, callbacks) {
                 eprintln!("Failed to add WebSocket route at {}: {}", path, e);
+            } else {
+                gateway.call_after_init().await;
             }
         }
 
@@ -236,6 +238,8 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
                         if let Some(ws) = &mut self.ws_adapter {
                             if let Err(e) = ws.bind(ws_port, path, callbacks) {
                                 eprintln!("Failed to bind gateway at {}: {}", path, e);
+                            } else {
+                                gateway.call_after_init().await;
                             }
                         }
                     }

@@ -138,6 +138,7 @@ fn generate_gateway_impl(
     let mut message_handlers = Vec::new();
     let mut on_connect_method = None;
     let mut on_disconnect_method = None;
+    let mut after_init_method = None;
 
     for item in &impl_block.items {
         if let syn::ImplItem::Fn(method) = item {
@@ -147,6 +148,8 @@ fn generate_gateway_impl(
                 on_connect_method = Some(method.clone());
             } else if has_attribute(&method.attrs, "on_disconnect") {
                 on_disconnect_method = Some(method.clone());
+            } else if has_attribute(&method.attrs, "after_init") {
+                after_init_method = Some(method.clone());
             }
         }
     }
@@ -208,6 +211,15 @@ fn generate_gateway_impl(
         }
     });
 
+    let after_init_impl = after_init_method.as_ref().map(|method| {
+        let method_name = &method.sig.ident;
+        quote! {
+            async fn after_init(&self) {
+                self.#method_name().await;
+            }
+        }
+    });
+
     // Clean impl block (remove marker attributes)
     let mut impl_def = impl_block.clone();
     for item in impl_def.items.iter_mut() {
@@ -216,6 +228,7 @@ fn generate_gateway_impl(
                 !attr.path().is_ident("subscribe_message")
                     && !attr.path().is_ident("on_connect")
                     && !attr.path().is_ident("on_disconnect")
+                    && !attr.path().is_ident("after_init")
             });
         }
     }
@@ -243,6 +256,8 @@ fn generate_gateway_impl(
             #namespace_impl
 
             #port_impl
+
+            #after_init_impl
 
             #on_connect_impl
 
