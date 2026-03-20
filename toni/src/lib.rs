@@ -29,7 +29,7 @@ pub use http_helpers::{
     Body, HttpMethod, HttpRequest, HttpResponse, HttpResponseBuilder, RouteMetadata, ToResponse,
 };
 pub use injector::{InstanceWrapper, Protocol, ProtocolType};
-pub use rpc::{RpcContext, RpcData};
+pub use rpc::{RpcContext, RpcControllerTrait, RpcData, RpcError};
 pub use websocket::{
     BroadcastError, BroadcastModule, BroadcastService, BroadcastTarget, ClientId, DisconnectReason,
     GatewayTrait, GatewayWrapper, RoomId, SendError, TrySendError, WsClient, WsError,
