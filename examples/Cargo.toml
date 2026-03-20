@@ -62,3 +62,7 @@ path = "websocket_rooms.rs"
 [[example]]
 name = "graceful_shutdown"
 path = "graceful_shutdown.rs"
+
+[[example]]
+name = "rpc_controller"
+path = "rpc_controller.rs"

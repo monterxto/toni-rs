@@ -15,6 +15,7 @@ mod middleware_macro;
 mod module_macro;
 mod provider_macro;
 mod provider_variants;
+mod rpc_macro;
 mod shared;
 mod utils;
 
@@ -482,5 +483,66 @@ pub fn websocket_gateway(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// ```
 #[proc_macro_attribute]
 pub fn subscribe_message(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+
+// ============================================================================
+// RPC CONTROLLER MACROS
+// ============================================================================
+
+/// RPC controller macro for defining message pattern handlers.
+///
+/// Similar to `#[websocket_gateway]` but for RPC transports (TCP, NATS, Kafka, etc.).
+/// Implements `RpcControllerTrait` and routes incoming messages by pattern.
+///
+/// # Syntax
+///
+/// ```rust,ignore
+/// #[rpc_controller(pub struct OrdersController { ... })]
+/// impl OrdersController {
+///     #[message_pattern("order.create")]
+///     async fn create_order(&self, data: RpcData, ctx: RpcContext) -> Result<RpcData, RpcError> { ... }
+///
+///     #[event_pattern("order.cancelled")]
+///     async fn on_order_cancelled(&self, data: RpcData, ctx: RpcContext) -> Result<(), RpcError> { ... }
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn rpc_controller(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let attr = proc_macro2::TokenStream::from(attr);
+    let item = proc_macro2::TokenStream::from(item);
+    let output = rpc_macro::rpc_impl::handle_rpc_controller(attr, item);
+    proc_macro::TokenStream::from(output.unwrap_or_else(|e| e.to_compile_error()))
+}
+
+/// Marks a method as a request-response RPC handler for a specific pattern.
+///
+/// The handler receives an `RpcData` payload and returns `Result<RpcData, RpcError>`.
+/// The framework sends the returned data back to the caller.
+///
+/// # Syntax
+///
+/// ```rust,ignore
+/// #[message_pattern("pattern.name")]
+/// async fn handler(&self, data: RpcData, ctx: RpcContext) -> Result<RpcData, RpcError>
+/// ```
+#[proc_macro_attribute]
+pub fn message_pattern(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    item
+}
+
+/// Marks a method as a fire-and-forget RPC event handler for a specific pattern.
+///
+/// The handler receives an `RpcData` payload and returns `Result<(), RpcError>`.
+/// No response is sent back to the caller.
+///
+/// # Syntax
+///
+/// ```rust,ignore
+/// #[event_pattern("pattern.name")]
+/// async fn handler(&self, data: RpcData, ctx: RpcContext) -> Result<(), RpcError>
+/// ```
+#[proc_macro_attribute]
+pub fn event_pattern(_attr: TokenStream, item: TokenStream) -> TokenStream {
     item
 }

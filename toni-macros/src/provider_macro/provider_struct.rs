@@ -160,7 +160,7 @@ pub fn handle_provider_struct(
     // (Annotations, DefaultFallback, or None)
 
     let expanded =
-        generate_instance_provider_system(&struct_attrs, &impl_block, &dependencies, scope, false)?;
+        generate_instance_provider_system(&struct_attrs, &impl_block, &dependencies, scope, false, false)?;
 
     Ok(expanded)
 }
