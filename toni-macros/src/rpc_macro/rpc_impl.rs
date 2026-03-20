@@ -54,6 +54,7 @@ fn generate_rpc_controller_impl(
             if let Some(pattern) = extract_pattern_attr(&method.attrs, "message_pattern") {
                 message_handlers.push((pattern, method.clone()));
             } else if let Some(pattern) = extract_pattern_attr(&method.attrs, "event_pattern") {
+                check_event_return_type(method)?;
                 event_handlers.push((pattern, method.clone()));
             }
         }
@@ -139,6 +140,40 @@ fn generate_rpc_controller_impl(
 
         #rpc_trait_impl
     })
+}
+
+/// Enforces that `#[event_pattern]` handlers return `Result<(), RpcError>`.
+///
+/// Without this check the Ok value is silently discarded by the generated match arm,
+/// which would be a confusing silent bug if the user accidentally used `Result<RpcData, RpcError>`.
+fn check_event_return_type(method: &syn::ImplItemFn) -> Result<()> {
+    let syn::ReturnType::Type(_, ty) = &method.sig.output else {
+        return Err(syn::Error::new_spanned(
+            &method.sig,
+            "#[event_pattern] handler must return `Result<(), RpcError>`",
+        ));
+    };
+
+    if let syn::Type::Path(type_path) = ty.as_ref() {
+        if let Some(segment) = type_path.path.segments.last() {
+            if segment.ident == "Result" {
+                if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
+                    if let Some(syn::GenericArgument::Type(first)) = args.args.first() {
+                        if let syn::Type::Tuple(tuple) = first {
+                            if tuple.elems.is_empty() {
+                                return Ok(());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Err(syn::Error::new_spanned(
+        &method.sig.output,
+        "#[event_pattern] handler must return `Result<(), RpcError>` — use `#[message_pattern]` to return data",
+    ))
 }
 
 fn extract_pattern_attr(attrs: &[Attribute], name: &str) -> Option<String> {
