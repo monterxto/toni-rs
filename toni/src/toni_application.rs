@@ -10,11 +10,15 @@ use std::{
 use anyhow::Result;
 
 use crate::{
-    adapter::{ErasedWebSocketAdapter, WebSocketAdapter, WsConnectionCallbacks},
+    adapter::{
+        ErasedRpcAdapter, ErasedWebSocketAdapter, RpcAdapter, RpcMessageCallbacks,
+        WebSocketAdapter, WsConnectionCallbacks,
+    },
     application_context::ToniApplicationContext,
     http_adapter::HttpAdapter,
-    injector::{GatewayResolver, IntoToken, ToniContainer},
+    injector::{GatewayResolver, IntoToken, RpcControllerResolver, ToniContainer},
     router::RoutesResolver,
+    rpc::{RpcContext, RpcControllerWrapper, RpcData, RpcError},
     websocket::{
         BroadcastService, DisconnectReason, GatewayWrapper, WsClient, WsClientMap, WsError,
         WsMessage, helpers::create_client_from_headers,
@@ -27,6 +31,8 @@ pub struct ToniApplication<H: HttpAdapter> {
     context: ToniApplicationContext,
     ws_gateways: HashMap<String, Arc<GatewayWrapper>>,
     ws_adapter: Option<Box<dyn ErasedWebSocketAdapter>>,
+    rpc_adapter: Option<Box<dyn ErasedRpcAdapter>>,
+    rpc_controllers: Vec<Arc<RpcControllerWrapper>>,
 }
 
 impl<H: HttpAdapter + 'static> ToniApplication<H> {
@@ -37,6 +43,8 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
             routes_resolver: RoutesResolver::new(container),
             ws_gateways: HashMap::new(),
             ws_adapter: None,
+            rpc_adapter: None,
+            rpc_controllers: Vec::new(),
         }
     }
 
@@ -55,6 +63,15 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
         Ok(self)
     }
 
+    pub fn use_rpc_adapter<A>(&mut self, adapter: A) -> Result<&mut Self>
+    where
+        A: RpcAdapter,
+    {
+        self.rpc_adapter = Some(Box::new(adapter) as Box<dyn ErasedRpcAdapter>);
+        println!("✓ RPC adapter registered");
+        Ok(self)
+    }
+
     fn discover_gateways(&mut self) -> Result<()> {
         let resolver = GatewayResolver::new(self.routes_resolver.container.clone());
         self.ws_gateways = resolver.resolve()?;
@@ -63,6 +80,20 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
             println!(
                 "✓ Discovered {} WebSocket gateway(s)",
                 self.ws_gateways.len()
+            );
+        }
+
+        Ok(())
+    }
+
+    fn discover_rpc_controllers(&mut self) -> Result<()> {
+        let resolver = RpcControllerResolver::new(self.routes_resolver.container.clone());
+        self.rpc_controllers = resolver.resolve()?;
+
+        if !self.rpc_controllers.is_empty() {
+            println!(
+                "✓ Discovered {} RPC controller(s)",
+                self.rpc_controllers.len()
             );
         }
 
@@ -109,6 +140,10 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
 
         if let Some(ws) = &mut self.ws_adapter {
             let _ = ws.close().await;
+        }
+
+        if let Some(rpc) = &mut self.rpc_adapter {
+            let _ = rpc.close().await;
         }
 
         Ok(())
@@ -176,6 +211,10 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
 
         if let Err(e) = self.discover_gateways() {
             eprintln!("Error discovering WebSocket gateways: {}", e);
+        }
+
+        if let Err(e) = self.discover_rpc_controllers() {
+            eprintln!("Error discovering RPC controllers: {}", e);
         }
 
         // One shared WsClientMap + ConnectionManager when BroadcastService is in DI;
@@ -260,6 +299,33 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+
+        // Wire RPC controllers into the RPC adapter.
+        if !self.rpc_controllers.is_empty() {
+            if self.rpc_adapter.is_none() {
+                eprintln!(
+                    "{} RPC controller(s) discovered but no RPC adapter registered. \
+                     Call use_rpc_adapter() to add one.",
+                    self.rpc_controllers.len()
+                );
+            } else {
+                let all_patterns: Vec<String> = self
+                    .rpc_controllers
+                    .iter()
+                    .flat_map(|w| w.get_patterns())
+                    .collect();
+
+                let callbacks = Arc::new(make_rpc_callbacks(self.rpc_controllers.clone()));
+
+                if let Some(rpc) = &mut self.rpc_adapter {
+                    if let Err(e) = rpc.bind(&all_patterns, callbacks) {
+                        eprintln!("Failed to bind RPC controllers: {}", e);
+                    } else if let Ok(fut) = rpc.create() {
+                        ws_futures.push(fut);
                     }
                 }
             }
@@ -363,4 +429,30 @@ fn make_ws_callbacks(
             })
         },
     )
+}
+
+/// Build the message callbacks for all RPC controllers.
+///
+/// Constructs a pattern → wrapper index at call time so the hot path
+/// (per-message dispatch) is a single HashMap lookup.
+fn make_rpc_callbacks(wrappers: Vec<Arc<RpcControllerWrapper>>) -> RpcMessageCallbacks {
+    let mut pattern_map: HashMap<String, Arc<RpcControllerWrapper>> = HashMap::new();
+    for wrapper in &wrappers {
+        for pattern in wrapper.get_patterns() {
+            pattern_map.insert(pattern, wrapper.clone());
+        }
+    }
+    let pattern_map = Arc::new(pattern_map);
+
+    RpcMessageCallbacks::new(move |data: RpcData, ctx: RpcContext| {
+        let pattern_map = pattern_map.clone();
+        Box::pin(async move {
+            let pattern = ctx.pattern.clone();
+            if let Some(wrapper) = pattern_map.get(&pattern) {
+                wrapper.handle_message(data, ctx).await
+            } else {
+                Err(RpcError::PatternNotFound(pattern))
+            }
+        })
+    })
 }

@@ -12,6 +12,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 validator = { version = "0.20.0", features = ["derive"] }
 toni-axum = { path = "../toni-axum" }
+toni-tcp = { path = "../toni-tcp" }
 chrono = "0.4"
 anyhow = "1.0"
 
@@ -62,3 +63,7 @@ path = "websocket_rooms.rs"
 [[example]]
 name = "graceful_shutdown"
 path = "graceful_shutdown.rs"
+
+[[example]]
+name = "rpc_controller"
+path = "rpc_controller.rs"

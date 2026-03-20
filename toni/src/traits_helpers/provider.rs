@@ -47,6 +47,10 @@ pub trait Provider: Send + Sync {
     fn as_gateway(&self) -> Option<Arc<Box<dyn crate::websocket::GatewayTrait>>> {
         None
     }
+
+    fn as_rpc_controller(&self) -> Option<Arc<Box<dyn crate::rpc::RpcControllerTrait>>> {
+        None
+    }
 }
 
 #[async_trait]

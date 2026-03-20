@@ -26,6 +26,7 @@ pub struct EnhancerTraits {
     pub is_middleware: bool,
     pub is_error_handler: bool,
     pub is_gateway: bool,
+    pub is_rpc_controller: bool,
 }
 
 /// Detect which enhancer traits a struct implements.
@@ -83,6 +84,7 @@ pub fn generate_instance_provider_system(
     dependencies: &DependencyInfo,
     scope: ProviderScope,
     is_gateway: bool,
+    is_rpc_controller: bool,
 ) -> Result<TokenStream> {
     let struct_name = &struct_attrs.ident;
 
@@ -102,6 +104,7 @@ pub fn generate_instance_provider_system(
     let mut enhancer_traits = detect_enhancer_traits(struct_attrs, impl_block);
     let lifecycle_hooks = detect_lifecycle_hooks(impl_block);
     enhancer_traits.is_gateway = is_gateway;
+    enhancer_traits.is_rpc_controller = is_rpc_controller;
 
     let provider_wrapper = generate_provider_wrapper(
         struct_name,
@@ -279,6 +282,14 @@ fn generate_enhancer_methods(traits: &EnhancerTraits) -> TokenStream {
         methods.push(quote! {
             fn as_gateway(&self) -> Option<::std::sync::Arc<Box<dyn ::toni::websocket::GatewayTrait>>> {
                 Some(::std::sync::Arc::new(Box::new((*self.instance).clone()) as Box<dyn ::toni::websocket::GatewayTrait>))
+            }
+        });
+    }
+
+    if traits.is_rpc_controller {
+        methods.push(quote! {
+            fn as_rpc_controller(&self) -> Option<::std::sync::Arc<Box<dyn ::toni::rpc::RpcControllerTrait>>> {
+                Some(::std::sync::Arc::new(Box::new((*self.instance).clone()) as Box<dyn ::toni::rpc::RpcControllerTrait>))
             }
         });
     }

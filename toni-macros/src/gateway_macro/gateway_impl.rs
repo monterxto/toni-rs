@@ -240,6 +240,7 @@ fn generate_gateway_impl(
         &dependencies,
         ProviderScope::Singleton,
         true,
+        false,
     )?;
 
     let gateway_trait_impl = quote! {

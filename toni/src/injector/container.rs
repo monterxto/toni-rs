@@ -5,6 +5,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::{
     middleware::MiddlewareManager,
+    rpc::RpcControllerTrait,
     structs_helpers::EnhancerMetadata,
     traits_helpers::{
         Controller, ControllerFactory, Guard, Interceptor, ModuleMetadata, Pipe, Provider,
@@ -35,6 +36,9 @@ pub struct ToniContainer {
     /// WebSocket gateways — populated automatically when provider instances are added.
     /// Key is the WS path (e.g. "/chat"), value is the raw gateway ready for wrapping.
     gateways: FxHashMap<String, Arc<Box<dyn GatewayTrait>>>,
+    /// RPC controllers — populated automatically when provider instances are added.
+    /// Key is the controller token, value is the raw controller ready for wrapping.
+    rpc_controllers: FxHashMap<String, Arc<Box<dyn RpcControllerTrait>>>,
 }
 
 impl Default for ToniContainer {
@@ -58,6 +62,7 @@ impl ToniContainer {
             app_interceptor_providers: Vec::new(),
             app_pipe_providers: Vec::new(),
             gateways: FxHashMap::default(),
+            rpc_controllers: FxHashMap::default(),
         }
     }
 
@@ -144,6 +149,10 @@ impl ToniContainer {
             self.gateways.insert(gateway.get_path(), gateway);
         }
 
+        if let Some(rpc_ctrl) = provider_instance.as_rpc_controller() {
+            self.rpc_controllers.insert(rpc_ctrl.get_token(), rpc_ctrl);
+        }
+
         let module_ref = self
             .modules
             .get_mut(module_ref_token)
@@ -154,6 +163,10 @@ impl ToniContainer {
 
     pub fn get_gateways(&self) -> &FxHashMap<String, Arc<Box<dyn GatewayTrait>>> {
         &self.gateways
+    }
+
+    pub fn get_rpc_controllers(&self) -> &FxHashMap<String, Arc<Box<dyn RpcControllerTrait>>> {
+        &self.rpc_controllers
     }
 
     pub fn add_controller_instance(
