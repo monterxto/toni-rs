@@ -5,7 +5,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 
-use crate::rpc::{RpcContext, RpcData};
+use crate::rpc::{RpcContext, RpcData, RpcError};
 
 /// Callbacks the framework supplies to an RPC adapter.
 ///
@@ -14,7 +14,10 @@ use crate::rpc::{RpcContext, RpcData};
 /// means the message was fire-and-forget and the adapter should send nothing back.
 pub struct RpcMessageCallbacks {
     on_message: Arc<
-        dyn Fn(RpcData, RpcContext) -> Pin<Box<dyn Future<Output = Option<RpcData>> + Send>>
+        dyn Fn(
+                RpcData,
+                RpcContext,
+            ) -> Pin<Box<dyn Future<Output = Result<Option<RpcData>, RpcError>> + Send>>
             + Send
             + Sync,
     >,
@@ -22,7 +25,10 @@ pub struct RpcMessageCallbacks {
 
 impl RpcMessageCallbacks {
     pub(crate) fn new(
-        on_message: impl Fn(RpcData, RpcContext) -> Pin<Box<dyn Future<Output = Option<RpcData>> + Send>>
+        on_message: impl Fn(
+                RpcData,
+                RpcContext,
+            ) -> Pin<Box<dyn Future<Output = Result<Option<RpcData>, RpcError>> + Send>>
             + Send
             + Sync
             + 'static,
@@ -34,9 +40,14 @@ impl RpcMessageCallbacks {
 
     /// Called by the adapter for each decoded incoming message.
     ///
-    /// Returns `Some(reply)` when the handler expects a response to be sent back,
-    /// or `None` for fire-and-forget events.
-    pub async fn message(&self, data: RpcData, context: RpcContext) -> Option<RpcData> {
+    /// - `Ok(Some(reply))` — send this reply (request-response)
+    /// - `Ok(None)` — fire-and-forget, send nothing
+    /// - `Err(e)` — handler or framework error; adapter decides how to serialize it
+    pub async fn message(
+        &self,
+        data: RpcData,
+        context: RpcContext,
+    ) -> Result<Option<RpcData>, RpcError> {
         (self.on_message)(data, context).await
     }
 }

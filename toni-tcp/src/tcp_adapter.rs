@@ -7,7 +7,7 @@ use anyhow::Result;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
-use toni::{RpcAdapter, RpcContext, RpcData, RpcMessageCallbacks};
+use toni::{RpcAdapter, RpcContext, RpcData, RpcError, RpcMessageCallbacks};
 
 /// TCP transport adapter for the Toni RPC gateway.
 ///
@@ -74,6 +74,14 @@ impl RpcAdapter for TcpAdapter {
     }
 }
 
+fn error_status(e: &RpcError) -> &'static str {
+    match e {
+        RpcError::PatternNotFound(_) => "not_found",
+        RpcError::Forbidden(_) => "forbidden",
+        RpcError::Internal(_) => "error",
+    }
+}
+
 async fn handle_connection(
     stream: TcpStream,
     addr: SocketAddr,
@@ -113,23 +121,43 @@ async fn handle_connection(
                 let writer = writer.clone();
 
                 tokio::spawn(async move {
-                    let reply = callbacks.message(data, ctx).await;
+                    let outcome = callbacks.message(data, ctx).await;
 
-                    if let (Some(id), Some(reply)) = (id, reply) {
-                        let response_value = match reply {
-                            RpcData::Json(v) => v,
-                            RpcData::Text(s) => serde_json::Value::String(s),
-                            RpcData::Binary(_) => serde_json::Value::Null,
-                        };
-                        let mut payload =
-                            serde_json::json!({ "id": id, "response": response_value })
-                                .to_string();
-                        payload.push('\n');
+                    let Some(id) = id else {
+                        // Fire-and-forget: caller sent no id, never expects a reply.
+                        return;
+                    };
 
-                        let mut w = writer.lock().await;
-                        if let Err(e) = w.write_all(payload.as_bytes()).await {
-                            eprintln!("[TcpAdapter] Write error: {}", e);
+                    let payload_json = match outcome {
+                        Ok(Some(reply)) => {
+                            let v = match reply {
+                                RpcData::Json(v) => v,
+                                RpcData::Text(s) => serde_json::Value::String(s),
+                                RpcData::Binary(_) => serde_json::Value::Null,
+                            };
+                            serde_json::json!({ "id": id, "response": v })
                         }
+                        Ok(None) => {
+                            // Handler is fire-and-forget (#[event_pattern]) but
+                            // caller sent an id — send an explicit ack so caller
+                            // can close the pending request rather than timing out.
+                            serde_json::json!({ "id": id, "response": null })
+                        }
+                        Err(e) => {
+                            let status = error_status(&e);
+                            serde_json::json!({
+                                "id": id,
+                                "err": { "message": e.to_string(), "status": status }
+                            })
+                        }
+                    };
+
+                    let mut line = payload_json.to_string();
+                    line.push('\n');
+
+                    let mut w = writer.lock().await;
+                    if let Err(e) = w.write_all(line.as_bytes()).await {
+                        eprintln!("[TcpAdapter] Write error: {}", e);
                     }
                 });
             }

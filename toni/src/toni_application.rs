@@ -17,7 +17,7 @@ use crate::{
     application_context::ToniApplicationContext,
     http_adapter::HttpAdapter,
     injector::{GatewayResolver, IntoToken, RpcControllerResolver, ToniContainer},
-    rpc::{RpcContext, RpcControllerWrapper, RpcData},
+    rpc::{RpcContext, RpcControllerWrapper, RpcData, RpcError},
     router::RoutesResolver,
     websocket::{
         BroadcastService, DisconnectReason, GatewayWrapper, WsClient, WsClientMap, WsError,
@@ -449,16 +449,9 @@ fn make_rpc_callbacks(wrappers: Vec<Arc<RpcControllerWrapper>>) -> RpcMessageCal
         Box::pin(async move {
             let pattern = ctx.pattern.clone();
             if let Some(wrapper) = pattern_map.get(&pattern) {
-                match wrapper.handle_message(data, ctx).await {
-                    Ok(reply) => reply,
-                    Err(e) => {
-                        eprintln!("RPC handler error for pattern '{}': {}", pattern, e);
-                        None
-                    }
-                }
+                wrapper.handle_message(data, ctx).await
             } else {
-                eprintln!("No handler registered for RPC pattern: {}", pattern);
-                None
+                Err(RpcError::PatternNotFound(pattern))
             }
         })
     })
