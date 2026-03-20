@@ -150,8 +150,7 @@ impl ToniContainer {
         }
 
         if let Some(rpc_ctrl) = provider_instance.as_rpc_controller() {
-            self.rpc_controllers
-                .insert(rpc_ctrl.get_token(), rpc_ctrl);
+            self.rpc_controllers.insert(rpc_ctrl.get_token(), rpc_ctrl);
         }
 
         let module_ref = self
@@ -166,9 +165,7 @@ impl ToniContainer {
         &self.gateways
     }
 
-    pub fn get_rpc_controllers(
-        &self,
-    ) -> &FxHashMap<String, Arc<Box<dyn RpcControllerTrait>>> {
+    pub fn get_rpc_controllers(&self) -> &FxHashMap<String, Arc<Box<dyn RpcControllerTrait>>> {
         &self.rpc_controllers
     }
 

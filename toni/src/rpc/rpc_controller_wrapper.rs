@@ -72,8 +72,7 @@ impl RpcControllerWrapper {
         data: RpcData,
         context: RpcContext,
     ) -> Result<Option<RpcData>, RpcError> {
-        let mut ctx =
-            Context::from_rpc(data, context, Some(self.route_metadata.clone()));
+        let mut ctx = Context::from_rpc(data, context, Some(self.route_metadata.clone()));
 
         for guard in &self.guards {
             if !guard.can_activate(&ctx) {
@@ -150,17 +149,13 @@ impl RpcControllerWrapper {
         for pipe in pipes {
             pipe.process(context);
             if context.should_abort() {
-                context.set_rpc_response(Err(RpcError::Internal(
-                    "Request aborted by pipe".into(),
-                )));
+                context.set_rpc_response(Err(RpcError::Internal("Request aborted by pipe".into())));
                 return;
             }
         }
 
         let Some((data, rpc_ctx)) = context.switch_to_rpc() else {
-            context.set_rpc_response(Err(RpcError::Internal(
-                "Expected RPC context".into(),
-            )));
+            context.set_rpc_response(Err(RpcError::Internal("Expected RPC context".into())));
             return;
         };
 

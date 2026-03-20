@@ -116,7 +116,8 @@ async fn main() {
         .create_with(OrdersModule, toni_axum::AxumAdapter::new())
         .await;
 
-    app.use_rpc_adapter(toni_tcp::TcpAdapter::new(4000)).unwrap();
+    app.use_rpc_adapter(toni_tcp::TcpAdapter::new(4000))
+        .unwrap();
 
     app.listen(8080, "127.0.0.1").await;
 }

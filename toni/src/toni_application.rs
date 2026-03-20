@@ -17,8 +17,8 @@ use crate::{
     application_context::ToniApplicationContext,
     http_adapter::HttpAdapter,
     injector::{GatewayResolver, IntoToken, RpcControllerResolver, ToniContainer},
-    rpc::{RpcContext, RpcControllerWrapper, RpcData, RpcError},
     router::RoutesResolver,
+    rpc::{RpcContext, RpcControllerWrapper, RpcData, RpcError},
     websocket::{
         BroadcastService, DisconnectReason, GatewayWrapper, WsClient, WsClientMap, WsError,
         WsMessage, helpers::create_client_from_headers,

@@ -17,7 +17,8 @@ pub struct RpcMessageCallbacks {
         dyn Fn(
                 RpcData,
                 RpcContext,
-            ) -> Pin<Box<dyn Future<Output = Result<Option<RpcData>, RpcError>> + Send>>
+            )
+                -> Pin<Box<dyn Future<Output = Result<Option<RpcData>, RpcError>> + Send>>
             + Send
             + Sync,
     >,
@@ -26,12 +27,13 @@ pub struct RpcMessageCallbacks {
 impl RpcMessageCallbacks {
     pub(crate) fn new(
         on_message: impl Fn(
-                RpcData,
-                RpcContext,
-            ) -> Pin<Box<dyn Future<Output = Result<Option<RpcData>, RpcError>> + Send>>
-            + Send
-            + Sync
-            + 'static,
+            RpcData,
+            RpcContext,
+        )
+            -> Pin<Box<dyn Future<Output = Result<Option<RpcData>, RpcError>> + Send>>
+        + Send
+        + Sync
+        + 'static,
     ) -> Self {
         Self {
             on_message: Arc::new(on_message),

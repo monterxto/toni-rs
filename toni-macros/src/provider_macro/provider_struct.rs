@@ -159,8 +159,14 @@ pub fn handle_provider_struct(
     // Otherwise keep the source determined by extract_struct_dependencies
     // (Annotations, DefaultFallback, or None)
 
-    let expanded =
-        generate_instance_provider_system(&struct_attrs, &impl_block, &dependencies, scope, false, false)?;
+    let expanded = generate_instance_provider_system(
+        &struct_attrs,
+        &impl_block,
+        &dependencies,
+        scope,
+        false,
+        false,
+    )?;
 
     Ok(expanded)
 }

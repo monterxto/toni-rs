@@ -139,10 +139,7 @@ impl RpcControllerResolver {
         Ok(None)
     }
 
-    fn resolve_error_handler_by_token(
-        &self,
-        token: &str,
-    ) -> Result<Option<Arc<dyn ErrorHandler>>> {
+    fn resolve_error_handler_by_token(&self, token: &str) -> Result<Option<Arc<dyn ErrorHandler>>> {
         let container = self.container.borrow();
         for module_token in container.get_modules_token() {
             let providers = container.get_providers_instance(&module_token)?;
