@@ -28,3 +28,6 @@ pub use self::module_ref_provider::ModuleRefProvider;
 
 mod gateway_resolver;
 pub use self::gateway_resolver::GatewayResolver;
+
+mod rpc_controller_resolver;
+pub use self::rpc_controller_resolver::RpcControllerResolver;
