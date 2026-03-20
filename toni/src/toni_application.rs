@@ -10,7 +10,10 @@ use std::{
 use anyhow::Result;
 
 use crate::{
-    adapter::{ErasedWebSocketAdapter, WebSocketAdapter, WsConnectionCallbacks},
+    adapter::{
+        ErasedRpcAdapter, ErasedWebSocketAdapter, RpcAdapter, WebSocketAdapter,
+        WsConnectionCallbacks,
+    },
     application_context::ToniApplicationContext,
     http_adapter::HttpAdapter,
     injector::{GatewayResolver, IntoToken, ToniContainer},
@@ -27,6 +30,7 @@ pub struct ToniApplication<H: HttpAdapter> {
     context: ToniApplicationContext,
     ws_gateways: HashMap<String, Arc<GatewayWrapper>>,
     ws_adapter: Option<Box<dyn ErasedWebSocketAdapter>>,
+    rpc_adapter: Option<Box<dyn ErasedRpcAdapter>>,
 }
 
 impl<H: HttpAdapter + 'static> ToniApplication<H> {
@@ -37,6 +41,7 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
             routes_resolver: RoutesResolver::new(container),
             ws_gateways: HashMap::new(),
             ws_adapter: None,
+            rpc_adapter: None,
         }
     }
 
@@ -52,6 +57,15 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
     {
         self.ws_adapter = Some(Box::new(adapter) as Box<dyn ErasedWebSocketAdapter>);
         println!("✓ WebSocket adapter registered");
+        Ok(self)
+    }
+
+    pub fn use_rpc_adapter<A>(&mut self, adapter: A) -> Result<&mut Self>
+    where
+        A: RpcAdapter,
+    {
+        self.rpc_adapter = Some(Box::new(adapter) as Box<dyn ErasedRpcAdapter>);
+        println!("✓ RPC adapter registered");
         Ok(self)
     }
 
@@ -109,6 +123,10 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
 
         if let Some(ws) = &mut self.ws_adapter {
             let _ = ws.close().await;
+        }
+
+        if let Some(rpc) = &mut self.rpc_adapter {
+            let _ = rpc.close().await;
         }
 
         Ok(())
