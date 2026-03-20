@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     http_helpers::{HttpRequest, HttpResponse, RouteMetadata, ToResponse},
-    rpc::{RpcContext, RpcData},
+    rpc::{RpcContext, RpcData, RpcError},
     traits_helpers::validate::Validatable,
     websocket::{WsClient, WsMessage},
 };
@@ -156,14 +156,33 @@ impl Context {
     /// RPC protocol access (returns None for other protocols)
     pub fn switch_to_rpc(&self) -> Option<(&RpcData, &RpcContext)> {
         match &self.protocol {
-            Protocol::Rpc { data, context } => Some((data, context)),
+            Protocol::Rpc { data, context, .. } => Some((data, context)),
             _ => None,
         }
     }
 
     pub fn switch_to_rpc_mut(&mut self) -> Option<(&mut RpcData, &mut RpcContext)> {
         match &mut self.protocol {
-            Protocol::Rpc { data, context } => Some((data, context)),
+            Protocol::Rpc { data, context, .. } => Some((data, context)),
+            _ => None,
+        }
+    }
+
+    pub fn set_rpc_response(&mut self, response: Result<Option<RpcData>, RpcError>) {
+        if let Protocol::Rpc {
+            response: response_slot,
+            ..
+        } = &mut self.protocol
+        {
+            *response_slot = Some(response);
+        } else {
+            panic!("Expected RPC context");
+        }
+    }
+
+    pub fn get_rpc_response(&self) -> Option<&Result<Option<RpcData>, RpcError>> {
+        match &self.protocol {
+            Protocol::Rpc { response, .. } => response.as_ref(),
             _ => None,
         }
     }
