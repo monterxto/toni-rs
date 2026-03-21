@@ -7,14 +7,14 @@ use syn::{
     TypePath, TypeReference, spanned::Spanned,
 };
 
-use crate::shared::TokenType;
+use crate::shared::{attr_is, TokenType};
 use crate::shared::dependency_info::{DependencyInfo, DependencySource};
 
 pub fn extract_controller_prefix(impl_block: &ItemImpl) -> Result<String> {
     impl_block
         .attrs
         .iter()
-        .find(|attr| attr.path().is_ident("controller"))
+        .find(|attr| attr_is(attr, "controller"))
         .map(|attr| attr.parse_args::<LitStr>().map(|lit| lit.value()))
         .transpose()
         .map(|opt| opt.unwrap_or_default())
@@ -42,7 +42,7 @@ pub fn extract_struct_dependencies(struct_attrs: &ItemStruct) -> Result<Dependen
         field
             .attrs
             .iter()
-            .any(|attr| attr.path().is_ident("inject") || attr.path().is_ident("default"))
+            .any(|attr| attr_is(attr, "inject") || attr_is(attr, "default"))
     });
 
     for field in &struct_attrs.fields {
@@ -113,7 +113,7 @@ pub fn extract_struct_dependencies(struct_attrs: &ItemStruct) -> Result<Dependen
 /// Extract the #[default(expr)] attribute from a field
 fn extract_default_attr(field: &syn::Field) -> Result<Option<Expr>> {
     for attr in &field.attrs {
-        if attr.path().is_ident("default") {
+        if attr_is(attr, "default") {
             let expr: Expr = attr.parse_args()?;
             return Ok(Some(expr));
         }
@@ -128,7 +128,7 @@ fn extract_default_attr(field: &syn::Field) -> Result<Option<Expr>> {
 /// - Some(Some(token_expr)): #[inject("TOKEN")] or #[inject(Type)] with custom token
 fn extract_inject_attr(field: &syn::Field) -> Result<Option<Option<TokenStream>>> {
     for attr in &field.attrs {
-        if attr.path().is_ident("inject") {
+        if attr_is(attr, "inject") {
             // Check if there's an argument
             if attr.meta.require_path_only().is_ok() {
                 // #[inject] without arguments - use type-based token

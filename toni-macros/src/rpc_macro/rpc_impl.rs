@@ -6,6 +6,7 @@ use crate::controller_macro::controller_struct::{extract_constructor_params, has
 use crate::provider_macro::instance_injection::generate_instance_provider_system;
 use crate::shared::dependency_info::DependencySource;
 use crate::shared::scope_parser::ProviderScope;
+use crate::shared::attr_is;
 use crate::utils::extracts::extract_struct_dependencies;
 
 /// Parse `#[rpc_controller(pub struct Foo { ... })]`
@@ -94,7 +95,7 @@ fn generate_rpc_controller_impl(
     for item in impl_def.items.iter_mut() {
         if let syn::ImplItem::Fn(method) = item {
             method.attrs.retain(|attr| {
-                !attr.path().is_ident("message_pattern") && !attr.path().is_ident("event_pattern")
+                !attr_is(attr, "message_pattern") && !attr_is(attr, "event_pattern")
             });
         }
     }
@@ -178,7 +179,7 @@ fn check_event_return_type(method: &syn::ImplItemFn) -> Result<()> {
 
 fn extract_pattern_attr(attrs: &[Attribute], name: &str) -> Option<String> {
     for attr in attrs {
-        if attr.path().is_ident(name) {
+        if attr_is(attr, name) {
             if let Ok(lit) = attr.parse_args::<LitStr>() {
                 return Some(lit.value());
             }

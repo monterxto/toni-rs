@@ -4,6 +4,7 @@ use syn::{Attribute, Error, Ident, ItemImpl, ItemStruct, LitInt, LitStr, Result,
 
 use crate::controller_macro::controller_struct::{extract_constructor_params, has_new_method};
 use crate::provider_macro::instance_injection::generate_instance_provider_system;
+use crate::shared::attr_is;
 use crate::shared::dependency_info::DependencySource;
 use crate::shared::scope_parser::ProviderScope;
 use crate::utils::extracts::extract_struct_dependencies;
@@ -225,10 +226,10 @@ fn generate_gateway_impl(
     for item in impl_def.items.iter_mut() {
         if let syn::ImplItem::Fn(method) = item {
             method.attrs.retain(|attr| {
-                !attr.path().is_ident("subscribe_message")
-                    && !attr.path().is_ident("on_connect")
-                    && !attr.path().is_ident("on_disconnect")
-                    && !attr.path().is_ident("after_init")
+                !attr_is(attr, "subscribe_message")
+                    && !attr_is(attr, "on_connect")
+                    && !attr_is(attr, "on_disconnect")
+                    && !attr_is(attr, "after_init")
             });
         }
     }
@@ -287,7 +288,7 @@ fn generate_gateway_impl(
 
 fn extract_subscribe_message_event(attrs: &[Attribute]) -> Option<String> {
     for attr in attrs {
-        if attr.path().is_ident("subscribe_message") {
+        if attr_is(attr, "subscribe_message") {
             if let Ok(lit) = attr.parse_args::<LitStr>() {
                 return Some(lit.value());
             }
@@ -297,5 +298,5 @@ fn extract_subscribe_message_event(attrs: &[Attribute]) -> Option<String> {
 }
 
 fn has_attribute(attrs: &[Attribute], name: &str) -> bool {
-    attrs.iter().any(|attr| attr.path().is_ident(name))
+    attrs.iter().any(|attr| attr_is(attr, name))
 }

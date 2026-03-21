@@ -2,7 +2,7 @@ use proc_macro2::TokenStream;
 use syn::{FnArg, Ident, ImplItem, ItemImpl, ItemStruct, Pat, Result, Type, parse2};
 
 use crate::{
-    shared::{dependency_info::DependencySource, scope_parser::ProviderStructArgs},
+    shared::{attr_is, dependency_info::DependencySource, scope_parser::ProviderStructArgs},
     utils::extracts::{extract_struct_dependencies, extract_type_token},
 };
 
@@ -26,7 +26,7 @@ fn has_new_method(impl_block: &ItemImpl) -> bool {
 /// - Some(Some(token_expr)): #[inject("TOKEN")] or #[inject(Type)] with custom token
 fn extract_param_inject_attr(pat_type: &syn::PatType) -> Result<Option<Option<TokenStream>>> {
     for attr in &pat_type.attrs {
-        if attr.path().is_ident("inject") {
+        if attr_is(attr, "inject") {
             // Check if there's an argument
             if attr.meta.require_path_only().is_ok() {
                 // #[inject] without arguments - use type-based token
