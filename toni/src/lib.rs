@@ -23,13 +23,13 @@ pub mod traits_helpers;
 pub mod websocket;
 
 // Re-exports for adapter crates
-pub use adapter::{RpcAdapter, RpcMessageCallbacks, WebSocketAdapter, WsConnectionCallbacks};
+pub use adapter::{RpcAdapter, RpcClientTransport, RpcMessageCallbacks, WebSocketAdapter, WsConnectionCallbacks};
 pub use http_adapter::HttpAdapter;
 pub use http_helpers::{
     Body, HttpMethod, HttpRequest, HttpResponse, HttpResponseBuilder, RouteMetadata, ToResponse,
 };
 pub use injector::{InstanceWrapper, Protocol, ProtocolType};
-pub use rpc::{RpcContext, RpcControllerTrait, RpcData, RpcError};
+pub use rpc::{RpcClient, RpcClientError, RpcContext, RpcControllerTrait, RpcData, RpcError};
 pub use websocket::{
     BroadcastError, BroadcastModule, BroadcastService, BroadcastTarget, ClientId, DisconnectReason,
     GatewayTrait, GatewayWrapper, RoomId, SendError, TrySendError, WsClient, WsError,
