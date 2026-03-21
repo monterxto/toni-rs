@@ -6,6 +6,7 @@ members = [
     "toni-cli",
     "toni-axum",
     "toni-tcp",
+    "toni-nats",
     "toni-tungstenite",
     "toni-actix",
     "toni-config",

@@ -1,0 +1,17 @@
+[package]
+name = "toni-nats"
+version = "0.1.0"
+edition = "2021"
+description = "NATS transport adapter for the Toni RPC gateway"
+license = "MIT"
+keywords = ["toni", "nats", "rpc", "framework", "adapter"]
+categories = ["network-programming"]
+
+[dependencies]
+toni = { path = "../toni" }
+async-nats = "0.46"
+tokio = { version = "1", features = ["full"] }
+serde_json = "1.0"
+anyhow = "1.0"
+bytes = "1"
+futures = "0.3"
