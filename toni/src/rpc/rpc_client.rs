@@ -65,4 +65,38 @@ impl RpcClient {
     ) -> Result<(), RpcClientError> {
         self.transport.emit(pattern.as_ref(), data).await
     }
+
+    /// Typed request-response: serializes `data` to JSON, sends, and deserializes the reply.
+    ///
+    /// Shorthand for callers that work with concrete Rust types rather than raw `RpcData`.
+    pub async fn send_json<T, R>(
+        &self,
+        pattern: impl AsRef<str>,
+        data: &T,
+    ) -> Result<R, RpcClientError>
+    where
+        T: serde::Serialize,
+        R: serde::de::DeserializeOwned,
+    {
+        let payload = RpcData::from_serialize(data)
+            .map_err(|e| RpcClientError::Transport(e.to_string()))?;
+        let reply = self.transport.send(pattern.as_ref(), payload).await?;
+        reply
+            .parse::<R>()
+            .map_err(|e| RpcClientError::Transport(e.to_string()))
+    }
+
+    /// Typed fire-and-forget: serializes `data` to JSON and emits without waiting for a reply.
+    pub async fn emit_json<T>(
+        &self,
+        pattern: impl AsRef<str>,
+        data: &T,
+    ) -> Result<(), RpcClientError>
+    where
+        T: serde::Serialize,
+    {
+        let payload = RpcData::from_serialize(data)
+            .map_err(|e| RpcClientError::Transport(e.to_string()))?;
+        self.transport.emit(pattern.as_ref(), payload).await
+    }
 }

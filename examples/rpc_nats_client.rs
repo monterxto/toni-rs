@@ -23,12 +23,36 @@
 //        -H 'Content-Type: application/json' \
 //        -d '{"order_id":1001}'
 
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use toni::{
-    Body as ToniBody, HttpRequest, RpcClient, RpcData, ToniFactory,
+    Body as ToniBody, HttpRequest, RpcClient, ToniFactory,
     controller, get, injectable, module, post,
 };
-use toni_macros::{event_pattern, message_pattern, provider_value, rpc_controller};
+use toni_macros::{provider_value, rpc_controller};
+
+// ============================================================================
+// DTOs
+// ============================================================================
+
+#[derive(Deserialize)]
+struct CreateOrderDto {
+    item: String,
+    qty: u32,
+}
+
+#[derive(Serialize)]
+struct OrderDto {
+    id: u64,
+    item: String,
+    qty: u32,
+    status: &'static str,
+}
+
+#[derive(Deserialize)]
+struct ShipOrderDto {
+    order_id: u64,
+}
 
 // ============================================================================
 // Service — shared business logic
@@ -36,12 +60,12 @@ use toni_macros::{event_pattern, message_pattern, provider_value, rpc_controller
 
 #[injectable(pub struct OrdersService {})]
 impl OrdersService {
-    pub fn create_order(&self, item: &str, qty: u32) -> serde_json::Value {
+    fn create_order(&self, item: &str, qty: u32) -> OrderDto {
         println!("  [OrdersService] Creating order: {} x{}", item, qty);
-        json!({ "id": 1001, "item": item, "qty": qty, "status": "created" })
+        OrderDto { id: 1001, item: item.to_string(), qty, status: "created" }
     }
 
-    pub fn handle_shipment(&self, order_id: u64) {
+    fn handle_shipment(&self, order_id: u64) {
         println!("  [OrdersService] Order {} marked as shipped", order_id);
     }
 }
@@ -61,36 +85,22 @@ impl OrdersRpcController {
     #[message_pattern("order.create")]
     async fn create_order(
         &self,
-        data: toni::RpcData,
+        payload: CreateOrderDto,
         _ctx: toni::RpcContext,
-    ) -> Result<toni::RpcData, toni::RpcError> {
-        let payload = data
-            .as_json()
-            .ok_or_else(|| toni::RpcError::Internal("expected JSON payload".into()))?;
-
-        let item = payload["item"].as_str().unwrap_or("unknown");
-        let qty = payload["qty"].as_u64().unwrap_or(1) as u32;
-
-        if qty == 0 {
+    ) -> Result<OrderDto, toni::RpcError> {
+        if payload.qty == 0 {
             return Err(toni::RpcError::Internal("qty must be positive".into()));
         }
-
-        let order = self.service.create_order(item, qty);
-        Ok(toni::RpcData::json(order))
+        Ok(self.service.create_order(&payload.item, payload.qty))
     }
 
     #[event_pattern("order.shipped")]
     async fn on_order_shipped(
         &self,
-        data: toni::RpcData,
+        payload: ShipOrderDto,
         _ctx: toni::RpcContext,
     ) -> Result<(), toni::RpcError> {
-        let payload = data
-            .as_json()
-            .ok_or_else(|| toni::RpcError::Internal("expected JSON payload".into()))?;
-
-        let order_id = payload["order_id"].as_u64().unwrap_or(0);
-        self.service.handle_shipment(order_id);
+        self.service.handle_shipment(payload.order_id);
         Ok(())
     }
 }
@@ -127,17 +137,9 @@ impl OrdersHttpController {
             item, qty
         );
 
-        match self
-            .client
-            .send("order.create", RpcData::json(json!({ "item": item, "qty": qty })))
-            .await
-        {
-            Ok(reply) => ToniBody::Json(
-                reply
-                    .as_json()
-                    .cloned()
-                    .unwrap_or_else(|| json!({"error": "non-JSON reply"})),
-            ),
+        let req_dto = json!({ "item": item, "qty": qty });
+        match self.client.send_json::<_, serde_json::Value>("order.create", &req_dto).await {
+            Ok(order) => ToniBody::Json(order),
             Err(e) => ToniBody::Json(json!({ "error": e.to_string() })),
         }
     }
@@ -156,11 +158,7 @@ impl OrdersHttpController {
             order_id
         );
 
-        match self
-            .client
-            .emit("order.shipped", RpcData::json(payload))
-            .await
-        {
+        match self.client.emit_json("order.shipped", &payload).await {
             Ok(()) => ToniBody::Json(json!({ "status": "accepted" })),
             Err(e) => ToniBody::Json(json!({ "error": e.to_string() })),
         }

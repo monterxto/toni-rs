@@ -71,8 +71,20 @@ fn generate_rpc_controller_impl(
         .iter()
         .map(|(pattern, method)| {
             let method_name = &method.sig.ident;
-            quote! {
-                #pattern => Ok(Some(self.#method_name(data, context).await?)),
+            let payload_expr = typed_payload_expr(method);
+            if returns_rpc_data(method) {
+                quote! {
+                    #pattern => Ok(Some(self.#method_name(#payload_expr, context).await?)),
+                }
+            } else {
+                quote! {
+                    #pattern => {
+                        let __result = self.#method_name(#payload_expr, context).await?;
+                        let __data = toni::rpc::RpcData::from_serialize(&__result)
+                            .map_err(|e| toni::rpc::RpcError::Internal(e.to_string()))?;
+                        Ok(Some(__data))
+                    }
+                }
             }
         })
         .collect();
@@ -81,9 +93,10 @@ fn generate_rpc_controller_impl(
         .iter()
         .map(|(pattern, method)| {
             let method_name = &method.sig.ident;
+            let payload_expr = typed_payload_expr(method);
             quote! {
                 #pattern => {
-                    self.#method_name(data, context).await?;
+                    self.#method_name(#payload_expr, context).await?;
                     Ok(None)
                 }
             }
@@ -186,4 +199,63 @@ fn extract_pattern_attr(attrs: &[Attribute], name: &str) -> Option<String> {
         }
     }
     None
+}
+
+/// Returns true if the type path ends in `RpcData`.
+fn is_rpc_data(ty: &syn::Type) -> bool {
+    if let syn::Type::Path(tp) = ty {
+        if let Some(seg) = tp.path.segments.last() {
+            return seg.ident == "RpcData";
+        }
+    }
+    false
+}
+
+/// Generates the expression passed as the first non-self argument to the handler.
+///
+/// If the declared parameter type is `RpcData` (or a path ending in it), the
+/// raw `data` value is forwarded directly.  Otherwise, the payload is
+/// deserialized into the declared type so handlers can use concrete structs.
+fn typed_payload_expr(method: &syn::ImplItemFn) -> proc_macro2::TokenStream {
+    let payload_ty = method.sig.inputs.iter().find_map(|arg| {
+        if let syn::FnArg::Typed(pt) = arg {
+            Some(pt.ty.as_ref())
+        } else {
+            None
+        }
+    });
+
+    match payload_ty {
+        Some(ty) if !is_rpc_data(ty) => quote! {
+            data.parse::<#ty>().map_err(|e| toni::rpc::RpcError::Internal(e.to_string()))?
+        },
+        _ => quote! { data },
+    }
+}
+
+/// Returns true when a `#[message_pattern]` handler's `Ok` arm contains `RpcData`.
+///
+/// Handlers that return `Result<RpcData, RpcError>` are forwarded as-is.
+/// Handlers that return `Result<T, RpcError>` for any other T are serialized
+/// via `RpcData::from_serialize`.
+fn returns_rpc_data(method: &syn::ImplItemFn) -> bool {
+    let syn::ReturnType::Type(_, ty) = &method.sig.output else {
+        return true;
+    };
+    let syn::Type::Path(tp) = ty.as_ref() else {
+        return true;
+    };
+    let Some(seg) = tp.path.segments.last() else {
+        return true;
+    };
+    if seg.ident != "Result" {
+        return true;
+    }
+    let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+        return true;
+    };
+    let Some(syn::GenericArgument::Type(inner)) = args.args.first() else {
+        return true;
+    };
+    is_rpc_data(inner)
 }
