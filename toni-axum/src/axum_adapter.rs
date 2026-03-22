@@ -31,22 +31,20 @@ pub struct AxumAdapter {
     instance: Router,
     ws_ports: HashMap<u16, Router>,
     shutdown_tx: Arc<watch::Sender<bool>>,
+    port: u16,
+    hostname: String,
 }
 
 impl AxumAdapter {
-    pub fn new() -> Self {
+    pub fn new(hostname: &str, port: u16) -> Self {
         let (tx, _) = watch::channel(false);
         Self {
             instance: Router::new(),
             ws_ports: HashMap::new(),
             shutdown_tx: Arc::new(tx),
+            port,
+            hostname: hostname.to_string(),
         }
-    }
-}
-
-impl Default for AxumAdapter {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -237,8 +235,16 @@ impl HttpAdapter for AxumAdapter {
         };
     }
 
-    async fn listen(self, port: u16, hostname: &str) -> Result<()> {
-        let addr = format!("{}:{}", hostname, port);
+    fn port(&self) -> u16 {
+        self.port
+    }
+
+    fn hostname(&self) -> &str {
+        &self.hostname
+    }
+
+    async fn listen(self) -> Result<()> {
+        let addr = format!("{}:{}", self.hostname, self.port);
         let listener = TcpListener::bind(&addr).await?;
 
         println!("Listening on {}", addr);

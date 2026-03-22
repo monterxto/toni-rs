@@ -15,6 +15,8 @@ use toni::{
 #[derive(Clone)]
 pub struct ActixAdapter {
     routes: Arc<std::sync::Mutex<Vec<RouteConfig>>>,
+    port: u16,
+    hostname: String,
 }
 
 struct RouteConfig {
@@ -24,9 +26,11 @@ struct RouteConfig {
 }
 
 impl ActixAdapter {
-    pub fn new() -> Self {
+    pub fn new(hostname: &str, port: u16) -> Self {
         Self {
             routes: Arc::new(std::sync::Mutex::new(Vec::new())),
+            port,
+            hostname: hostname.to_string(),
         }
     }
 }
@@ -146,8 +150,16 @@ impl HttpAdapter for ActixAdapter {
         });
     }
 
-    async fn listen(self, port: u16, hostname: &str) -> Result<()> {
-        let addr = format!("{}:{}", hostname, port);
+    fn port(&self) -> u16 {
+        self.port
+    }
+
+    fn hostname(&self) -> &str {
+        &self.hostname
+    }
+
+    async fn listen(self) -> Result<()> {
+        let addr = format!("{}:{}", self.hostname, self.port);
         let routes = self.routes.clone();
 
         println!("Listening on {}", addr);

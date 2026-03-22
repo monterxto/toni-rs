@@ -3,7 +3,7 @@
 //! This test verifies that controller methods can be async and properly await async operations
 
 use serial_test::serial;
-use toni::{controller, get, injectable, module, Body as ToniBody, HttpAdapter, HttpRequest};
+use toni::{controller, get, injectable, module, Body as ToniBody, HttpRequest};
 use toni_axum::AxumAdapter;
 
 // Simple async service
@@ -80,10 +80,9 @@ async fn test_async_controller_methods() {
 
     // Spawn server in background
     local.spawn_local(async move {
-        let adapter = AxumAdapter::new();
-
-        let mut app = ToniFactory::create(AsyncModule::module_definition(), adapter).await;
-        let _ = app.listen(port, "127.0.0.1").await;
+        let mut app = ToniFactory::create(AsyncModule::module_definition()).await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        let _ = app.start().await;
     });
 
     // Run tests within the LocalSet
@@ -186,10 +185,9 @@ async fn test_async_with_real_async_operation() {
     let local = tokio::task::LocalSet::new();
 
     local.spawn_local(async move {
-        let adapter = AxumAdapter::new();
-
-        let mut app = ToniFactory::create(HttpModule::module_definition(), adapter).await;
-        let _ = app.listen(port, "127.0.0.1").await;
+        let mut app = ToniFactory::create(HttpModule::module_definition()).await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        let _ = app.start().await;
     });
 
     local

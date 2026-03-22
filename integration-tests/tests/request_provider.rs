@@ -43,10 +43,9 @@ async fn test_request_provider_e2e() {
 
     // Spawn server in background
     local.spawn_local(async move {
-        let adapter = AxumAdapter::new();
-
-        let mut app = ToniFactory::create(TestModule::module_definition(), adapter).await;
-        let _ = app.listen(port, "127.0.0.1").await;
+        let mut app = ToniFactory::create(TestModule::module_definition()).await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        let _ = app.start().await;
     });
 
     // Run tests within the LocalSet

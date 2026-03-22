@@ -147,7 +147,7 @@ mod di_tests {
     use toni::module;
     use toni::toni_factory::ToniFactory;
     use toni::websocket::{BroadcastModule, BroadcastService, WsMessage, WsSink};
-    use toni_axum::{AxumAdapter, TokioSender};
+    use toni_axum::TokioSender;
 
     #[module(imports: [BroadcastModule::new()])]
     struct WsTestModule;
@@ -155,7 +155,7 @@ mod di_tests {
     #[serial]
     #[tokio_localset_test::localset_test]
     async fn broadcast_module_provides_broadcast_service() {
-        let app = ToniFactory::create(WsTestModule::module_definition(), AxumAdapter::new()).await;
+        let app = ToniFactory::create(WsTestModule::module_definition()).await;
         let result = app.get::<BroadcastService>().await;
         assert!(
             result.is_ok(),
@@ -167,7 +167,7 @@ mod di_tests {
     #[serial]
     #[tokio_localset_test::localset_test]
     async fn broadcast_service_can_send_to_connected_client() {
-        let app = ToniFactory::create(WsTestModule::module_definition(), AxumAdapter::new()).await;
+        let app = ToniFactory::create(WsTestModule::module_definition()).await;
         let bs = app
             .get::<BroadcastService>()
             .await

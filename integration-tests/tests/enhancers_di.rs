@@ -14,7 +14,7 @@ use toni::async_trait;
 use toni::enhancer::{guard, interceptor, middleware};
 use toni::{
     controller, get, injectable, module, use_guards, use_interceptors, Body as ToniBody,
-    HttpAdapter, HttpRequest,
+    HttpRequest,
 };
 use toni_axum::AxumAdapter;
 
@@ -300,11 +300,9 @@ async fn test_di_guard_with_injected_dependencies() {
     let local = tokio::task::LocalSet::new();
 
     local.spawn_local(async move {
-        let adapter = AxumAdapter::new();
+        let mut app = ToniFactory::create(EnhancerDITestModule::module_definition()).await;
 
-        let mut app = ToniFactory::create(EnhancerDITestModule::module_definition(), adapter).await;
-
-        // Get the tracker from DI container before listen() takes ownership
+        // Get the tracker from DI container before start() takes ownership
         let tracker = app
             .get::<ExecutionTracker>()
             .await
@@ -313,7 +311,8 @@ async fn test_di_guard_with_injected_dependencies() {
         // Send tracker to test task
         let _ = tracker_tx.send(tracker);
 
-        let _ = app.listen(port, "127.0.0.1").await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        let _ = app.start().await;
     });
 
     local
@@ -397,9 +396,7 @@ async fn test_di_interceptor_execution_order() {
     let local = tokio::task::LocalSet::new();
 
     local.spawn_local(async move {
-        let adapter = AxumAdapter::new();
-
-        let mut app = ToniFactory::create(EnhancerDITestModule::module_definition(), adapter).await;
+        let mut app = ToniFactory::create(EnhancerDITestModule::module_definition()).await;
 
         let tracker = app
             .get::<ExecutionTracker>()
@@ -407,7 +404,8 @@ async fn test_di_interceptor_execution_order() {
             .expect("Failed to get ExecutionTracker from DI");
         let _ = tracker_tx.send(tracker);
 
-        let _ = app.listen(port, "127.0.0.1").await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        let _ = app.start().await;
     });
 
     local
@@ -489,9 +487,7 @@ async fn test_middleware_with_injected_dependencies() {
     let local = tokio::task::LocalSet::new();
 
     local.spawn_local(async move {
-        let adapter = AxumAdapter::new();
-
-        let mut app = ToniFactory::create(EnhancerDITestModule::module_definition(), adapter).await;
+        let mut app = ToniFactory::create(EnhancerDITestModule::module_definition()).await;
 
         let tracker = app
             .get::<ExecutionTracker>()
@@ -499,7 +495,8 @@ async fn test_middleware_with_injected_dependencies() {
             .expect("Failed to get ExecutionTracker from DI");
         let _ = tracker_tx.send(tracker);
 
-        let _ = app.listen(port, "127.0.0.1").await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        let _ = app.start().await;
     });
 
     local
@@ -583,10 +580,9 @@ async fn test_no_enhancer_boilerplate_required() {
     let local = tokio::task::LocalSet::new();
 
     local.spawn_local(async move {
-        let adapter = AxumAdapter::new();
-
-        let mut app = ToniFactory::create(EnhancerDITestModule::module_definition(), adapter).await;
-        let _ = app.listen(port, "127.0.0.1").await;
+        let mut app = ToniFactory::create(EnhancerDITestModule::module_definition()).await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        let _ = app.start().await;
     });
 
     local

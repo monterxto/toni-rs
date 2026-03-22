@@ -1,8 +1,7 @@
 #![allow(dead_code, unused_variables)]
 
 use serial_test::serial;
-use toni::{injectable, module, HttpAdapter, ToniFactory};
-use toni_axum::AxumAdapter;
+use toni::{injectable, module, ToniFactory};
 
 #[serial]
 #[tokio_localset_test::localset_test]
@@ -19,9 +18,8 @@ async fn valid_singleton_injects_singleton() {
     #[module(providers: [ServiceA, ServiceB])]
     impl TestModule {}
 
-    let adapter = AxumAdapter::new();
     let factory = toni::toni_factory::ToniFactory::new();
-    let _app = ToniFactory::create(TestModule::module_definition(), adapter).await;
+    let _app = ToniFactory::create(TestModule::module_definition()).await;
 }
 
 #[serial]
@@ -39,9 +37,8 @@ async fn valid_request_injects_singleton() {
     #[module(providers: [SingletonService, RequestService])]
     impl TestModule {}
 
-    let adapter = AxumAdapter::new();
     let factory = toni::toni_factory::ToniFactory::new();
-    let _app = ToniFactory::create(TestModule::module_definition(), adapter).await;
+    let _app = ToniFactory::create(TestModule::module_definition()).await;
 }
 
 #[serial]
@@ -64,9 +61,8 @@ async fn valid_transient_injects_any_scope() {
     #[module(providers: [SingletonService, RequestService, TransientService])]
     impl TestModule {}
 
-    let adapter = AxumAdapter::new();
     let factory = toni::toni_factory::ToniFactory::new();
-    let _app = ToniFactory::create(TestModule::module_definition(), adapter).await;
+    let _app = ToniFactory::create(TestModule::module_definition()).await;
 }
 
 #[serial]
@@ -85,9 +81,8 @@ async fn singleton_cannot_inject_request_scoped() {
     #[module(providers: [RequestService, SingletonService])]
     impl InvalidModule {}
 
-    let adapter = AxumAdapter::new();
     let factory = toni::toni_factory::ToniFactory::new();
-    let _app = ToniFactory::create(InvalidModule::module_definition(), adapter).await;
+    let _app = ToniFactory::create(InvalidModule::module_definition()).await;
 }
 
 #[serial]
@@ -105,9 +100,8 @@ async fn singleton_can_inject_transient() {
     #[module(providers: [TransientService, SingletonService])]
     impl TestModule {}
 
-    let adapter = AxumAdapter::new();
     let factory = toni::toni_factory::ToniFactory::new();
-    let _app = ToniFactory::create(TestModule::module_definition(), adapter).await;
+    let _app = ToniFactory::create(TestModule::module_definition()).await;
 }
 
 #[serial]
@@ -125,9 +119,8 @@ async fn request_can_inject_transient() {
     #[module(providers: [TransientService, RequestService])]
     impl TestModule {}
 
-    let adapter = AxumAdapter::new();
     let factory = toni::toni_factory::ToniFactory::new();
-    let _app = ToniFactory::create(TestModule::module_definition(), adapter).await;
+    let _app = ToniFactory::create(TestModule::module_definition()).await;
 }
 
 #[serial]
@@ -153,9 +146,8 @@ async fn complex_valid_hierarchy() {
     #[module(providers: [BaseService, MiddleService, TopService])]
     impl TestModule {}
 
-    let adapter = AxumAdapter::new();
     let factory = toni::toni_factory::ToniFactory::new();
-    let _app = ToniFactory::create(TestModule::module_definition(), adapter).await;
+    let _app = ToniFactory::create(TestModule::module_definition()).await;
 }
 
 #[serial]
@@ -174,7 +166,6 @@ async fn explicit_singleton_with_request_fails() {
     #[module(providers: [RequestService, ExplicitSingleton])]
     impl TestModule {}
 
-    let adapter = AxumAdapter::new();
     let factory = toni::toni_factory::ToniFactory::new();
-    let _app = ToniFactory::create(TestModule::module_definition(), adapter).await;
+    let _app = ToniFactory::create(TestModule::module_definition()).await;
 }

@@ -7,7 +7,7 @@ use serial_test::serial;
 use toni::{
     controller,
     extractors::{Json, Query, Validated},
-    get, module, post, Body as ToniBody, HttpAdapter,
+    get, module, post, Body as ToniBody,
 };
 use toni_axum::AxumAdapter;
 use validator::Validate;
@@ -70,10 +70,9 @@ async fn test_query_extractor() {
 
     // Spawn server in background
     local.spawn_local(async move {
-        let adapter = AxumAdapter::new();
-
-        let mut app = ToniFactory::create(ExtractorModule::module_definition(), adapter).await;
-        let _ = app.listen(port, "127.0.0.1").await;
+        let mut app = ToniFactory::create(ExtractorModule::module_definition()).await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        let _ = app.start().await;
     });
 
     // Run tests within the LocalSet
@@ -132,10 +131,9 @@ async fn test_json_extractor() {
 
     // Spawn server in background
     local.spawn_local(async move {
-        let adapter = AxumAdapter::new();
-
-        let mut app = ToniFactory::create(ExtractorModule::module_definition(), adapter).await;
-        let _ = app.listen(port, "127.0.0.1").await;
+        let mut app = ToniFactory::create(ExtractorModule::module_definition()).await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        let _ = app.start().await;
     });
 
     // Run tests within the LocalSet
@@ -234,10 +232,9 @@ async fn test_validated_extractor() {
 
     // Spawn server in background
     local.spawn_local(async move {
-        let adapter = AxumAdapter::new();
-
-        let mut app = ToniFactory::create(ValidatedModule::module_definition(), adapter).await;
-        let _ = app.listen(port, "127.0.0.1").await;
+        let mut app = ToniFactory::create(ValidatedModule::module_definition()).await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        let _ = app.start().await;
     });
 
     // Run tests within the LocalSet

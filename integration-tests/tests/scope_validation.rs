@@ -9,7 +9,7 @@
 
 #![allow(dead_code, unused_variables)]
 
-use toni::{injectable, HttpAdapter};
+use toni::injectable;
 use toni_macros::module;
 
 // ============================================================================
@@ -84,12 +84,9 @@ impl ValidScopesModule {}
 #[tokio::test]
 async fn test_valid_scope_hierarchies() {
     use toni::toni_factory::ToniFactory;
-    use toni_axum::AxumAdapter;
 
     // This test should pass without panicking
-    let adapter = AxumAdapter::new();
-
-    let _app = ToniFactory::create(ValidScopesModule::module_definition(), adapter).await;
+    let _app = ToniFactory::create(ValidScopesModule::module_definition()).await;
 
     // If we get here without panicking, the test passed
 }
@@ -129,12 +126,9 @@ mod invalid_singleton_with_request {
     #[should_panic(expected = "Scope validation error")]
     async fn test_singleton_cannot_inject_request() {
         use toni::toni_factory::ToniFactory;
-        use toni_axum::AxumAdapter;
 
         // This should panic with a scope validation error during module initialization
-        let adapter = AxumAdapter::new();
-
-        let _app = ToniFactory::create(InvalidModule::module_definition(), adapter).await;
+        let _app = ToniFactory::create(InvalidModule::module_definition()).await;
     }
 }
 
@@ -168,12 +162,9 @@ impl ValidModule2 {}
 #[tokio::test]
 async fn test_singleton_can_inject_transient() {
     use toni::toni_factory::ToniFactory;
-    use toni_axum::AxumAdapter;
 
     // This should NOT panic - Singleton + Transient is allowed
-    let adapter = AxumAdapter::new();
-
-    let _app = ToniFactory::create(ValidModule2::module_definition(), adapter).await;
+    let _app = ToniFactory::create(ValidModule2::module_definition()).await;
 
     // If we get here without panicking, the test passed
 }
@@ -208,12 +199,9 @@ impl ValidModule3 {}
 #[tokio::test]
 async fn test_request_can_inject_transient() {
     use toni::toni_factory::ToniFactory;
-    use toni_axum::AxumAdapter;
 
     // This should NOT panic - Request + Transient is allowed
-    let adapter = AxumAdapter::new();
-
-    let _app = ToniFactory::create(ValidModule3::module_definition(), adapter).await;
+    let _app = ToniFactory::create(ValidModule3::module_definition()).await;
 
     // If we get here without panicking, the test passed
 }
@@ -259,12 +247,9 @@ impl ComplexValidModule {}
 #[tokio::test]
 async fn test_complex_valid_hierarchy() {
     use toni::toni_factory::ToniFactory;
-    use toni_axum::AxumAdapter;
 
     // This should work: Singleton -> Singleton -> Request is valid
-    let adapter = AxumAdapter::new();
-
-    let _app = ToniFactory::create(ComplexValidModule::module_definition(), adapter).await;
+    let _app = ToniFactory::create(ComplexValidModule::module_definition()).await;
 
     // If we get here without panicking, the test passed
 }
@@ -304,11 +289,8 @@ mod explicit_singleton_violation {
     #[should_panic(expected = "Scope validation error")]
     async fn test_explicit_singleton_with_request_fails() {
         use toni::toni_factory::ToniFactory;
-        use toni_axum::AxumAdapter;
 
         // Should panic even though user explicitly set singleton
-        let adapter = AxumAdapter::new();
-
-        let _app = ToniFactory::create(ExplicitModule::module_definition(), adapter).await;
+        let _app = ToniFactory::create(ExplicitModule::module_definition()).await;
     }
 }

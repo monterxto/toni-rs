@@ -2,7 +2,6 @@ use std::sync::atomic::{AtomicU16, Ordering};
 use std::time::Duration;
 use toni::module_helpers::module_enum::ModuleDefinition;
 use toni::toni_factory::ToniFactory;
-use toni::HttpAdapter;
 use toni_axum::AxumAdapter;
 
 static PORT_COUNTER: AtomicU16 = AtomicU16::new(30000);
@@ -21,10 +20,9 @@ impl TestServer {
         let local = tokio::task::LocalSet::new();
 
         local.spawn_local(async move {
-            let adapter = AxumAdapter::new();
-
-            let mut app = ToniFactory::create(module, adapter).await;
-            let _ = app.listen(port, "127.0.0.1").await;
+            let mut app = ToniFactory::create(module).await;
+            app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+            let _ = app.start().await;
         });
 
         tokio::task::spawn_local(async move {

@@ -1,5 +1,4 @@
-use std::future::Future;
-use std::sync::Arc;
+use std::{future::Future, pin::Pin, sync::Arc};
 
 use anyhow::Result;
 
@@ -31,7 +30,11 @@ pub trait HttpAdapter: Clone + Send + Sync {
 
     fn add_route(&mut self, path: &str, method: HttpMethod, handler: Arc<InstanceWrapper>);
 
-    fn listen(self, port: u16, hostname: &str) -> impl Future<Output = Result<()>> + Send;
+    fn port(&self) -> u16;
+
+    fn hostname(&self) -> &str;
+
+    fn listen(self) -> impl Future<Output = Result<()>> + Send;
 
     fn close(&mut self) -> impl Future<Output = Result<()>> + Send {
         async { Ok(()) }
@@ -45,5 +48,45 @@ pub trait HttpAdapter: Clone + Send + Sync {
         Err(anyhow::anyhow!(
             "This HTTP adapter does not support WebSocket upgrades"
         ))
+    }
+}
+
+pub(crate) trait ErasedHttpAdapter: Send + Sync {
+    fn add_route(&mut self, path: &str, method: HttpMethod, handler: Arc<InstanceWrapper>);
+    fn bind_ws(&mut self, path: &str, callbacks: Arc<WsConnectionCallbacks>) -> Result<()>;
+    fn port(&self) -> u16;
+    fn hostname(&self) -> &str;
+    fn close(&mut self) -> Pin<Box<dyn Future<Output = Result<()>> + Send + '_>>;
+    fn clone_box(&self) -> Box<dyn ErasedHttpAdapter>;
+    fn listen_boxed(self: Box<Self>) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'static>>;
+}
+
+impl<A: HttpAdapter + 'static> ErasedHttpAdapter for A {
+    fn add_route(&mut self, path: &str, method: HttpMethod, handler: Arc<InstanceWrapper>) {
+        HttpAdapter::add_route(self, path, method, handler);
+    }
+
+    fn bind_ws(&mut self, path: &str, callbacks: Arc<WsConnectionCallbacks>) -> Result<()> {
+        HttpAdapter::bind_ws(self, path, callbacks)
+    }
+
+    fn port(&self) -> u16 {
+        HttpAdapter::port(self)
+    }
+
+    fn hostname(&self) -> &str {
+        HttpAdapter::hostname(self)
+    }
+
+    fn close(&mut self) -> Pin<Box<dyn Future<Output = Result<()>> + Send + '_>> {
+        Box::pin(HttpAdapter::close(self))
+    }
+
+    fn clone_box(&self) -> Box<dyn ErasedHttpAdapter> {
+        Box::new(self.clone())
+    }
+
+    fn listen_boxed(self: Box<Self>) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'static>> {
+        Box::pin(HttpAdapter::listen(*self))
     }
 }

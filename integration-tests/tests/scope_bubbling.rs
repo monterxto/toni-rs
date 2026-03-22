@@ -2,8 +2,7 @@ use serial_test::serial;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 use toni::{
-    controller, get, injectable, module, toni_factory::ToniFactory, Body as ToniBody, HttpAdapter,
-    HttpRequest,
+    controller, get, injectable, module, toni_factory::ToniFactory, Body as ToniBody, HttpRequest,
 };
 use toni_axum::AxumAdapter;
 
@@ -176,10 +175,9 @@ mod tests {
 
         // Spawn server in background
         local.spawn_local(async move {
-            let adapter = AxumAdapter::new();
-
-            let mut app = ToniFactory::create(OkModule::module_definition(), adapter).await;
-            let _ = app.listen(port, "127.0.0.1").await;
+            let mut app = ToniFactory::create(OkModule::module_definition()).await;
+            app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+            let _ = app.start().await;
         });
 
         // Run tests within the LocalSet
@@ -214,11 +212,9 @@ mod tests {
 
         // Spawn server in background - THIS SHOULD PRINT A WARNING
         local.spawn_local(async move {
-            let adapter = AxumAdapter::new();
-
-            let mut app =
-                ToniFactory::create(ProblematicModule::module_definition(), adapter).await;
-            let _ = app.listen(port, "127.0.0.1").await;
+            let mut app = ToniFactory::create(ProblematicModule::module_definition()).await;
+            app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+            let _ = app.start().await;
         });
 
         // Run tests within the LocalSet
@@ -243,10 +239,9 @@ mod tests {
 
         // Spawn server in background
         local.spawn_local(async move {
-            let adapter = AxumAdapter::new();
-
-            let mut app = ToniFactory::create(CorrectModule::module_definition(), adapter).await;
-            let _ = app.listen(port, "127.0.0.1").await;
+            let mut app = ToniFactory::create(CorrectModule::module_definition()).await;
+            app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+            let _ = app.start().await;
         });
 
         // Run tests within the LocalSet
@@ -281,10 +276,9 @@ mod tests {
 
         // Spawn server in background - THIS SHOULD PRINT A WARNING
         local.spawn_local(async move {
-            let adapter = AxumAdapter::new();
-
-            let mut app = ToniFactory::create(MixedModule::module_definition(), adapter).await;
-            let _ = app.listen(port, "127.0.0.1").await;
+            let mut app = ToniFactory::create(MixedModule::module_definition()).await;
+            app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+            let _ = app.start().await;
         });
 
         // Run tests within the LocalSet
@@ -311,11 +305,9 @@ mod tests {
 
         // Spawn server in background - THIS SHOULD PRINT A STRONG WARNING
         local.spawn_local(async move {
-            let adapter = AxumAdapter::new();
-
-            let mut app =
-                ToniFactory::create(ExplicitSingletonModule::module_definition(), adapter).await;
-            let _ = app.listen(port, "127.0.0.1").await;
+            let mut app = ToniFactory::create(ExplicitSingletonModule::module_definition()).await;
+            app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+            let _ = app.start().await;
         });
 
         // Run tests within the LocalSet

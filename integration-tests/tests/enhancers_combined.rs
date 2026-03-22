@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 use toni::async_trait;
 use toni::{
     controller, get, injectable, module, post, use_guards, use_interceptors, use_pipes,
-    Body as ToniBody, HttpAdapter, HttpRequest, HttpResponse,
+    Body as ToniBody, HttpRequest, HttpResponse,
 };
 use toni_axum::AxumAdapter;
 
@@ -403,12 +403,11 @@ async fn test_enhancers_execution_order() {
 
     // Spawn server in background
     local.spawn_local(async move {
-        let adapter = AxumAdapter::new();
-
         // Create module with tracker injected into providers
         let module_def = EnhancerModule::module_definition();
-        let mut app = ToniFactory::create(module_def, adapter).await;
-        let _ = app.listen(port, "127.0.0.1").await;
+        let mut app = ToniFactory::create(module_def).await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        let _ = app.start().await;
     });
 
     // Run tests within the LocalSet
@@ -557,11 +556,10 @@ async fn test_guard_authorization() {
     let local = tokio::task::LocalSet::new();
 
     local.spawn_local(async move {
-        let adapter = AxumAdapter::new();
-
         let module_def = EnhancerModule::module_definition();
-        let mut app = ToniFactory::create(module_def, adapter).await;
-        let _ = app.listen(port, "127.0.0.1").await;
+        let mut app = ToniFactory::create(module_def).await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        let _ = app.start().await;
     });
 
     local

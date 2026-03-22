@@ -6,10 +6,8 @@
 //! 3. Controllers using request context without manual extraction
 
 use toni::{
-    controller, get, injectable, module, toni_factory::ToniFactory, Body as ToniBody, HttpAdapter,
-    HttpRequest,
+    controller, get, injectable, module, toni_factory::ToniFactory, Body as ToniBody, HttpRequest,
 };
-use toni_axum::AxumAdapter;
 
 // ===== 1. Define types to store in extensions =====
 
@@ -186,10 +184,8 @@ mod tests {
     #[tokio::test]
     async fn test_module_compiles() {
         // Verify the module can be created
-        let adapter = AxumAdapter::new();
-
         // This tests that all the generated code compiles and types match
-        let _app = ToniFactory::create(TestModule::module_definition(), adapter).await;
+        let _app = ToniFactory::create(TestModule::module_definition()).await;
 
         println!("✅ Module with from_request pattern compiles successfully!");
     }

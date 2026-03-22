@@ -6,7 +6,7 @@
 //! 3. Dependencies are resolved correctly for each scope
 
 use serial_test::serial;
-use toni::{controller, get, injectable, module, Body as ToniBody, HttpAdapter, HttpRequest};
+use toni::{controller, get, injectable, module, Body as ToniBody, HttpRequest};
 use toni_axum::AxumAdapter;
 use toni_config::{Config, ConfigModule};
 
@@ -55,10 +55,9 @@ async fn test_singleton_controller_default() {
 
     // Spawn server in background
     local.spawn_local(async move {
-        let adapter = AxumAdapter::new();
-
-        let mut app = ToniFactory::create(SingletonTestModule::module_definition(), adapter).await;
-        let _ = app.listen(port, "127.0.0.1").await;
+        let mut app = ToniFactory::create(SingletonTestModule::module_definition()).await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        let _ = app.start().await;
     });
 
     // Run tests within the LocalSet
@@ -118,10 +117,9 @@ async fn test_request_scoped_controller_explicit() {
 
     // Spawn server in background
     local.spawn_local(async move {
-        let adapter = AxumAdapter::new();
-
-        let mut app = ToniFactory::create(RequestTestModule::module_definition(), adapter).await;
-        let _ = app.listen(port, "127.0.0.1").await;
+        let mut app = ToniFactory::create(RequestTestModule::module_definition()).await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        let _ = app.start().await;
     });
 
     // Run tests within the LocalSet
@@ -189,10 +187,9 @@ async fn test_mixed_controller_scopes() {
 
     // Spawn server in background
     local.spawn_local(async move {
-        let adapter = AxumAdapter::new();
-
-        let mut app = ToniFactory::create(MixedScopesModule::module_definition(), adapter).await;
-        let _ = app.listen(port, "127.0.0.1").await;
+        let mut app = ToniFactory::create(MixedScopesModule::module_definition()).await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        let _ = app.start().await;
     });
 
     // Run tests within the LocalSet

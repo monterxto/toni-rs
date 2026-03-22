@@ -545,7 +545,9 @@ impl ExamplesModule {}
 
 #[tokio::main]
 async fn main() {
-    let mut app = toni::ToniFactory::create(ExamplesModule, toni_axum::AxumAdapter::new()).await;
+    let mut app = toni::ToniFactory::create(ExamplesModule).await;
+
+    app.use_http_adapter(toni_axum::AxumAdapter::new("127.0.0.1", 3000)).unwrap();
 
     println!("🚀 Toni Pipes Examples Server");
     println!("============================");
@@ -566,7 +568,7 @@ async fn main() {
     println!();
     println!("💡 TIP: Check the source code comments for NestJS comparisons!");
 
-    app.listen(3000, "127.0.0.1").await
+    app.start().await
 }
 
 // ============================================================================

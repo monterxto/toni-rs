@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use toni::async_trait;
 use toni::{
     controller, get, module, use_guards, use_interceptors, use_pipes, Body as ToniBody,
-    HttpAdapter, HttpRequest, ToniFactory,
+    HttpRequest, ToniFactory,
 };
 use toni_axum::AxumAdapter;
 
@@ -282,10 +282,9 @@ async fn test_three_level_enhancer_hierarchy() {
             .use_global_pipes(Arc::new(GlobalPipe::new()));
 
         // Create application
-        let axum_adapter = AxumAdapter::new();
-        let mut app = ToniFactory::create(TestModule::module_definition(), axum_adapter).await;
-
-        app.listen(port, "127.0.0.1").await;
+        let mut app = ToniFactory::create(TestModule::module_definition()).await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        app.start().await;
     });
 
     local

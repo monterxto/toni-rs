@@ -12,8 +12,7 @@ use std::sync::{Arc, Mutex};
 use toni::async_trait;
 use toni::enhancer::{guard, interceptor};
 use toni::{
-    controller, get, injectable, module, provider_token, Body as ToniBody, HttpAdapter,
-    HttpRequest, ToniFactory,
+    controller, get, injectable, module, provider_token, Body as ToniBody, HttpRequest, ToniFactory,
 };
 use toni_axum::AxumAdapter;
 
@@ -178,8 +177,7 @@ async fn test_app_token_enhancers_with_di() {
 
     local.spawn_local(async move {
         // Create application (APP_* token enhancers will be resolved from DI)
-        let axum_adapter = AxumAdapter::new();
-        let mut app = ToniFactory::create(TestModule, axum_adapter).await;
+        let mut app = ToniFactory::create(TestModule).await;
 
         // Get the tracker from DI container to verify APP_* enhancers work
         let tracker = app
@@ -190,7 +188,8 @@ async fn test_app_token_enhancers_with_di() {
         // Send tracker to test task
         let _ = tracker_tx.send(tracker);
 
-        app.listen(port, "127.0.0.1").await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        app.start().await;
     });
 
     local

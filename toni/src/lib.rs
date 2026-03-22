@@ -17,7 +17,7 @@ mod router;
 pub mod rpc;
 mod scanner;
 mod structs_helpers;
-mod toni_application;
+pub mod toni_application;
 pub mod toni_factory;
 pub mod traits_helpers;
 pub mod websocket;
@@ -66,6 +66,7 @@ pub mod enhancer {
 }
 
 pub use toni_factory::ToniFactory;
+pub use toni_application::ToniApplication;
 
 #[cfg(test)]
 mod tests {

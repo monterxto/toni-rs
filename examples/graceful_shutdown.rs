@@ -83,15 +83,17 @@ async fn main() -> anyhow::Result<()> {
     println!("🚀 Starting server with graceful shutdown support...\n");
 
     let mut app = ToniFactory::new()
-        .create_with(AppModule, toni_axum::AxumAdapter::new())
+        .create_with(AppModule)
         .await;
+
+    app.use_http_adapter(toni_axum::AxumAdapter::new("127.0.0.1", 3000)).unwrap();
 
     println!("📡 WebSocket server running on ws://localhost:3000/ws");
     println!("📝 Try: wscat -c ws://localhost:3000/ws");
     println!("⚡ Press Ctrl+C or send SIGTERM to trigger graceful shutdown\n");
 
     tokio::select! {
-        _ = app.listen(3000, "127.0.0.1") => {
+        _ = app.start() => {
             println!("Server stopped normally");
         }
         signal = shutdown_signal() => {

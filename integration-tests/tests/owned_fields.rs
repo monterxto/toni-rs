@@ -7,7 +7,7 @@
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
-use toni::{injectable, module, HttpAdapter};
+use toni::{injectable, module};
 use toni_config::{Config, ConfigModule, ConfigService};
 
 #[derive(Config, Clone)]
@@ -206,7 +206,7 @@ async fn test_owned_fields_runtime() {
 
     // This would test actual runtime behavior
     // For now, just ensure it compiles
-    let _adapter = AxumAdapter::new();
+    let _adapter = AxumAdapter::new("127.0.0.1", 0);
     let _factory = ToniFactory::new();
 
     // TODO: Create the app and verify field values

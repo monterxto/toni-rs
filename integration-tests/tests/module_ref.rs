@@ -86,7 +86,7 @@ impl AppModule {}
 async fn test_module_ref_strict_mode() {
     use toni_axum::AxumAdapter;
 
-    let mut app = ToniFactory::create(AppModule::module_definition(), AxumAdapter::new()).await;
+    let mut app = ToniFactory::create(AppModule::module_definition()).await;
 
     // Get PluginLoader from Module1
     let plugin_loader = app
@@ -107,7 +107,7 @@ async fn test_module_ref_strict_mode() {
 async fn test_module_ref_global_mode() {
     use toni_axum::AxumAdapter;
 
-    let mut app = ToniFactory::create(AppModule::module_definition(), AxumAdapter::new()).await;
+    let mut app = ToniFactory::create(AppModule::module_definition()).await;
 
     let plugin_loader = app
         .get::<PluginLoader>()
@@ -127,7 +127,7 @@ async fn test_module_ref_global_mode() {
 async fn test_module_ref_strict_mode_fails_for_non_local_provider() {
     use toni_axum::AxumAdapter;
 
-    let mut app = ToniFactory::create(AppModule::module_definition(), AxumAdapter::new()).await;
+    let mut app = ToniFactory::create(AppModule::module_definition()).await;
 
     let plugin_loader = app
         .get::<PluginLoader>()
@@ -147,7 +147,7 @@ async fn test_module_ref_strict_mode_fails_for_non_local_provider() {
 async fn test_module_ref_token_based_resolution() {
     use toni_axum::AxumAdapter;
 
-    let mut app = ToniFactory::create(AppModule::module_definition(), AxumAdapter::new()).await;
+    let mut app = ToniFactory::create(AppModule::module_definition()).await;
 
     let plugin_loader = app
         .get::<PluginLoader>()
@@ -168,7 +168,7 @@ async fn test_module_ref_token_based_resolution() {
 async fn test_module_ref_current_module() {
     use toni_axum::AxumAdapter;
 
-    let mut app = ToniFactory::create(AppModule::module_definition(), AxumAdapter::new()).await;
+    let mut app = ToniFactory::create(AppModule::module_definition()).await;
 
     let plugin_loader = app
         .get::<PluginLoader>()
@@ -184,7 +184,7 @@ async fn test_module_ref_current_module() {
 async fn test_module_ref_singleton_behavior() {
     use toni_axum::AxumAdapter;
 
-    let mut app = ToniFactory::create(AppModule::module_definition(), AxumAdapter::new()).await;
+    let mut app = ToniFactory::create(AppModule::module_definition()).await;
 
     let plugin_loader1 = app
         .get::<PluginLoader>()

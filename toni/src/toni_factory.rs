@@ -9,11 +9,8 @@ use crate::middleware::Middleware;
 use crate::module_helpers::module_enum::ModuleDefinition;
 use crate::toni_application::ToniApplication;
 use crate::traits_helpers::{Guard, Interceptor, Pipe};
-use crate::{
-    http_adapter::HttpAdapter,
-    injector::{ToniContainer, ToniInstanceLoader},
-    scanner::ToniDependenciesScanner,
-};
+use crate::injector::{ToniContainer, ToniInstanceLoader};
+use crate::scanner::ToniDependenciesScanner;
 
 #[derive(Default)]
 pub struct ToniFactory {
@@ -66,22 +63,11 @@ impl ToniFactory {
     }
 
     /// Shorthand for `ToniFactory::new().create_with(...)` when no factory config is needed
-    pub async fn create<A>(module: impl Into<ModuleDefinition>, adapter: A) -> ToniApplication<A>
-    where
-        A: HttpAdapter + 'static,
-    {
-        Self::new().create_with(module, adapter).await
+    pub async fn create(module: impl Into<ModuleDefinition>) -> ToniApplication {
+        Self::new().create_with(module).await
     }
 
-    pub async fn create_with<A>(
-        &self,
-        module: impl Into<ModuleDefinition>,
-        adapter: A,
-    ) -> ToniApplication<A>
-    where
-        A: HttpAdapter + 'static,
-    {
-        let http_adapter = adapter;
+    pub async fn create_with(&self, module: impl Into<ModuleDefinition>) -> ToniApplication {
         let container = Rc::new(RefCell::new(ToniContainer::new()));
 
         match self.initialize(module.into(), container.clone()).await {
@@ -92,16 +78,7 @@ impl ToniFactory {
             }
         };
 
-        let mut app = ToniApplication::new(http_adapter, container);
-        match app.init() {
-            Ok(_) => (),
-            Err(e) => {
-                eprintln!("Failed to initialize application: {}", e);
-                std::process::exit(1);
-            }
-        }
-
-        app
+        ToniApplication::new(container)
     }
 
     /// Standalone DI container for CLI tools, cron jobs, and background workers

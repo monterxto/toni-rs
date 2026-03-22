@@ -15,18 +15,18 @@ use crate::{
         WebSocketAdapter, WsConnectionCallbacks,
     },
     application_context::ToniApplicationContext,
-    http_adapter::HttpAdapter,
+    http_adapter::{ErasedHttpAdapter, HttpAdapter},
     injector::{GatewayResolver, IntoToken, RpcControllerResolver, ToniContainer},
     router::RoutesResolver,
     rpc::{RpcContext, RpcControllerWrapper, RpcData, RpcError},
     websocket::{
-        BroadcastService, DisconnectReason, GatewayWrapper, WsClient, WsClientMap, WsError,
+        BroadcastService, DisconnectReason, GatewayWrapper, WsClientMap, WsError,
         WsMessage, helpers::create_client_from_headers,
     },
 };
 
-pub struct ToniApplication<H: HttpAdapter> {
-    http_adapter: H,
+pub struct ToniApplication {
+    http_adapter: Option<Box<dyn ErasedHttpAdapter>>,
     routes_resolver: RoutesResolver,
     context: ToniApplicationContext,
     ws_gateways: HashMap<String, Arc<GatewayWrapper>>,
@@ -35,10 +35,10 @@ pub struct ToniApplication<H: HttpAdapter> {
     rpc_controllers: Vec<Arc<RpcControllerWrapper>>,
 }
 
-impl<H: HttpAdapter + 'static> ToniApplication<H> {
-    pub fn new(http_adapter: H, container: Rc<RefCell<ToniContainer>>) -> Self {
+impl ToniApplication {
+    pub fn new(container: Rc<RefCell<ToniContainer>>) -> Self {
         Self {
-            http_adapter,
+            http_adapter: None,
             context: ToniApplicationContext::new(container.clone()),
             routes_resolver: RoutesResolver::new(container),
             ws_gateways: HashMap::new(),
@@ -48,12 +48,15 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
         }
     }
 
-    pub fn init(&mut self) -> Result<()> {
-        self.routes_resolver.resolve(&mut self.http_adapter)?;
-        Ok(())
+    pub fn use_http_adapter<A: HttpAdapter + 'static>(&mut self, adapter: A) -> Result<&mut Self> {
+        let mut boxed = Box::new(adapter) as Box<dyn ErasedHttpAdapter>;
+        self.routes_resolver.resolve(boxed.as_mut())?;
+        self.http_adapter = Some(boxed);
+        println!("✓ HTTP adapter registered");
+        Ok(self)
     }
 
-    /// Gateway discovery is deferred to `listen()` to allow adapter configuration beforehand.
+    /// Gateway discovery is deferred to `start()` to allow adapter configuration beforehand.
     pub fn use_websocket_adapter<A>(&mut self, adapter: A) -> Result<&mut Self>
     where
         A: WebSocketAdapter,
@@ -136,7 +139,9 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
             bs.close_all().await;
         }
 
-        let _ = self.http_adapter.close().await;
+        if let Some(http) = &mut self.http_adapter {
+            let _ = http.close().await;
+        }
 
         if let Some(ws) = &mut self.ws_adapter {
             let _ = ws.close().await;
@@ -199,7 +204,7 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
         }
     }
 
-    pub async fn listen(&mut self, port: u16, hostname: &str) {
+    pub async fn start(&mut self) {
         {
             let mut scanner = crate::scanner::ToniDependenciesScanner::new(
                 self.routes_resolver.container.clone(),
@@ -217,6 +222,11 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
             eprintln!("Error discovering RPC controllers: {}", e);
         }
 
+        let http_port = self.http_adapter.as_ref().map(|a| a.port());
+        let hostname = self.http_adapter.as_ref()
+            .map(|a| a.hostname().to_string())
+            .unwrap_or_else(|| "0.0.0.0".to_string());
+
         // One shared WsClientMap + ConnectionManager when BroadcastService is in DI;
         // otherwise a fresh WsClientMap per gateway (no CM needed).
         let broadcast_service = self.get::<BroadcastService>().await.ok().map(Arc::new);
@@ -227,28 +237,43 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
             .map(|(p, gw)| (p.clone(), gw.clone()))
             .partition(|(_, gw)| {
                 let p = gw.get_port();
-                p.is_none() || p == Some(port)
+                p.is_none() || http_port.map_or(false, |hp| p == Some(hp))
             });
 
         // Wire same-port gateways into the HTTP adapter as upgrade routes.
-        for (path, gateway) in &same_port {
-            let client_map = broadcast_service
-                .as_ref()
-                .map(|bs| bs.ws_client_map())
-                .unwrap_or_else(|| Arc::new(WsClientMap::new()));
-            let callbacks = Arc::new(make_ws_callbacks(
-                gateway.clone(),
-                client_map,
-                broadcast_service.clone(),
-            ));
-            if let Err(e) = self.http_adapter.bind_ws(path, callbacks) {
-                eprintln!("Failed to add WebSocket route at {}: {}", path, e);
+        if !same_port.is_empty() {
+            if self.http_adapter.is_none() {
+                for (path, gw) in &same_port {
+                    eprintln!(
+                        "Gateway at {} requests same-port WebSocket but no HTTP adapter registered. \
+                         Call use_http_adapter() to add one.",
+                        path,
+                    );
+                    let _ = gw;
+                }
             } else {
-                gateway.call_after_init().await;
+                for (path, gateway) in &same_port {
+                    let client_map = broadcast_service
+                        .as_ref()
+                        .map(|bs| bs.ws_client_map())
+                        .unwrap_or_else(|| Arc::new(WsClientMap::new()));
+                    let callbacks = Arc::new(make_ws_callbacks(
+                        gateway.clone(),
+                        client_map,
+                        broadcast_service.clone(),
+                    ));
+                    if let Some(http) = &mut self.http_adapter {
+                        if let Err(e) = http.bind_ws(path, callbacks) {
+                            eprintln!("Failed to add WebSocket route at {}: {}", path, e);
+                        } else {
+                            gateway.call_after_init().await;
+                        }
+                    }
+                }
             }
         }
 
-        let mut ws_futures: Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> = vec![];
+        let mut server_futures: Vec<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> = vec![];
 
         // Wire separate-port gateways into the standalone WS adapter.
         if !separate_port.is_empty() {
@@ -290,8 +315,8 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
                     if let Some(ws_port) = gw.get_port() {
                         if seen.insert(ws_port) {
                             if let Some(ws) = &mut self.ws_adapter {
-                                match ws.create(ws_port, hostname) {
-                                    Ok(fut) => ws_futures.push(fut),
+                                match ws.create(ws_port, &hostname) {
+                                    Ok(fut) => server_futures.push(fut),
                                     Err(e) => eprintln!(
                                         "Failed to create WS server on port {}: {}",
                                         ws_port, e
@@ -325,30 +350,33 @@ impl<H: HttpAdapter + 'static> ToniApplication<H> {
                     if let Err(e) = rpc.bind(&all_patterns, callbacks) {
                         eprintln!("Failed to bind RPC controllers: {}", e);
                     } else if let Ok(fut) = rpc.create() {
-                        ws_futures.push(fut);
+                        server_futures.push(fut);
                     }
                 }
             }
         }
 
-        let has_same_port_ws = !same_port.is_empty();
-        let server_type = if has_same_port_ws {
-            "HTTP + WebSocket"
-        } else {
-            "HTTP"
-        };
-        println!("Starting {} server on {}:{}", server_type, hostname, port);
+        if let Some(http_adapter) = &self.http_adapter {
+            let has_same_port_ws = !same_port.is_empty();
+            let server_type = if has_same_port_ws {
+                "HTTP + WebSocket"
+            } else {
+                "HTTP"
+            };
+            println!("Starting {} server on {}:{}", server_type, hostname, http_adapter.port());
+            let cloned = http_adapter.clone_box();
+            server_futures.push(Box::pin(async move {
+                if let Err(e) = cloned.listen_boxed().await {
+                    eprintln!("Failed to start server: {}", e);
+                    std::process::exit(1);
+                }
+            }));
+        } else if server_futures.is_empty() {
+            eprintln!("No adapters configured. Register at least one adapter before calling start().");
+            return;
+        }
 
-        let hostname = hostname.to_string();
-        let http_adapter = self.http_adapter.clone();
-        ws_futures.push(Box::pin(async move {
-            if let Err(e) = http_adapter.listen(port, &hostname).await {
-                eprintln!("Failed to start server: {}", e);
-                std::process::exit(1);
-            }
-        }));
-
-        futures::future::join_all(ws_futures).await;
+        futures::future::join_all(server_futures).await;
     }
 }
 

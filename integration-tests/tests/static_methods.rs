@@ -7,7 +7,7 @@
 //! 4. Static methods work with extractors
 
 use serial_test::serial;
-use toni::{controller, get, injectable, module, Body as ToniBody, HttpAdapter, HttpRequest};
+use toni::{controller, get, injectable, module, Body as ToniBody, HttpRequest};
 use toni_axum::AxumAdapter;
 use toni_config::{Config, ConfigModule};
 
@@ -53,10 +53,9 @@ async fn test_static_method_controller() {
 
     // Spawn server in background
     local.spawn_local(async move {
-        let adapter = AxumAdapter::new();
-
-        let mut app = ToniFactory::create(StaticTestModule::module_definition(), adapter).await;
-        let _ = app.listen(port, "127.0.0.1").await;
+        let mut app = ToniFactory::create(StaticTestModule::module_definition()).await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        let _ = app.start().await;
     });
 
     // Run tests within the LocalSet
@@ -140,10 +139,9 @@ async fn test_mixed_static_and_instance_methods() {
 
     // Spawn server in background
     local.spawn_local(async move {
-        let adapter = AxumAdapter::new();
-
-        let mut app = ToniFactory::create(MixedTestModule::module_definition(), adapter).await;
-        let _ = app.listen(port, "127.0.0.1").await;
+        let mut app = ToniFactory::create(MixedTestModule::module_definition()).await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        let _ = app.start().await;
     });
 
     // Run tests within the LocalSet
@@ -213,11 +211,9 @@ async fn test_request_scoped_static_methods() {
 
     // Spawn server in background
     local.spawn_local(async move {
-        let adapter = AxumAdapter::new();
-
-        let mut app =
-            ToniFactory::create(RequestScopedStaticTestModule::module_definition(), adapter).await;
-        let _ = app.listen(port, "127.0.0.1").await;
+        let mut app = ToniFactory::create(RequestScopedStaticTestModule::module_definition()).await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        let _ = app.start().await;
     });
 
     // Run tests within the LocalSet
@@ -277,11 +273,9 @@ async fn test_async_static_methods() {
 
     // Spawn server in background
     local.spawn_local(async move {
-        let adapter = AxumAdapter::new();
-
-        let mut app =
-            ToniFactory::create(AsyncStaticTestModule::module_definition(), adapter).await;
-        let _ = app.listen(port, "127.0.0.1").await;
+        let mut app = ToniFactory::create(AsyncStaticTestModule::module_definition()).await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        let _ = app.start().await;
     });
 
     // Run tests within the LocalSet

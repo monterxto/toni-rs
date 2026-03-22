@@ -316,8 +316,10 @@ async fn main() {
     println!("🚀 Starting WebSocket chat server with rooms...\n");
 
     let mut app = ToniFactory::new()
-        .create_with(ChatModule, toni_axum::AxumAdapter::new())
+        .create_with(ChatModule)
         .await;
+
+    app.use_http_adapter(toni_axum::AxumAdapter::new("127.0.0.1", 3000)).unwrap();
 
     // Adapter auto-discovers and registers all gateways from the container
     println!("📡 WebSocket server running on ws://localhost:3000/chat");
@@ -330,5 +332,5 @@ async fn main() {
     println!(r#"  {{"event": "dm", "data": {{"to": "CLIENT_ID", "text": "Secret!"}}}}"#);
     println!(r#"  {{"event": "leave", "data": {{"room": "lobby"}}}}"#);
 
-    app.listen(3000, "127.0.0.1").await;
+    app.start().await;
 }

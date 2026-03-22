@@ -309,11 +309,11 @@ async fn websocket_separate_port_end_to_end() {
 
     let local = tokio::task::LocalSet::new();
     local.spawn_local(async move {
-        let mut app =
-            ToniFactory::create(PingModule::module_definition(), AxumAdapter::new()).await;
+        let mut app = ToniFactory::create(PingModule::module_definition()).await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", http_port)).unwrap();
         app.use_websocket_adapter(TungsteniteAdapter::new())
             .unwrap();
-        app.listen(http_port, "127.0.0.1").await;
+        app.start().await;
     });
     tokio::task::spawn_local(async move {
         local.await;
@@ -351,12 +351,12 @@ async fn separate_port_close_stops_ws_server() {
 
     let local = tokio::task::LocalSet::new();
     local.spawn_local(async move {
-        let mut app =
-            ToniFactory::create(PingModule::module_definition(), AxumAdapter::new()).await;
+        let mut app = ToniFactory::create(PingModule::module_definition()).await;
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", http_port)).unwrap();
         app.use_websocket_adapter(TungsteniteAdapter::new())
             .unwrap();
         tokio::select! {
-            _ = app.listen(http_port, "127.0.0.1") => {}
+            _ = app.start() => {}
             _ = close_rx => {
                 app.close().await.unwrap();
             }

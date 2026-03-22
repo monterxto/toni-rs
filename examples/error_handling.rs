@@ -463,7 +463,9 @@ async fn main() {
     let mut factory = ToniFactory::new();
     factory.use_global_error_handler(Arc::new(GlobalErrorHandler));
 
-    let mut app = factory.create_with(AppModule, AxumAdapter::new()).await;
+    let mut app = factory.create_with(AppModule).await;
 
-    app.listen(3000, "127.0.0.1").await;
+    app.use_http_adapter(AxumAdapter::new("127.0.0.1", 3000)).unwrap();
+
+    app.start().await;
 }
