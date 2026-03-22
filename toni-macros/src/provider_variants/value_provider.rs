@@ -298,8 +298,9 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
             } else {
                 quote! {
                     {
-                        #[derive(Clone)]
-                        struct #provider_name;
+                        struct #provider_name {
+                            get_value: std::sync::Arc<dyn Fn() -> Box<dyn std::any::Any + Send> + Send + Sync>,
+                        }
 
                         struct #factory_name;
 
@@ -322,7 +323,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                                 _params: Vec<Box<dyn std::any::Any + Send>>,
                                 _req: Option<&toni::HttpRequest>,
                             ) -> Box<dyn std::any::Any + Send> {
-                                Box::new(#value_expr)
+                                (self.get_value)()
                             }
                         }
 
@@ -339,8 +340,12 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                                     std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
                                 >,
                             ) -> std::sync::Arc<Box<dyn toni::traits_helpers::Provider>> {
+                                let value = std::sync::Arc::new(#value_expr);
+                                let get_value = std::sync::Arc::new(move || {
+                                    Box::new((*value).clone()) as Box<dyn std::any::Any + Send>
+                                });
                                 std::sync::Arc::new(
-                                    Box::new(#provider_name) as Box<dyn toni::traits_helpers::Provider>
+                                    Box::new(#provider_name { get_value }) as Box<dyn toni::traits_helpers::Provider>
                                 )
                             }
                         }
