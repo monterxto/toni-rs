@@ -1,7 +1,12 @@
+use std::any::Any;
 use std::sync::Arc;
 
 use crate::adapter::RpcClientTransport;
+use crate::async_trait;
+use crate::http_helpers::HttpRequest;
+use crate::provider_scope::ProviderScope;
 use crate::rpc::{RpcClientError, RpcData};
+use crate::traits_helpers::Provider;
 
 /// Injectable handle for calling remote RPC services.
 ///
@@ -15,10 +20,13 @@ use crate::rpc::{RpcClientError, RpcData};
 ///
 /// # Example
 ///
-/// Register via `provider_value!` inside a module:
+/// Register via `provide_factory!` with the `lifecycle` flag inside a module's
+/// `providers` list:
 ///
 /// ```rust,no_run
-/// provider_value!("INVENTORY_CLIENT", RpcClient::new(NatsClientTransport::new("nats://localhost:4222")))
+/// provide_factory!("INVENTORY_CLIENT", |config: ConfigService| {
+///     RpcClient::new(NatsClientTransport::new(config.get("NATS_URL")))
+/// }, RpcClient, lifecycle)
 /// ```
 ///
 /// Inject into a service:
@@ -46,10 +54,6 @@ impl RpcClient {
         Self {
             transport: Arc::new(transport),
         }
-    }
-
-    pub(crate) fn from_arc(transport: Arc<dyn RpcClientTransport>) -> Self {
-        Self { transport }
     }
 
     /// Send a message and wait for the remote reply (request-response).
@@ -121,5 +125,40 @@ impl RpcClient {
         let payload = RpcData::from_serialize(data)
             .map_err(|e| RpcClientError::Transport(e.to_string()))?;
         self.transport.emit(pattern.as_ref(), payload).await
+    }
+}
+
+#[async_trait]
+impl Provider for RpcClient {
+    fn get_token(&self) -> String {
+        std::any::type_name::<Self>().to_string()
+    }
+
+    fn get_token_factory(&self) -> String {
+        std::any::type_name::<Self>().to_string()
+    }
+
+    async fn execute(
+        &self,
+        _params: Vec<Box<dyn Any + Send>>,
+        _req: Option<&HttpRequest>,
+    ) -> Box<dyn Any + Send> {
+        Box::new(self.clone())
+    }
+
+    fn get_scope(&self) -> ProviderScope {
+        ProviderScope::Singleton
+    }
+
+    async fn on_application_bootstrap(&self) {
+        if let Err(e) = self.connect().await {
+            eprintln!("[RpcClient] connect failed at bootstrap: {e}");
+        }
+    }
+
+    async fn on_application_shutdown(&self, _signal: Option<String>) {
+        if let Err(e) = self.close().await {
+            eprintln!("[RpcClient] close failed at shutdown: {e}");
+        }
     }
 }

@@ -30,7 +30,7 @@ pub use http_helpers::{
 };
 pub use injector::{InstanceWrapper, Protocol, ProtocolType};
 pub use rpc::{
-    ClientsModule, RpcClient, RpcClientError, RpcContext, RpcControllerTrait, RpcData, RpcError,
+    RpcClient, RpcClientError, RpcContext, RpcControllerTrait, RpcData, RpcError,
 };
 pub use websocket::{
     BroadcastError, BroadcastModule, BroadcastService, BroadcastTarget, ClientId, DisconnectReason,
