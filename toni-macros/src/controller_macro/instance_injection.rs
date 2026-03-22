@@ -118,7 +118,7 @@ pub fn generate_instance_controller_system(
                     dependencies,
                     route_prefix,
                     crate::shared::scope_parser::ControllerScope::Request,
-                    &LifecycleHooks::default(),
+                    &lifecycle_hooks,
                 )?;
                 (vec![], vec![], req_wrappers, req_meta) // Skip Singleton wrappers!
             }
@@ -144,7 +144,7 @@ pub fn generate_instance_controller_system(
                         dependencies,
                         route_prefix,
                         crate::shared::scope_parser::ControllerScope::Request,
-                        &LifecycleHooks::default(),
+                        &lifecycle_hooks,
                     )?
                 };
 
@@ -694,6 +694,7 @@ fn generate_controller_wrapper_code(
             body_dto_token_stream,
             metadata_exprs,
             is_static_method,
+            lifecycle_hooks,
         ),
     }
 }
@@ -966,6 +967,7 @@ fn generate_request_controller_wrapper(
     body_dto_token_stream: &Option<TokenStream>,
     metadata_exprs: &[TokenStream],
     is_static_method: bool,
+    lifecycle_hooks: &LifecycleHooks,
 ) -> TokenStream {
     let binding = Vec::new();
 
@@ -1043,6 +1045,21 @@ fn generate_request_controller_wrapper(
         quote! { None }
     };
 
+    let init_call = if !is_static_method {
+        lifecycle_hooks.on_module_init.as_ref().map(|method| {
+            quote! { controller.#method().await; }
+        })
+    } else {
+        None
+    };
+    let bootstrap_call = if !is_static_method {
+        lifecycle_hooks.on_application_bootstrap.as_ref().map(|method| {
+            quote! { controller.#method().await; }
+        })
+    } else {
+        None
+    };
+
     // For static methods, we don't need dependencies field
     let struct_fields = if is_static_method {
         quote! {
@@ -1071,6 +1088,8 @@ fn generate_request_controller_wrapper(
                 #(#field_resolutions)*
                 #(#marker_params_extraction)*
                 #struct_instantiation
+                #init_call
+                #bootstrap_call
 
                 let result = #method_call;
                 Box::new(result)

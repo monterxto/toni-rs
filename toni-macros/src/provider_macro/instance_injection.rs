@@ -231,10 +231,10 @@ fn generate_provider_wrapper(
             generate_singleton_provider(struct_name, enhancer_traits, lifecycle_hooks)
         }
         ProviderScope::Request => {
-            generate_request_provider(struct_name, dependencies, enhancer_traits)
+            generate_request_provider(struct_name, dependencies, enhancer_traits, lifecycle_hooks)
         }
         ProviderScope::Transient => {
-            generate_transient_provider(struct_name, dependencies, enhancer_traits)
+            generate_transient_provider(struct_name, dependencies, enhancer_traits, lifecycle_hooks)
         }
     }
 }
@@ -389,6 +389,7 @@ fn generate_request_provider(
     struct_name: &Ident,
     dependencies: &DependencyInfo,
     enhancer_traits: &EnhancerTraits,
+    lifecycle_hooks: &LifecycleHooks,
 ) -> TokenStream {
     let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
     let enhancer_methods = generate_enhancer_methods(enhancer_traits);
@@ -451,6 +452,13 @@ fn generate_request_provider(
         }
     };
 
+    let init_call = lifecycle_hooks.on_module_init.as_ref().map(|method| {
+        quote! { instance.#method().await; }
+    });
+    let bootstrap_call = lifecycle_hooks.on_application_bootstrap.as_ref().map(|method| {
+        quote! { instance.#method().await; }
+    });
+
     quote! {
         struct #provider_name {
             dependencies: ::toni::FxHashMap<
@@ -466,11 +474,11 @@ fn generate_request_provider(
                 _params: Vec<Box<dyn ::std::any::Any + Send>>,
                 _req: Option<&::toni::http_helpers::HttpRequest>,
             ) -> Box<dyn ::std::any::Any + Send> {
-                // Resolve dependencies per request
                 #(#field_resolutions)*
 
-                // Create new instance per request
                 let instance = #struct_instantiation;
+                #init_call
+                #bootstrap_call
 
                 Box::new(instance)
             }
@@ -496,6 +504,7 @@ fn generate_transient_provider(
     struct_name: &Ident,
     dependencies: &DependencyInfo,
     enhancer_traits: &EnhancerTraits,
+    lifecycle_hooks: &LifecycleHooks,
 ) -> TokenStream {
     let provider_name = Ident::new(&format!("{}Provider", struct_name), struct_name.span());
     let enhancer_methods = generate_enhancer_methods(enhancer_traits);
@@ -529,6 +538,13 @@ fn generate_transient_provider(
         }
     };
 
+    let init_call = lifecycle_hooks.on_module_init.as_ref().map(|method| {
+        quote! { instance.#method().await; }
+    });
+    let bootstrap_call = lifecycle_hooks.on_application_bootstrap.as_ref().map(|method| {
+        quote! { instance.#method().await; }
+    });
+
     quote! {
         struct #provider_name {
             dependencies: ::toni::FxHashMap<
@@ -544,11 +560,11 @@ fn generate_transient_provider(
                 _params: Vec<Box<dyn ::std::any::Any + Send>>,
                 _req: Option<&::toni::http_helpers::HttpRequest>,
             ) -> Box<dyn ::std::any::Any + Send> {
-                // Resolve dependencies every time
                 #(#field_resolutions)*
 
-                // Create new instance every time
                 let instance = #struct_instantiation;
+                #init_call
+                #bootstrap_call
 
                 Box::new(instance)
             }
