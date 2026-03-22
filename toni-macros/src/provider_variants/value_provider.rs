@@ -25,6 +25,7 @@ pub struct ProviderValueInput {
     pub value_expr: Expr,
     pub type_hint: Option<syn::Path>,
     pub enhancers: Vec<EnhancerType>,
+    pub lifecycle: bool,
 }
 
 impl Parse for ProviderValueInput {
@@ -36,6 +37,7 @@ impl Parse for ProviderValueInput {
         // Parse optional type hint and enhancer flags
         let mut type_hint = None;
         let mut enhancers = Vec::new();
+        let mut lifecycle = false;
 
         while input.peek(Token![,]) {
             let _: Token![,] = input.parse()?;
@@ -53,6 +55,7 @@ impl Parse for ProviderValueInput {
                     "guard" => enhancers.push(EnhancerType::Guard),
                     "interceptor" => enhancers.push(EnhancerType::Interceptor),
                     "pipe" => enhancers.push(EnhancerType::Pipe),
+                    "lifecycle" => lifecycle = true,
                     _ => {
                         // Not an enhancer keyword - could be start of a type hint
                         if type_hint.is_none() && enhancers.is_empty() {
@@ -89,6 +92,7 @@ impl Parse for ProviderValueInput {
             value_expr,
             type_hint,
             enhancers,
+            lifecycle,
         })
     }
 }
@@ -156,7 +160,15 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
         value_expr,
         type_hint,
         enhancers,
+        lifecycle,
     } = syn::parse2(input)?;
+
+    if lifecycle && !enhancers.is_empty() {
+        return Err(syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "lifecycle cannot be combined with guard/interceptor/pipe enhancers",
+        ));
+    }
 
     // Generate token expression for runtime
     let token_expr = token.to_token_expr();
@@ -166,6 +178,86 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
     let sanitized_name = token_display.replace(['\"', ' ', '-', '.', ':', '/'], "_");
     let provider_name = format_ident!("__ToniValueProvider_{}", sanitized_name);
     let factory_name = format_ident!("__ToniValueProviderFactory_{}", sanitized_name);
+
+    if lifecycle {
+        let expanded = quote! {
+            {
+                struct #provider_name {
+                    instance: std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
+                }
+
+                struct #factory_name;
+
+                #[toni::async_trait]
+                impl toni::traits_helpers::Provider for #provider_name {
+                    fn get_token(&self) -> String {
+                        #token_expr
+                    }
+
+                    fn get_token_factory(&self) -> String {
+                        #token_expr
+                    }
+
+                    fn get_scope(&self) -> toni::ProviderScope {
+                        toni::ProviderScope::Singleton
+                    }
+
+                    async fn execute(
+                        &self,
+                        _params: Vec<Box<dyn std::any::Any + Send>>,
+                        _req: Option<&toni::HttpRequest>,
+                    ) -> Box<dyn std::any::Any + Send> {
+                        self.instance.execute(_params, _req).await
+                    }
+
+                    async fn on_module_init(&self) {
+                        self.instance.on_module_init().await;
+                    }
+
+                    async fn on_application_bootstrap(&self) {
+                        self.instance.on_application_bootstrap().await;
+                    }
+
+                    async fn on_module_destroy(&self) {
+                        self.instance.on_module_destroy().await;
+                    }
+
+                    async fn before_application_shutdown(&self, signal: Option<String>) {
+                        self.instance.before_application_shutdown(signal).await;
+                    }
+
+                    async fn on_application_shutdown(&self, signal: Option<String>) {
+                        self.instance.on_application_shutdown(signal).await;
+                    }
+                }
+
+                #[toni::async_trait]
+                impl toni::traits_helpers::ProviderFactory for #factory_name {
+                    fn get_token(&self) -> String {
+                        #token_expr
+                    }
+
+                    async fn build(
+                        &self,
+                        _deps: toni::FxHashMap<
+                            String,
+                            std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
+                        >,
+                    ) -> std::sync::Arc<Box<dyn toni::traits_helpers::Provider>> {
+                        let instance = std::sync::Arc::new(
+                            Box::new(#value_expr) as Box<dyn toni::traits_helpers::Provider>
+                        );
+                        std::sync::Arc::new(
+                            Box::new(#provider_name { instance }) as Box<dyn toni::traits_helpers::Provider>
+                        )
+                    }
+                }
+
+                #factory_name
+            }
+        };
+        return Ok(expanded);
+    }
 
     // Generate enhancer method implementations
     let enhancer_methods = generate_enhancer_methods(&token, &type_hint, &enhancers)?;

@@ -26,7 +26,7 @@ use crate::traits_helpers::Provider;
 /// ```rust,no_run
 /// provide_factory!("INVENTORY_CLIENT", |config: ConfigService| {
 ///     RpcClient::new(NatsClientTransport::new(config.get("NATS_URL")))
-/// }, RpcClient, lifecycle)
+/// }, lifecycle)
 /// ```
 ///
 /// Inject into a service:
