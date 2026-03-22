@@ -48,6 +48,10 @@ impl RpcClient {
         }
     }
 
+    pub(crate) fn from_arc(transport: Arc<dyn RpcClientTransport>) -> Self {
+        Self { transport }
+    }
+
     /// Send a message and wait for the remote reply (request-response).
     pub async fn send(
         &self,
@@ -84,6 +88,25 @@ impl RpcClient {
         reply
             .parse::<R>()
             .map_err(|e| RpcClientError::Transport(e.to_string()))
+    }
+
+    /// Establish the connection to the remote service eagerly.
+    ///
+    /// Transports are lazy by default — they connect on the first `send` or `emit`.
+    /// Call this explicitly (e.g. in an `#[on_application_bootstrap]` hook) when
+    /// you want to surface connection failures at startup rather than on the first
+    /// request.
+    pub async fn connect(&self) -> Result<(), RpcClientError> {
+        self.transport.connect().await
+    }
+
+    /// Gracefully close the connection to the remote service.
+    ///
+    /// Flushes any pending messages before closing. Call this in an
+    /// `#[on_application_shutdown]` hook to ensure in-flight data is not lost
+    /// before the process exits.
+    pub async fn close(&self) -> Result<(), RpcClientError> {
+        self.transport.close().await
     }
 
     /// Typed fire-and-forget: serializes `data` to JSON and emits without waiting for a reply.

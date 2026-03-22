@@ -94,6 +94,21 @@ fn parse_response(bytes: &[u8]) -> Result<RpcData, RpcClientError> {
 
 #[async_trait]
 impl RpcClientTransport for NatsClientTransport {
+    async fn connect(&self) -> Result<(), RpcClientError> {
+        self.get_or_connect().await?;
+        Ok(())
+    }
+
+    async fn close(&self) -> Result<(), RpcClientError> {
+        if let Some(client) = self.client.get() {
+            client
+                .flush()
+                .await
+                .map_err(|e| RpcClientError::Transport(e.to_string()))?;
+        }
+        Ok(())
+    }
+
     async fn send(&self, pattern: &str, data: RpcData) -> Result<RpcData, RpcClientError> {
         let client = self.get_or_connect().await?;
         let subject = pattern.to_string();
