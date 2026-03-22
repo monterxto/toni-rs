@@ -72,3 +72,7 @@ path = "rpc_controller.rs"
 [[example]]
 name = "rpc_nats"
 path = "rpc_nats.rs"
+
+[[example]]
+name = "rpc_nats_client"
+path = "rpc_nats_client.rs"

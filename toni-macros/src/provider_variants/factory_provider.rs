@@ -31,6 +31,7 @@ pub struct ProviderFactoryInput {
     pub type_hint: Option<syn::Path>,
     pub scope: Option<String>,
     pub enhancers: Vec<EnhancerType>,
+    pub lifecycle: bool,
 }
 
 impl Parse for ProviderFactoryInput {
@@ -43,6 +44,7 @@ impl Parse for ProviderFactoryInput {
         let mut type_hint = None;
         let mut scope = None;
         let mut enhancers = Vec::new();
+        let mut lifecycle = false;
 
         while input.peek(Token![,]) {
             let _: Token![,] = input.parse()?;
@@ -60,6 +62,7 @@ impl Parse for ProviderFactoryInput {
                     "guard" => enhancers.push(EnhancerType::Guard),
                     "interceptor" => enhancers.push(EnhancerType::Interceptor),
                     "pipe" => enhancers.push(EnhancerType::Pipe),
+                    "lifecycle" => lifecycle = true,
                     "scope" => {
                         // Parse: scope = "transient" or scope = "singleton" or scope = "request"
                         input.parse::<Token![=]>()?;
@@ -103,6 +106,7 @@ impl Parse for ProviderFactoryInput {
             type_hint,
             scope,
             enhancers,
+            lifecycle,
         })
     }
 }
@@ -141,6 +145,7 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
         type_hint,
         scope,
         enhancers,
+        lifecycle,
     } = syn::parse2(input)?;
 
     // Parse scope or default to Singleton
@@ -159,6 +164,19 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
             ));
         }
     };
+
+    if lifecycle && !enhancers.is_empty() {
+        return Err(syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "lifecycle cannot be combined with guard/interceptor/pipe enhancers",
+        ));
+    }
+    if lifecycle && matches!(scope.as_deref(), Some("request") | Some("transient")) {
+        return Err(syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "lifecycle is only compatible with singleton scope",
+        ));
+    }
 
     // Generate token expression for runtime
     let token_expr = token.to_token_expr();
@@ -247,10 +265,8 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
     let provider_name = format_ident!("__ToniFactoryProvider_{}", sanitized_name);
     let factory_name = format_ident!("__ToniFactoryProviderFactory_{}", sanitized_name);
 
-    // Determine if we need to cache the instance (singleton scope or enhancers)
-    let needs_caching = scope.as_deref() == Some("singleton") || !enhancers.is_empty();
+    let needs_caching = !matches!(scope.as_deref(), Some("request") | Some("transient"));
 
-    // Generate enhancer support for Type tokens with enhancers or singleton scope
     let (
         factory_struct_fields,
         factory_struct_init,
@@ -265,6 +281,7 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
         &dep_resolutions,
         &param_names,
         needs_caching,
+        lifecycle,
         &factory_invocation,
     )?;
 
@@ -348,6 +365,7 @@ fn generate_factory_enhancer_support(
     dep_resolutions: &[TokenStream],
     param_names: &[&syn::Ident],
     needs_caching: bool,
+    lifecycle: bool,
     factory_invocation: &TokenStream,
 ) -> Result<(
     TokenStream,
@@ -357,7 +375,6 @@ fn generate_factory_enhancer_support(
     TokenStream,
 )> {
     if !needs_caching {
-        // No caching needed - execute calls factory directly
         let execute_body = quote! {
             let _dependencies = &self.deps;
             let factory = #factory_expr;
@@ -366,29 +383,116 @@ fn generate_factory_enhancer_support(
         return Ok((quote! {}, quote! {}, quote! {}, quote! {}, execute_body));
     }
 
-    // Determine the type path to use
+    let is_async = is_async_expr(factory_expr);
+    let has_deps = !dep_resolutions.is_empty();
+
+    if lifecycle {
+        let struct_field = quote! {
+            instance: std::sync::Arc<Box<dyn toni::traits_helpers::Provider>>,
+        };
+
+        let struct_init = if is_async || has_deps {
+            quote! {
+                let factory = #factory_expr;
+                let instance_raw = async {
+                    let _req = None;
+                    #(#dep_resolutions)*
+                    factory(#(#param_names),*)
+                }.await;
+                let instance = std::sync::Arc::new(
+                    Box::new(instance_raw) as Box<dyn toni::traits_helpers::Provider>
+                );
+            }
+        } else {
+            quote! {
+                let factory = #factory_expr;
+                let instance = std::sync::Arc::new(
+                    Box::new(factory()) as Box<dyn toni::traits_helpers::Provider>
+                );
+            }
+        };
+
+        let instance_field = quote! { instance, };
+
+        let lifecycle_methods = quote! {
+            async fn on_module_init(&self) {
+                self.instance.on_module_init().await;
+            }
+            async fn on_application_bootstrap(&self) {
+                self.instance.on_application_bootstrap().await;
+            }
+            async fn on_module_destroy(&self) {
+                self.instance.on_module_destroy().await;
+            }
+            async fn before_application_shutdown(&self, signal: Option<String>) {
+                self.instance.before_application_shutdown(signal).await;
+            }
+            async fn on_application_shutdown(&self, signal: Option<String>) {
+                self.instance.on_application_shutdown(signal).await;
+            }
+        };
+
+        let execute_body = quote! {
+            self.instance.execute(_params, _req).await
+        };
+
+        return Ok((struct_field, struct_init, instance_field, lifecycle_methods, execute_body));
+    }
+
+    if matches!(token, TokenType::String(_) | TokenType::Const(_))
+        && type_hint.is_none()
+        && !enhancers.is_empty()
+    {
+        return Err(syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "enhancers (guard/interceptor/pipe) for String or Const tokens require a type hint: provide_factory!(\"TOKEN\", factory_fn, Type, guard)",
+        ));
+    }
+
+    // String/Const tokens with no type hint: closure-capture approach (no concrete type needed)
+    if matches!(token, TokenType::String(_) | TokenType::Const(_)) && type_hint.is_none() {
+        let struct_field = quote! {
+            get_value: std::sync::Arc<dyn Fn() -> Box<dyn std::any::Any + Send> + Send + Sync>,
+        };
+
+        let struct_init = if is_async || has_deps {
+            quote! {
+                let factory = #factory_expr;
+                let instance_raw = async {
+                    let _req = None;
+                    #(#dep_resolutions)*
+                    factory(#(#param_names),*)
+                }.await;
+                let value = std::sync::Arc::new(instance_raw);
+                let get_value = std::sync::Arc::new(move || {
+                    Box::new((*value).clone()) as Box<dyn std::any::Any + Send>
+                });
+            }
+        } else {
+            quote! {
+                let factory = #factory_expr;
+                let value = std::sync::Arc::new(factory());
+                let get_value = std::sync::Arc::new(move || {
+                    Box::new((*value).clone()) as Box<dyn std::any::Any + Send>
+                });
+            }
+        };
+
+        let execute_body = quote! { (self.get_value)() };
+
+        return Ok((struct_field, struct_init, quote! { get_value, }, quote! {}, execute_body));
+    }
+
+    // Determine the type path to use (type token, or string/const with explicit type hint)
     let path = match token {
         TokenType::Type(p) => p.clone(),
-        TokenType::String(_) | TokenType::Const(_) => {
-            if type_hint.is_none() {
-                return Err(syn::Error::new(
-                    proc_macro2::Span::call_site(),
-                    "provider_factory! with singleton scope or enhancers (guard/interceptor/pipe) for String or Const tokens requires a type hint. Use: provider_factory!(\"TOKEN\", factory_fn, Type, guard) or provider_factory!(\"TOKEN\", factory_fn, Type, scope = \"singleton\")",
-                ));
-            }
-            type_hint.clone().unwrap()
-        }
+        TokenType::String(_) | TokenType::Const(_) => type_hint.clone().unwrap(),
     };
 
     // Generate struct field for instance storage
     let struct_field = quote! {
         instance: std::sync::Arc<#path>,
     };
-
-    // Generate initialization code for the instance
-    // For sync factories with no deps, call directly to avoid type inference issues
-    let is_async = is_async_expr(factory_expr);
-    let has_deps = !dep_resolutions.is_empty();
 
     let struct_init = if is_async || has_deps {
         quote! {

@@ -41,4 +41,27 @@ impl RpcData {
             _ => None,
         }
     }
+
+    /// Deserialize the payload into a typed value.
+    ///
+    /// All three variants are tried as JSON — `Json` via `from_value`, `Text`
+    /// via `from_str`, and `Binary` via `from_slice`.
+    pub fn parse<T: serde::de::DeserializeOwned>(&self) -> Result<T, serde_json::Error> {
+        match self {
+            Self::Json(v) => serde_json::from_value(v.clone()),
+            Self::Text(s) => serde_json::from_str(s),
+            Self::Binary(b) => serde_json::from_slice(b),
+        }
+    }
+
+    /// Serialize a value into an `RpcData::Json` payload.
+    pub fn from_serialize<T: serde::Serialize>(v: &T) -> Result<Self, serde_json::Error> {
+        serde_json::to_value(v).map(Self::Json)
+    }
+}
+
+impl From<serde_json::Value> for RpcData {
+    fn from(v: serde_json::Value) -> Self {
+        Self::Json(v)
+    }
 }

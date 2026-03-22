@@ -6,6 +6,7 @@ use crate::controller_macro::controller_struct::{extract_constructor_params, has
 use crate::provider_macro::instance_injection::generate_instance_provider_system;
 use crate::shared::dependency_info::DependencySource;
 use crate::shared::scope_parser::ProviderScope;
+use crate::shared::attr_is;
 use crate::utils::extracts::extract_struct_dependencies;
 
 /// Parse `#[rpc_controller(pub struct Foo { ... })]`
@@ -70,8 +71,20 @@ fn generate_rpc_controller_impl(
         .iter()
         .map(|(pattern, method)| {
             let method_name = &method.sig.ident;
-            quote! {
-                #pattern => Ok(Some(self.#method_name(data, context).await?)),
+            let payload_expr = typed_payload_expr(method);
+            if returns_rpc_data(method) {
+                quote! {
+                    #pattern => Ok(Some(self.#method_name(#payload_expr, context).await?)),
+                }
+            } else {
+                quote! {
+                    #pattern => {
+                        let __result = self.#method_name(#payload_expr, context).await?;
+                        let __data = toni::rpc::RpcData::from_serialize(&__result)
+                            .map_err(|e| toni::rpc::RpcError::Internal(e.to_string()))?;
+                        Ok(Some(__data))
+                    }
+                }
             }
         })
         .collect();
@@ -80,9 +93,10 @@ fn generate_rpc_controller_impl(
         .iter()
         .map(|(pattern, method)| {
             let method_name = &method.sig.ident;
+            let payload_expr = typed_payload_expr(method);
             quote! {
                 #pattern => {
-                    self.#method_name(data, context).await?;
+                    self.#method_name(#payload_expr, context).await?;
                     Ok(None)
                 }
             }
@@ -94,7 +108,7 @@ fn generate_rpc_controller_impl(
     for item in impl_def.items.iter_mut() {
         if let syn::ImplItem::Fn(method) = item {
             method.attrs.retain(|attr| {
-                !attr.path().is_ident("message_pattern") && !attr.path().is_ident("event_pattern")
+                !attr_is(attr, "message_pattern") && !attr_is(attr, "event_pattern")
             });
         }
     }
@@ -178,11 +192,70 @@ fn check_event_return_type(method: &syn::ImplItemFn) -> Result<()> {
 
 fn extract_pattern_attr(attrs: &[Attribute], name: &str) -> Option<String> {
     for attr in attrs {
-        if attr.path().is_ident(name) {
+        if attr_is(attr, name) {
             if let Ok(lit) = attr.parse_args::<LitStr>() {
                 return Some(lit.value());
             }
         }
     }
     None
+}
+
+/// Returns true if the type path ends in `RpcData`.
+fn is_rpc_data(ty: &syn::Type) -> bool {
+    if let syn::Type::Path(tp) = ty {
+        if let Some(seg) = tp.path.segments.last() {
+            return seg.ident == "RpcData";
+        }
+    }
+    false
+}
+
+/// Generates the expression passed as the first non-self argument to the handler.
+///
+/// If the declared parameter type is `RpcData` (or a path ending in it), the
+/// raw `data` value is forwarded directly.  Otherwise, the payload is
+/// deserialized into the declared type so handlers can use concrete structs.
+fn typed_payload_expr(method: &syn::ImplItemFn) -> proc_macro2::TokenStream {
+    let payload_ty = method.sig.inputs.iter().find_map(|arg| {
+        if let syn::FnArg::Typed(pt) = arg {
+            Some(pt.ty.as_ref())
+        } else {
+            None
+        }
+    });
+
+    match payload_ty {
+        Some(ty) if !is_rpc_data(ty) => quote! {
+            data.parse::<#ty>().map_err(|e| toni::rpc::RpcError::Internal(e.to_string()))?
+        },
+        _ => quote! { data },
+    }
+}
+
+/// Returns true when a `#[message_pattern]` handler's `Ok` arm contains `RpcData`.
+///
+/// Handlers that return `Result<RpcData, RpcError>` are forwarded as-is.
+/// Handlers that return `Result<T, RpcError>` for any other T are serialized
+/// via `RpcData::from_serialize`.
+fn returns_rpc_data(method: &syn::ImplItemFn) -> bool {
+    let syn::ReturnType::Type(_, ty) = &method.sig.output else {
+        return true;
+    };
+    let syn::Type::Path(tp) = ty.as_ref() else {
+        return true;
+    };
+    let Some(seg) = tp.path.segments.last() else {
+        return true;
+    };
+    if seg.ident != "Result" {
+        return true;
+    }
+    let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+        return true;
+    };
+    let Some(syn::GenericArgument::Type(inner)) = args.args.first() else {
+        return true;
+    };
+    is_rpc_data(inner)
 }

@@ -112,6 +112,8 @@ impl RpcAdapter for NatsAdapter {
                         panic!("[NatsAdapter] Failed to subscribe to {} — {}", pattern, e)
                     });
 
+                println!("[NatsAdapter] Subscribed to {}", pattern);
+
                 handles.push(tokio::spawn(async move {
                     while let Some(msg) = subscriber.next().await {
                         let client = client.clone();

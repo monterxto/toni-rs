@@ -68,6 +68,7 @@ use crate::{
         get_marker_params::MarkerParam,
     },
     shared::{
+        attr_is,
         dependency_info::DependencyInfo,
         lifecycle_hooks::{LifecycleHooks, detect_lifecycle_hooks, strip_lifecycle_attrs},
         metadata_info::MetadataInfo,
@@ -254,13 +255,13 @@ fn generate_controller_wrappers(
 
 fn find_http_method_attr(attrs: &[Attribute]) -> Option<&Attribute> {
     attrs.iter().find(|attr| {
-        attr.path().is_ident("get")
-            || attr.path().is_ident("post")
-            || attr.path().is_ident("put")
-            || attr.path().is_ident("delete")
-            || attr.path().is_ident("patch")
-            || attr.path().is_ident("head")
-            || attr.path().is_ident("options")
+        attr_is(attr, "get")
+            || attr_is(attr, "post")
+            || attr_is(attr, "put")
+            || attr_is(attr, "delete")
+            || attr_is(attr, "patch")
+            || attr_is(attr, "head")
+            || attr_is(attr, "options")
     })
 }
 
@@ -279,7 +280,7 @@ fn get_metadata_exprs(attrs: &[Attribute]) -> Result<Vec<TokenStream>> {
     let mut metadata_exprs = Vec::new();
 
     for attr in attrs {
-        if attr.path().is_ident("set_metadata") {
+        if attr_is(attr, "set_metadata") {
             let expr: syn::Expr = attr.parse_args()?;
             metadata_exprs.push(quote! { #expr });
         }
