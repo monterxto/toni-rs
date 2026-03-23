@@ -28,13 +28,15 @@ use toni::{RpcAdapter, RpcContext, RpcData, RpcError, RpcMessageCallbacks};
 /// Fire-and-forget events (no `id`, or handlers declared with `#[event_pattern]`)
 /// produce no response on the wire.
 pub struct TcpAdapter {
+    host: String,
     port: u16,
     callbacks: Option<Arc<RpcMessageCallbacks>>,
 }
 
 impl TcpAdapter {
-    pub fn new(port: u16) -> Self {
+    pub fn new(host: impl Into<String>, port: u16) -> Self {
         Self {
+            host: host.into(),
             port,
             callbacks: None,
         }
@@ -48,6 +50,7 @@ impl RpcAdapter for TcpAdapter {
     }
 
     fn create(&mut self) -> Result<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> {
+        let host = self.host.clone();
         let port = self.port;
         let callbacks = self
             .callbacks
@@ -55,11 +58,12 @@ impl RpcAdapter for TcpAdapter {
             .expect("bind() must be called before create()");
 
         Ok(Box::pin(async move {
-            let listener = TcpListener::bind(format!("0.0.0.0:{}", port))
+            let addr = format!("{}:{}", host, port);
+            let listener = TcpListener::bind(&addr)
                 .await
-                .unwrap_or_else(|e| panic!("TcpAdapter: failed to bind :{} — {}", port, e));
+                .unwrap_or_else(|e| panic!("TcpAdapter: failed to bind {} — {}", addr, e));
 
-            println!("[TcpAdapter] Listening on :{}", port);
+            println!("[TcpAdapter] Listening on {}", addr);
 
             loop {
                 match listener.accept().await {
