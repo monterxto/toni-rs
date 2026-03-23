@@ -4,6 +4,8 @@ use bytes::Bytes;
 use tokio::sync::OnceCell;
 use toni::{async_trait, RpcClientError, RpcClientTransport, RpcData};
 
+use crate::IntoNatsServers;
+
 /// NATS transport for [`RpcClient`].
 ///
 /// Connections are established lazily on the first [`send`] or [`emit`] call so
@@ -23,15 +25,15 @@ use toni::{async_trait, RpcClientError, RpcClientTransport, RpcData};
 /// [`send`]: NatsClientTransport::send
 /// [`emit`]: NatsClientTransport::emit
 pub struct NatsClientTransport {
-    url: String,
+    servers: Vec<String>,
     timeout: Duration,
     client: OnceCell<async_nats::Client>,
 }
 
 impl NatsClientTransport {
-    pub fn new(url: impl Into<String>) -> Self {
+    pub fn new(servers: impl IntoNatsServers) -> Self {
         Self {
-            url: url.into(),
+            servers: servers.into_servers(),
             timeout: Duration::from_secs(5),
             client: OnceCell::new(),
         }
@@ -44,10 +46,10 @@ impl NatsClientTransport {
     }
 
     async fn get_or_connect(&self) -> Result<&async_nats::Client, RpcClientError> {
-        let url = self.url.clone();
+        let servers = self.servers.clone();
         self.client
             .get_or_try_init(|| async move {
-                async_nats::connect(&url)
+                async_nats::connect(servers)
                     .await
                     .map_err(|e| RpcClientError::Transport(e.to_string()))
             })

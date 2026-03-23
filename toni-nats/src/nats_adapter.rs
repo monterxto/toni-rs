@@ -7,6 +7,8 @@ use bytes::Bytes;
 use futures::StreamExt;
 use toni::{RpcAdapter, RpcContext, RpcData, RpcError, RpcMessageCallbacks};
 
+use crate::IntoNatsServers;
+
 /// NATS transport adapter for the Toni RPC gateway.
 ///
 /// Subscribes once per pattern. Each NATS subject maps directly to a handler
@@ -38,15 +40,15 @@ use toni::{RpcAdapter, RpcContext, RpcData, RpcError, RpcMessageCallbacks};
 /// nats pub order.shipped '{"order_id":1001}'
 /// ```
 pub struct NatsAdapter {
-    url: String,
+    servers: Vec<String>,
     patterns: Vec<String>,
     callbacks: Option<Arc<RpcMessageCallbacks>>,
 }
 
 impl NatsAdapter {
-    pub fn new(url: impl Into<String>) -> Self {
+    pub fn new(servers: impl IntoNatsServers) -> Self {
         Self {
-            url: url.into(),
+            servers: servers.into_servers(),
             patterns: Vec::new(),
             callbacks: None,
         }
@@ -61,7 +63,7 @@ impl RpcAdapter for NatsAdapter {
     }
 
     fn create(&mut self) -> Result<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> {
-        let url = self.url.clone();
+        let servers = self.servers.clone();
         let patterns = std::mem::take(&mut self.patterns);
         let callbacks = self
             .callbacks
@@ -69,21 +71,21 @@ impl RpcAdapter for NatsAdapter {
             .expect("bind() must be called before create()");
 
         Ok(Box::pin(async move {
-            let url_for_log = url.clone();
+            let servers_for_log = servers.join(", ");
             // Retry until the server is reachable so a slow-starting NATS
             // container doesn't kill the whole process on startup.
             // event_callback fires on the real TCP handshake, not when connect() returns.
             let client = async_nats::ConnectOptions::new()
                 .retry_on_initial_connect()
                 .event_callback(move |event| {
-                    let url = url_for_log.clone();
+                    let servers = servers_for_log.clone();
                     async move {
                         match event {
                             async_nats::Event::Connected => {
-                                println!("[NatsAdapter] Connected to {}", url)
+                                println!("[NatsAdapter] Connected to {}", servers)
                             }
                             async_nats::Event::Disconnected => {
-                                eprintln!("[NatsAdapter] Disconnected from {}", url)
+                                eprintln!("[NatsAdapter] Disconnected from {}", servers)
                             }
                             async_nats::Event::ServerError(e) => {
                                 eprintln!("[NatsAdapter] Server error: {}", e)
@@ -95,9 +97,11 @@ impl RpcAdapter for NatsAdapter {
                         }
                     }
                 })
-                .connect(&url)
+                .connect(servers.clone())
                 .await
-                .unwrap_or_else(|e| panic!("[NatsAdapter] Failed to connect to {} — {}", url, e));
+                .unwrap_or_else(|e| {
+                    panic!("[NatsAdapter] Failed to connect to {} — {}", servers.join(", "), e)
+                });
 
             let mut handles = Vec::new();
 
