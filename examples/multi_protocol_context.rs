@@ -1,23 +1,27 @@
-//! Multi-Protocol Execution Context Examples
+//! Writing guards and interceptors that work across HTTP, WebSocket, and RPC
 //!
-//! Demonstrates writing guards and interceptors that work across HTTP, WebSocket,
-//! and RPC protocols using Toni's unified Context.
+//! toni routes all three protocols through a unified Context. Guards and
+//! interceptors receive the same type regardless of protocol — they switch
+//! on `context.protocol_type()` to extract the protocol-specific data they need.
+//!
+//! Run with:  cargo run --example multi_protocol_context
 
 use std::collections::HashMap;
 use toni::{
-    Context, Protocol, ProtocolType, RpcContext, RpcData, WsClient, WsHandshake, WsMessage,
+    Body, Context, HttpRequest, ProtocolType, RpcContext, RpcData, WsClient, WsMessage,
 };
+use toni::websocket::WsHandshake;
 
-// ============================================================================
-// Universal Guards
-// ============================================================================
+// ---- universal auth guard ----------------------------------------------------
+//
+// HTTP:      Bearer token in Authorization header
+// WebSocket: token query param in the upgrade handshake
+// RPC:       authorization metadata key
 
-/// Auth guard works across all protocols by extracting tokens from protocol-specific locations
-pub struct UniversalAuthGuard;
+struct UniversalAuthGuard;
 
 impl UniversalAuthGuard {
-    pub fn can_activate(&self, context: &Context) -> bool {
-        // HTTP uses Bearer tokens in headers, WebSocket uses query params, RPC uses metadata
+    fn can_activate(&self, context: &Context) -> bool {
         let token = match context.protocol_type() {
             ProtocolType::Http => {
                 let (request, _) = context.switch_to_http().expect("HTTP context");
@@ -30,34 +34,29 @@ impl UniversalAuthGuard {
                 client.handshake.query.get("token").map(|s| s.as_str())
             }
             ProtocolType::Rpc => {
-                let (_, rpc_context) = context.switch_to_rpc().expect("RPC context");
-                rpc_context.get_metadata("authorization")
+                let (_, rpc_ctx) = context.switch_to_rpc().expect("RPC context");
+                rpc_ctx.get_metadata("authorization")
             }
         };
 
-        token.map_or(false, |t| self.validate_token(t))
-    }
-
-    fn validate_token(&self, token: &str) -> bool {
-        token == "valid-secret-token"
+        token.map_or(false, |t| t == "valid-secret")
     }
 }
 
-// ============================================================================
-// Universal Interceptors
-// ============================================================================
-pub struct LoggingInterceptor;
+// ---- universal logging interceptor -------------------------------------------
+
+struct LoggingInterceptor;
 
 impl LoggingInterceptor {
-    pub fn log_request(&self, context: &Context) {
+    fn log_request(&self, context: &Context) {
         match context.protocol_type() {
             ProtocolType::Http => {
-                let (request, _) = context.switch_to_http().unwrap();
+                let (req, _) = context.switch_to_http().unwrap();
                 println!(
-                    "[HTTP] {} {} from {:?}",
-                    request.method,
-                    request.uri,
-                    request.header("user-agent")
+                    "[HTTP]      {} {} (agent: {:?})",
+                    req.method,
+                    req.uri,
+                    req.header("user-agent")
                 );
             }
             ProtocolType::WebSocket => {
@@ -68,140 +67,64 @@ impl LoggingInterceptor {
                 );
             }
             ProtocolType::Rpc => {
-                let (data, rpc_context) = context.switch_to_rpc().unwrap();
-                println!("[RPC] pattern='{}' data={:?}", rpc_context.pattern, data);
+                let (data, rpc_ctx) = context.switch_to_rpc().unwrap();
+                println!("[RPC]       pattern='{}' data={:?}", rpc_ctx.pattern, data);
             }
         }
     }
 }
 
-/// Rate limiter extracts client identifiers from protocol-specific sources
-pub struct RateLimitGuard {
-    _max_requests: u32,
-}
-
-impl RateLimitGuard {
-    pub fn new(max_requests: u32) -> Self {
-        Self {
-            _max_requests: max_requests,
-        }
-    }
-
-    pub fn can_activate(&self, context: &Context) -> bool {
-        let client_id = match context.protocol_type() {
-            ProtocolType::Http => {
-                let (request, _) = context.switch_to_http().expect("HTTP context");
-                request
-                    .header("x-client-id")
-                    .unwrap_or("anonymous")
-                    .to_string()
-            }
-            ProtocolType::WebSocket => {
-                let (client, _, _) = context.switch_to_ws().expect("WebSocket context");
-                client.id.clone()
-            }
-            ProtocolType::Rpc => {
-                let (_, rpc_context) = context.switch_to_rpc().expect("RPC context");
-                rpc_context
-                    .get_metadata("client-id")
-                    .unwrap_or("anonymous")
-                    .to_string()
-            }
-        };
-
-        self.check_rate_limit(&client_id)
-    }
-
-    fn check_rate_limit(&self, _client_id: &str) -> bool {
-        // Stub: real implementation would check Redis/in-memory store
-        true
-    }
-}
-
-// ============================================================================
-// Example Usage
-// ============================================================================
+// ---- main --------------------------------------------------------------------
 
 fn main() {
-    println!("=== Multi-Protocol Context Examples ===\n");
-
-    println!("--- HTTP Protocol ---");
-    let http_protocol = Protocol::http(create_mock_http_request());
-    let http_context = create_mock_context(http_protocol);
-
-    let auth_guard = UniversalAuthGuard;
-    println!("HTTP Auth: {}", auth_guard.can_activate(&http_context));
-
+    let guard = UniversalAuthGuard;
     let logger = LoggingInterceptor;
-    logger.log_request(&http_context);
 
-    let rate_limiter = RateLimitGuard::new(100);
-    println!(
-        "HTTP Rate Limit: {}\n",
-        rate_limiter.can_activate(&http_context)
-    );
+    // HTTP — valid token in Authorization header
+    println!("--- HTTP ---");
+    let http_ctx = Context::from_request(HttpRequest {
+        method: "GET".to_string(),
+        uri: "/api/orders".to_string(),
+        headers: vec![
+            ("authorization".to_string(), "Bearer valid-secret".to_string()),
+            ("user-agent".to_string(), "example/1.0".to_string()),
+        ],
+        body: Body::Text(String::new()),
+        query_params: HashMap::new(),
+        path_params: HashMap::new(),
+        extensions: Default::default(),
+    });
+    logger.log_request(&http_ctx);
+    println!("auth: {}\n", guard.can_activate(&http_ctx));
 
-    println!("--- WebSocket Protocol ---");
-    let ws_protocol = Protocol::websocket(
-        create_mock_ws_client(),
+    // WebSocket — token in handshake query params
+    println!("--- WebSocket ---");
+    let ws_ctx = Context::from_websocket(
+        WsClient {
+            id: "client-123".to_string(),
+            handshake: WsHandshake {
+                query: HashMap::from([("token".to_string(), "valid-secret".to_string())]),
+                headers: HashMap::new(),
+                remote_addr: Some("127.0.0.1:8080".to_string()),
+            },
+            extensions: Default::default(),
+        },
         WsMessage::text(r#"{"action":"subscribe","channel":"updates"}"#),
         "message",
+        None,
     );
-    let ws_context = create_mock_context(ws_protocol);
+    logger.log_request(&ws_ctx);
+    println!("auth: {}\n", guard.can_activate(&ws_ctx));
 
-    println!("WebSocket Auth: {}", auth_guard.can_activate(&ws_context));
-    logger.log_request(&ws_context);
-    println!(
-        "WebSocket Rate Limit: {}",
-        rate_limiter.can_activate(&ws_context)
+    // RPC — authorization in metadata
+    println!("--- RPC ---");
+    let rpc_ctx = Context::from_rpc(
+        RpcData::json(serde_json::json!({"order_id": 123})),
+        RpcContext::new("order.process")
+            .with_metadata("authorization", "valid-secret")
+            .with_metadata("client-id", "service-456"),
+        None,
     );
-
-    println!("\n--- RPC Protocol ---");
-    let rpc_protocol = Protocol::rpc(
-        RpcData::json(serde_json::json!({"action": "process_order", "order_id": 123})),
-        create_mock_rpc_context(),
-    );
-    let rpc_context = create_mock_context(rpc_protocol);
-
-    println!("RPC Auth: {}", auth_guard.can_activate(&rpc_context));
-    logger.log_request(&rpc_context);
-    println!(
-        "RPC Rate Limit: {}",
-        rate_limiter.can_activate(&rpc_context)
-    );
-}
-
-// ============================================================================
-// Mock Helpers (for demonstration only)
-// ============================================================================
-
-fn create_mock_http_request() -> toni::http_helpers::HttpRequest {
-    // Mock implementation - in real usage this comes from the HTTP server
-    unimplemented!("Mock HTTP request for example purposes")
-}
-
-fn create_mock_ws_client() -> WsClient {
-    let mut query = HashMap::new();
-    query.insert("token".to_string(), "valid-secret-token".to_string());
-
-    WsClient {
-        id: "client-123".to_string(),
-        handshake: WsHandshake {
-            query,
-            headers: HashMap::new(),
-            remote_addr: Some("127.0.0.1:8080".to_string()),
-        },
-        extensions: Default::default(),
-    }
-}
-
-fn create_mock_rpc_context() -> RpcContext {
-    RpcContext::new("order.process")
-        .with_metadata("authorization", "valid-secret-token")
-        .with_metadata("client-id", "service-456")
-}
-
-fn create_mock_context(_protocol: Protocol) -> Context {
-    // Mock implementation - in real usage this is created by the framework
-    unimplemented!("Mock context for example purposes")
+    logger.log_request(&rpc_ctx);
+    println!("auth: {}", guard.can_activate(&rpc_ctx));
 }
