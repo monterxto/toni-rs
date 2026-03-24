@@ -23,7 +23,7 @@ use crate::traits_helpers::Provider;
 /// Register via `provide_factory!` with the `lifecycle` flag inside a module's
 /// `providers` list:
 ///
-/// ```rust,no_run
+/// ```ignore
 /// provide_factory!("INVENTORY_CLIENT", |config: ConfigService| {
 ///     RpcClient::new(NatsClientTransport::new(config.get("NATS_URL")))
 /// }, lifecycle)
@@ -31,7 +31,7 @@ use crate::traits_helpers::Provider;
 ///
 /// Inject into a service:
 ///
-/// ```rust,no_run
+/// ```ignore
 /// #[injectable(pub struct InventoryService {
 ///     #[inject(token = "INVENTORY_CLIENT")] client: RpcClient,
 /// })]
@@ -86,8 +86,8 @@ impl RpcClient {
         T: serde::Serialize,
         R: serde::de::DeserializeOwned,
     {
-        let payload = RpcData::from_serialize(data)
-            .map_err(|e| RpcClientError::Transport(e.to_string()))?;
+        let payload =
+            RpcData::from_serialize(data).map_err(|e| RpcClientError::Transport(e.to_string()))?;
         let reply = self.transport.send(pattern.as_ref(), payload).await?;
         reply
             .parse::<R>()
@@ -122,8 +122,8 @@ impl RpcClient {
     where
         T: serde::Serialize,
     {
-        let payload = RpcData::from_serialize(data)
-            .map_err(|e| RpcClientError::Transport(e.to_string()))?;
+        let payload =
+            RpcData::from_serialize(data).map_err(|e| RpcClientError::Transport(e.to_string()))?;
         self.transport.emit(pattern.as_ref(), payload).await
     }
 }

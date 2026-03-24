@@ -66,21 +66,21 @@ pub trait InterceptorNext: Send {
 /// #[async_trait]
 /// impl Interceptor for CacheInterceptor {
 ///     async fn intercept(&self, context: &mut Context, next: Box<dyn InterceptorNext>) {
-///         let key = format!("{}", context.path());
+///         let key = context.switch_to_http()
+///             .map(|(req, _)| req.uri.clone())
+///             .unwrap_or_default();
 ///
-///         // Check cache
 ///         if let Some(cached) = self.cache.get(&key) {
 ///             context.set_response(Box::new(cached));
 ///             // Skip handler execution by NOT calling next.run()!
 ///             return;
 ///         }
 ///
-///         // Not cached, execute handler
 ///         next.run(context).await;
 ///
-///         // Store in cache
-///         let response = context.get_response().clone();
-///         self.cache.set(key, response);
+///         if let Some(response) = context.get_response_ref() {
+///             self.cache.set(key, response.clone());
+///         }
 ///     }
 /// }
 /// ```

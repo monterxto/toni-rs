@@ -1,14 +1,10 @@
-//! End-to-End test demonstrating ConfigModule with real HTTP server and DI injection
-//!
-//! This test spins up an actual Toni+Axum server, injects ConfigService into a controller,
-//! and makes HTTP requests to verify the configuration is accessible.
+mod common;
 
+use common::TestServer;
 use serial_test::serial;
 use toni::{controller, get, injectable, module, Body as ToniBody, HttpRequest};
-use toni_axum::AxumAdapter;
 use toni_config::{Config, ConfigModule, ConfigService};
 
-// Application configuration
 #[derive(Config, Clone)]
 struct AppConfig {
     #[env("APP_NAME")]
@@ -28,7 +24,6 @@ struct AppConfig {
     pub max_connections: u32,
 }
 
-// Service that accesses config via ConfigService
 #[injectable(
      pub struct AppService {
         #[inject]
@@ -50,12 +45,10 @@ impl AppService {
     }
 
     fn get_full_config(&self) -> AppConfig {
-        let cfg: AppConfig = self.config.get();
-        cfg
+        self.config.get()
     }
 }
 
-// Controller that uses the service
 #[controller(
     "/api",
     pub struct AppController {
@@ -66,19 +59,17 @@ impl AppService {
 impl AppController {
     #[get("/info")]
     fn get_info(&self, _req: HttpRequest) -> ToniBody {
-        let info: String = self.service.get_app_info();
-        ToniBody::Text(info)
+        ToniBody::Text(self.service.get_app_info())
     }
 
     #[get("/database")]
     fn get_database(&self, _req: HttpRequest) -> ToniBody {
-        let db_info: String = self.service.get_database_info();
-        ToniBody::Text(db_info)
+        ToniBody::Text(self.service.get_database_info())
     }
 
     #[get("/config")]
     fn get_config(&self, _req: HttpRequest) -> ToniBody {
-        let config: AppConfig = self.service.get_full_config();
+        let config = self.service.get_full_config();
         let json = serde_json::json!({
             "app_name": config.app_name,
             "version": config.version,
@@ -89,143 +80,91 @@ impl AppController {
     }
 }
 
-// Application module
 #[module(
-    imports: [ConfigModule::<AppConfig>::from_env().unwrap()],  // ✨ Can call methods with args!
+    imports: [ConfigModule::<AppConfig>::from_env().unwrap()],
     controllers: [AppController],
     providers: [AppService],
 )]
 impl AppModule {}
 
-#[tokio::test]
 #[serial]
-async fn test_config_injection_e2e() {
-    use std::time::Duration;
-    use toni::toni_factory::ToniFactory;
-
-    // Set up environment variables
+#[tokio_localset_test::localset_test]
+async fn config_read_from_env_vars() {
     std::env::set_var("APP_NAME", "E2ETestApp");
     std::env::set_var("APP_VERSION", "2.0.0");
     std::env::set_var("DATABASE_URL", "postgres://localhost/e2e_test");
     std::env::set_var("MAX_CONNECTIONS", "50");
 
-    let port = 28080;
-    let local = tokio::task::LocalSet::new();
+    let server = TestServer::start(AppModule::module_definition()).await;
 
-    // Spawn server in background
-    local.spawn_local(async move {
-        let mut app = ToniFactory::create(AppModule::module_definition()).await;
-        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
-        let _ = app.start().await;
-    });
+    let resp = server
+        .client()
+        .get(server.url("/api/info"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.text().await.unwrap(), "E2ETestApp v2.0.0");
 
-    // Run tests within the LocalSet
-    local
-        .run_until(async move {
-            // Give the server time to start
-            tokio::time::sleep(Duration::from_millis(500)).await;
+    let resp = server
+        .client()
+        .get(server.url("/api/database"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.text().await.unwrap(),
+        "DB: postgres://localhost/e2e_test (max 50 connections)"
+    );
 
-            let client = reqwest::Client::new();
+    let resp = server
+        .client()
+        .get(server.url("/api/config"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let json: serde_json::Value = resp.json().await.unwrap();
+    assert_eq!(json["app_name"], "E2ETestApp");
+    assert_eq!(json["version"], "2.0.0");
+    assert_eq!(json["database_url"], "postgres://localhost/e2e_test");
+    assert_eq!(json["max_connections"], 50);
 
-            // Test 1: Get app info
-            let response = client
-                .get(format!("http://127.0.0.1:{}/api/info", port))
-                .send()
-                .await
-                .expect("Failed to get app info");
-
-            assert_eq!(response.status(), 200);
-            let body = response.text().await.unwrap();
-            assert_eq!(body, "E2ETestApp v2.0.0");
-
-            // Test 2: Get database info
-            let response = client
-                .get(format!("http://127.0.0.1:{}/api/database", port))
-                .send()
-                .await
-                .expect("Failed to get database info");
-
-            assert_eq!(response.status(), 200);
-            let body = response.text().await.unwrap();
-            assert_eq!(
-                body,
-                "DB: postgres://localhost/e2e_test (max 50 connections)"
-            );
-
-            // Test 3: Get full config as JSON
-            let response = client
-                .get(format!("http://127.0.0.1:{}/api/config", port))
-                .send()
-                .await
-                .expect("Failed to get config");
-
-            assert_eq!(response.status(), 200);
-            let json: serde_json::Value = response.json().await.expect("Failed to parse JSON");
-            assert_eq!(json["app_name"], "E2ETestApp");
-            assert_eq!(json["version"], "2.0.0");
-            assert_eq!(json["database_url"], "postgres://localhost/e2e_test");
-            assert_eq!(json["max_connections"], 50);
-        })
-        .await;
-
-    // Clean up
     std::env::remove_var("APP_NAME");
     std::env::remove_var("APP_VERSION");
     std::env::remove_var("DATABASE_URL");
     std::env::remove_var("MAX_CONNECTIONS");
 }
 
-#[tokio::test]
 #[serial]
-async fn test_config_with_defaults_e2e() {
-    use std::time::Duration;
-    use toni::toni_factory::ToniFactory;
-
-    // Don't set any env vars - should use defaults
+#[tokio_localset_test::localset_test]
+async fn config_falls_back_to_defaults() {
     std::env::remove_var("APP_NAME");
     std::env::remove_var("APP_VERSION");
     std::env::remove_var("DATABASE_URL");
     std::env::remove_var("MAX_CONNECTIONS");
 
-    let port = 28081;
-    let local = tokio::task::LocalSet::new();
+    let server = TestServer::start(AppModule::module_definition()).await;
 
-    // Spawn server in background
-    local.spawn_local(async move {
-        let mut app = ToniFactory::create(AppModule::module_definition()).await;
-        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
-        let _ = app.start().await;
-    });
+    let resp = server
+        .client()
+        .get(server.url("/api/info"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.text().await.unwrap(), "ConfigTestApp v1.0.0");
 
-    // Run tests within the LocalSet
-    local
-        .run_until(async move {
-            // Give the server time to start
-            tokio::time::sleep(Duration::from_millis(500)).await;
-
-            let client = reqwest::Client::new();
-
-            // Test with default values
-            let response = client
-                .get(format!("http://127.0.0.1:{}/api/info", port))
-                .send()
-                .await
-                .expect("Failed to get app info");
-
-            assert_eq!(response.status(), 200);
-            let body = response.text().await.unwrap();
-            assert_eq!(body, "ConfigTestApp v1.0.0"); // Default values
-
-            // Test database info with defaults
-            let response = client
-                .get(format!("http://127.0.0.1:{}/api/database", port))
-                .send()
-                .await
-                .expect("Failed to get database info");
-
-            assert_eq!(response.status(), 200);
-            let body = response.text().await.unwrap();
-            assert_eq!(body, "DB: sqlite://test.db (max 10 connections)");
-        })
-        .await;
+    let resp = server
+        .client()
+        .get(server.url("/api/database"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.text().await.unwrap(),
+        "DB: sqlite://test.db (max 10 connections)"
+    );
 }
