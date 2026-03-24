@@ -18,6 +18,10 @@ chrono = "0.4"
 anyhow = "1.0"
 
 [[example]]
+name = "hello_world"
+path = "hello_world.rs"
+
+[[example]]
 name = "pipes_complete_guide"
 path = "pipes_complete_guide.rs"
 
