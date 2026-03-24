@@ -171,25 +171,48 @@ async fn provider_factory_async_with_deps() {
 #[serial]
 #[tokio_localset_test::localset_test]
 async fn provider_alias_creates_alternate_token() {
-    #[injectable(pub struct ConfigService {})]
+    #[injectable(pub struct ConfigService {
+        env: String,
+    })]
     impl ConfigService {
         pub fn new() -> Self {
-            Self {}
+            Self { env: "production".to_string() }
+        }
+        pub fn get_env(&self) -> &str {
+            &self.env
         }
     }
 
-    #[controller("", pub struct TestController {})]
+    // Injects ConfigService twice: once by type, once through the "Config" alias.
+    // If the alias registration doesn't create a working resolution path,
+    // DI startup panics and the test never reaches the HTTP assertion.
+    #[injectable(pub struct VerifyService {
+        #[inject]
+        by_type: ConfigService,
+        #[inject("Config")]
+        by_alias: ConfigService,
+    })]
+    impl VerifyService {
+        pub fn report(&self) -> String {
+            format!("{}|{}", self.by_type.get_env(), self.by_alias.get_env())
+        }
+    }
+
+    #[controller("", pub struct TestController {
+        #[inject] verify: VerifyService,
+    })]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text("ok".to_string())
+            ToniBody::Text(self.verify.report())
         }
     }
 
     #[module(
         providers: [
             ConfigService,
-            provider_alias!("Config", ConfigService)
+            provider_alias!("Config", ConfigService),
+            VerifyService,
         ],
         controllers: [TestController]
     )]
@@ -203,30 +226,51 @@ async fn provider_alias_creates_alternate_token() {
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
+    assert_eq!(resp.text().await.unwrap(), "production|production");
 }
 
 #[serial]
 #[tokio_localset_test::localset_test]
 async fn provider_token_for_custom_types() {
-    #[injectable(pub struct DatabaseService {})]
+    #[injectable(pub struct DatabaseService {
+        host: String,
+    })]
     impl DatabaseService {
         pub fn new() -> Self {
-            Self {}
+            Self { host: "localhost:5432".to_string() }
+        }
+        pub fn get_host(&self) -> &str {
+            &self.host
         }
     }
 
-    #[controller("", pub struct TestController {})]
+    // Injects DatabaseService by its "PRIMARY_DB" token.
+    // If token registration doesn't wire the resolution path, startup panics.
+    #[injectable(pub struct AppService {
+        #[inject("PRIMARY_DB")]
+        primary: DatabaseService,
+    })]
+    impl AppService {
+        pub fn get_info(&self) -> String {
+            self.primary.get_host().to_string()
+        }
+    }
+
+    #[controller("", pub struct TestController {
+        #[inject] app: AppService,
+    })]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text("ok".to_string())
+            ToniBody::Text(self.app.get_info())
         }
     }
 
     #[module(
         providers: [
             DatabaseService,
-            provider_token!("PRIMARY_DB", DatabaseService)
+            provider_token!("PRIMARY_DB", DatabaseService),
+            AppService,
         ],
         controllers: [TestController]
     )]
@@ -240,6 +284,7 @@ async fn provider_token_for_custom_types() {
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
+    assert_eq!(resp.text().await.unwrap(), "localhost:5432");
 }
 
 #[serial]
@@ -275,11 +320,27 @@ async fn all_provider_variants_work_together() {
         }
     }
 
-    #[controller("", pub struct TestController {})]
+    // Consumes one alias and one token to prove they're injectable alongside
+    // value/factory providers in the same module.
+    #[injectable(pub struct AliasTokenConsumer {
+        #[inject("Config")]
+        config_via_alias: ConfigService,
+        #[inject("PRIMARY_CONFIG")]
+        config_via_token: ConfigService,
+    })]
+    impl AliasTokenConsumer {
+        pub fn report(&self) -> String {
+            format!("{}|{}", self.config_via_alias.get_env(), self.config_via_token.get_env())
+        }
+    }
+
+    #[controller("", pub struct TestController {
+        #[inject] consumer: AliasTokenConsumer,
+    })]
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text("ok".to_string())
+            ToniBody::Text(self.consumer.report())
         }
     }
 
@@ -308,6 +369,7 @@ async fn all_provider_variants_work_together() {
             provider_alias!("APP_PORT", "PORT"),
             provider_token!("PRIMARY_CONFIG", ConfigService),
             provider_token!("SECONDARY_LOGGER", LoggerService),
+            AliasTokenConsumer,
         ],
         controllers: [TestController]
     )]
@@ -321,4 +383,5 @@ async fn all_provider_variants_work_together() {
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
+    assert_eq!(resp.text().await.unwrap(), "production|production");
 }
