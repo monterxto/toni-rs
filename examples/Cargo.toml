@@ -27,6 +27,10 @@ name = "config_module"
 path = "config_module.rs"
 
 [[example]]
+name = "gateway_http_bridge"
+path = "gateway_http_bridge.rs"
+
+[[example]]
 name = "pipes_complete_guide"
 path = "pipes_complete_guide.rs"
 
