@@ -1,10 +1,6 @@
-#![allow(dead_code, unused_variables)]
+use toni::{injectable, module, toni_factory::ToniFactory};
 
-use serial_test::serial;
-use toni::{injectable, module, ToniFactory};
-
-#[serial]
-#[tokio_localset_test::localset_test]
+#[tokio::test]
 async fn valid_singleton_injects_singleton() {
     #[injectable(pub struct ServiceA {})]
     impl ServiceA {}
@@ -18,12 +14,11 @@ async fn valid_singleton_injects_singleton() {
     #[module(providers: [ServiceA, ServiceB])]
     impl TestModule {}
 
-    let factory = toni::toni_factory::ToniFactory::new();
-    let _app = ToniFactory::create(TestModule::module_definition()).await;
+    let app = ToniFactory::create(TestModule::module_definition()).await;
+    app.get::<ServiceB>().await.expect("ServiceB with ServiceA dep should resolve");
 }
 
-#[serial]
-#[tokio_localset_test::localset_test]
+#[tokio::test]
 async fn valid_request_injects_singleton() {
     #[injectable(pub struct SingletonService {})]
     impl SingletonService {}
@@ -37,12 +32,11 @@ async fn valid_request_injects_singleton() {
     #[module(providers: [SingletonService, RequestService])]
     impl TestModule {}
 
-    let factory = toni::toni_factory::ToniFactory::new();
-    let _app = ToniFactory::create(TestModule::module_definition()).await;
+    let app = ToniFactory::create(TestModule::module_definition()).await;
+    app.get::<RequestService>().await.expect("request-scoped service with singleton dep should resolve");
 }
 
-#[serial]
-#[tokio_localset_test::localset_test]
+#[tokio::test]
 async fn valid_transient_injects_any_scope() {
     #[injectable(pub struct SingletonService {})]
     impl SingletonService {}
@@ -61,11 +55,10 @@ async fn valid_transient_injects_any_scope() {
     #[module(providers: [SingletonService, RequestService, TransientService])]
     impl TestModule {}
 
-    let factory = toni::toni_factory::ToniFactory::new();
-    let _app = ToniFactory::create(TestModule::module_definition()).await;
+    let app = ToniFactory::create(TestModule::module_definition()).await;
+    app.get::<TransientService>().await.expect("transient with mixed deps should resolve");
 }
 
-#[serial]
 #[tokio::test]
 #[should_panic(expected = "Scope validation error")]
 async fn singleton_cannot_inject_request_scoped() {
@@ -81,12 +74,10 @@ async fn singleton_cannot_inject_request_scoped() {
     #[module(providers: [RequestService, SingletonService])]
     impl InvalidModule {}
 
-    let factory = toni::toni_factory::ToniFactory::new();
     let _app = ToniFactory::create(InvalidModule::module_definition()).await;
 }
 
-#[serial]
-#[tokio_localset_test::localset_test]
+#[tokio::test]
 async fn singleton_can_inject_transient() {
     #[injectable(scope = "transient", pub struct TransientService {})]
     impl TransientService {}
@@ -100,12 +91,11 @@ async fn singleton_can_inject_transient() {
     #[module(providers: [TransientService, SingletonService])]
     impl TestModule {}
 
-    let factory = toni::toni_factory::ToniFactory::new();
-    let _app = ToniFactory::create(TestModule::module_definition()).await;
+    let app = ToniFactory::create(TestModule::module_definition()).await;
+    app.get::<SingletonService>().await.expect("singleton with transient dep should resolve");
 }
 
-#[serial]
-#[tokio_localset_test::localset_test]
+#[tokio::test]
 async fn request_can_inject_transient() {
     #[injectable(scope = "transient", pub struct TransientService {})]
     impl TransientService {}
@@ -119,12 +109,11 @@ async fn request_can_inject_transient() {
     #[module(providers: [TransientService, RequestService])]
     impl TestModule {}
 
-    let factory = toni::toni_factory::ToniFactory::new();
-    let _app = ToniFactory::create(TestModule::module_definition()).await;
+    let app = ToniFactory::create(TestModule::module_definition()).await;
+    app.get::<RequestService>().await.expect("request-scoped with transient dep should resolve");
 }
 
-#[serial]
-#[tokio_localset_test::localset_test]
+#[tokio::test]
 async fn complex_valid_hierarchy() {
     #[injectable(pub struct BaseService {})]
     impl BaseService {}
@@ -146,11 +135,10 @@ async fn complex_valid_hierarchy() {
     #[module(providers: [BaseService, MiddleService, TopService])]
     impl TestModule {}
 
-    let factory = toni::toni_factory::ToniFactory::new();
-    let _app = ToniFactory::create(TestModule::module_definition()).await;
+    let app = ToniFactory::create(TestModule::module_definition()).await;
+    app.get::<TopService>().await.expect("three-level hierarchy should resolve");
 }
 
-#[serial]
 #[tokio::test]
 #[should_panic(expected = "Scope validation error")]
 async fn explicit_singleton_with_request_fails() {
@@ -166,6 +154,5 @@ async fn explicit_singleton_with_request_fails() {
     #[module(providers: [RequestService, ExplicitSingleton])]
     impl TestModule {}
 
-    let factory = toni::toni_factory::ToniFactory::new();
     let _app = ToniFactory::create(TestModule::module_definition()).await;
 }
