@@ -273,8 +273,7 @@ async fn test_three_level_enhancer_hierarchy() {
             .use_global_interceptors(Arc::new(GlobalInterceptor::new()))
             .use_global_pipes(Arc::new(GlobalPipe::new()));
 
-        // Create application
-        let mut app = ToniFactory::create(TestModule::module_definition()).await;
+        let mut app = factory.create_with(TestModule::module_definition()).await;
         app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
         app.start().await;
     });
