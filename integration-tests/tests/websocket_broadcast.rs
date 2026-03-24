@@ -140,7 +140,6 @@ async fn leave_room_stops_room_messages() {
 
 // DI resolution tests — verify BroadcastModule tokens are correct
 
-#[allow(unused_imports)]
 mod di_tests {
     use serial_test::serial;
     use std::sync::Arc;
