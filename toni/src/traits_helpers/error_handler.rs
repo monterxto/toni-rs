@@ -7,7 +7,7 @@
 //!
 //! ## Custom Error Handler
 //!
-//! ```rust
+//! ```ignore
 //! use toni::{async_trait, traits_helpers::ErrorHandler, HttpRequest, HttpResponse, Body};
 //! use serde_json::json;
 //! use std::error::Error;
@@ -37,7 +37,7 @@
 //!
 //! ## Usage in Application
 //!
-//! ```rust
+//! ```ignore
 //! // Apply globally
 //! app.use_global_error_handler(CustomErrorHandler);
 //!

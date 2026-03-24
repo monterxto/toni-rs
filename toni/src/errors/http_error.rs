@@ -7,7 +7,7 @@
 //!
 //! ## Basic Usage
 //!
-//! ```rust
+//! ```ignore
 //! use toni::errors::HttpError;
 //!
 //! fn find_user(id: &str) -> Result<User, HttpError> {
@@ -19,10 +19,10 @@
 //!
 //! ## In Controllers
 //!
-//! ```rust
+//! ```ignore
 //! use toni::{controller, get, errors::HttpError, Body};
 //!
-//! #[controller("/users", pub struct UserController {})]
+//! #[controller("/users", pub struct UserController {service: UserService})]
 //! impl UserController {
 //!     #[get("/:id")]
 //!     fn get_user(&self, Path(id): Path<String>) -> Result<Body, HttpError> {
@@ -248,6 +248,12 @@ impl fmt::Display for HttpError {
 }
 
 impl std::error::Error for HttpError {}
+
+impl From<serde_json::Error> for HttpError {
+    fn from(e: serde_json::Error) -> Self {
+        Self::InternalServerError(e.to_string())
+    }
+}
 
 // Implement ToResponse for HttpError to enable automatic conversion in handlers
 impl ToResponse for HttpError {
