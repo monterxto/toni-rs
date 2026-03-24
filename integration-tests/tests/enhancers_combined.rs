@@ -54,14 +54,6 @@ impl ExecutionOrder {
     }
 }
 
-fn create_tracker() -> ExecutionOrder {
-    ExecutionOrder::new()
-}
-
-fn track(tracker: &ExecutionOrder, event: &str) {
-    tracker.track(event);
-}
-
 // ============================================================================
 // MIDDLEWARE IMPLEMENTATION
 // ============================================================================
@@ -85,7 +77,7 @@ impl OrderTrackerMiddleware {
 impl Middleware for OrderTrackerMiddleware {
     async fn handle(&self, mut req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
         // Track middleware execution
-        track(&self.tracker, &format!("middleware:{}", self.name));
+        self.tracker.track(&format!("middleware:{}", self.name));
 
         // Add custom header to track middleware execution (using the new headers_mut method!)
         req.headers_mut()
@@ -122,7 +114,7 @@ impl HeaderCheckMiddleware {
 #[async_trait]
 impl Middleware for HeaderCheckMiddleware {
     async fn handle(&self, req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
-        track(&self.tracker, "middleware:header_check");
+        self.tracker.track("middleware:header_check");
 
         // Check if required header exists (using the new has_header method!)
         if !req.has_header(&self.required_header) {
@@ -156,7 +148,7 @@ impl AdminGuard {
 
 impl Guard for AdminGuard {
     fn can_activate(&self, context: &Context) -> bool {
-        track(&self.tracker, "guard:admin");
+        self.tracker.track("guard:admin");
 
         let req = context.take_request();
 
@@ -180,7 +172,7 @@ impl AuthGuard {
 
 impl Guard for AuthGuard {
     fn can_activate(&self, context: &Context) -> bool {
-        track(&self.tracker, "guard:auth");
+        self.tracker.track("guard:auth");
 
         let req = context.take_request();
 
@@ -212,13 +204,13 @@ impl LoggingInterceptor {
 impl Interceptor for LoggingInterceptor {
     async fn intercept(&self, _context: &mut Context, next: Box<dyn InterceptorNext>) {
         // BEFORE handler execution
-        track(&self.tracker, &format!("interceptor:{}:before", self.name));
+        self.tracker.track(&format!("interceptor:{}:before", self.name));
 
         // Execute handler
         next.run(_context).await;
 
         // AFTER handler execution
-        track(&self.tracker, &format!("interceptor:{}:after", self.name));
+        self.tracker.track(&format!("interceptor:{}:after", self.name));
     }
 }
 
@@ -239,7 +231,7 @@ impl ValidationPipe {
 
 impl Pipe for ValidationPipe {
     fn process(&self, context: &mut Context) {
-        track(&self.tracker, "pipe:validation");
+        self.tracker.track("pipe:validation");
 
         let req = context.take_request();
 
@@ -273,7 +265,7 @@ impl TransformPipe {
 
 impl Pipe for TransformPipe {
     fn process(&self, _context: &mut Context) {
-        track(&self.tracker, "pipe:transform");
+        self.tracker.track("pipe:transform");
         // In a real scenario, this would transform DTO data
         // For this test, we just track execution
     }
@@ -289,7 +281,7 @@ impl Pipe for TransformPipe {
 impl TestService {
     pub fn process(&self, message: &str) -> String {
         let tracker = get_global_tracker();
-        track(&tracker, "service:process");
+        tracker.track("service:process");
         format!("Processed: {}", message)
     }
 }
@@ -311,7 +303,7 @@ impl EnhancerController {
     #[get("/protected")]
     fn protected_endpoint(&self, _req: HttpRequest) -> ToniBody {
         let tracker = get_global_tracker();
-        track(&tracker, "controller:protected");
+        tracker.track("controller:protected");
         ToniBody::Text("Protected resource".to_string())
     }
 
@@ -320,7 +312,7 @@ impl EnhancerController {
     #[get("/auth-only")]
     fn auth_only_endpoint(&self, _req: HttpRequest) -> ToniBody {
         let tracker = get_global_tracker();
-        track(&tracker, "controller:auth_only");
+        tracker.track("controller:auth_only");
         ToniBody::Text("Authenticated resource".to_string())
     }
 
@@ -333,7 +325,7 @@ impl EnhancerController {
     #[post("/validate")]
     fn validate_endpoint(&self, _req: HttpRequest) -> ToniBody {
         let tracker = get_global_tracker();
-        track(&tracker, "controller:validate");
+        tracker.track("controller:validate");
         let result = self.service.process("data");
         ToniBody::Text(result)
     }
@@ -342,7 +334,7 @@ impl EnhancerController {
     #[get("/public")]
     fn public_endpoint(&self, _req: HttpRequest) -> ToniBody {
         let tracker = get_global_tracker();
-        track(&tracker, "controller:public");
+        tracker.track("controller:public");
         ToniBody::Text("Public resource".to_string())
     }
 }
@@ -351,18 +343,10 @@ impl EnhancerController {
 // TEST MODULE WITH MIDDLEWARE CONFIGURATION
 // ============================================================================
 
-// We need to store the tracker in the module somehow
-// For this test, we'll use a global static (not ideal for production, but works for testing)
-static mut GLOBAL_TRACKER: Option<ExecutionOrder> = None;
-
-fn set_global_tracker(tracker: ExecutionOrder) {
-    unsafe {
-        GLOBAL_TRACKER = Some(tracker);
-    }
-}
+static GLOBAL_TRACKER: std::sync::OnceLock<ExecutionOrder> = std::sync::OnceLock::new();
 
 fn get_global_tracker() -> ExecutionOrder {
-    unsafe { GLOBAL_TRACKER.clone().expect("Tracker not initialized") }
+    GLOBAL_TRACKER.get_or_init(ExecutionOrder::new).clone()
 }
 
 #[module(
@@ -396,8 +380,8 @@ async fn test_enhancers_execution_order() {
     use toni::toni_factory::ToniFactory;
 
     let port = 29090;
-    let tracker = create_tracker();
-    set_global_tracker(tracker.clone());
+    let tracker = get_global_tracker();
+    tracker.clear();
 
     let local = tokio::task::LocalSet::new();
 
@@ -550,8 +534,8 @@ async fn test_guard_authorization() {
     use toni::toni_factory::ToniFactory;
 
     let port = 29091;
-    let tracker = create_tracker();
-    set_global_tracker(tracker.clone());
+    let tracker = get_global_tracker();
+    tracker.clear();
 
     let local = tokio::task::LocalSet::new();
 
@@ -568,7 +552,7 @@ async fn test_guard_authorization() {
             let client = reqwest::Client::new();
 
             // ================================================================
-            // TEST 1: Auth endpoint without token - should fail
+            // TEST 1: Auth endpoint without token — guard denies
             // ================================================================
             tracker.clear();
 
@@ -579,16 +563,21 @@ async fn test_guard_authorization() {
                 .await
                 .expect("Failed to call auth endpoint");
 
-            // Guard should deny access
-            // Note: Current implementation might return 200 if no guard is attached
-            // This is a limitation we're documenting
-            println!("Test 1 - Auth without token status: {}", response.status());
+            assert_eq!(response.status(), 403, "Guard should deny without Authorization header");
 
             let order = tracker.get_events();
-            println!("Test 1 - Execution order: {:?}", order);
+            assert!(
+                order.contains(&"guard:auth".to_string()),
+                "AuthGuard must have run; got: {:?}",
+                order
+            );
+            assert!(
+                !order.contains(&"controller:auth_only".to_string()),
+                "Controller must not run after guard denial"
+            );
 
             // ================================================================
-            // TEST 2: Auth endpoint with valid token - should succeed
+            // TEST 2: Auth endpoint with Authorization header — guard allows
             // ================================================================
             tracker.clear();
 
@@ -600,79 +589,16 @@ async fn test_guard_authorization() {
                 .await
                 .expect("Failed to call auth endpoint");
 
-            println!("Test 2 - Auth with token status: {}", response.status());
+            assert_eq!(response.status(), 200, "Guard should allow with Authorization header");
+            assert_eq!(response.text().await.unwrap(), "Authenticated resource");
 
             let order = tracker.get_events();
-            println!("Test 2 - Execution order: {:?}", order);
-
-            // If guards are properly attached, we should see guard execution
-            // assert!(order.contains(&"guard:auth".to_string()));
-
-            println!("\n✅ Guard authorization tests completed!");
+            assert!(order.contains(&"guard:auth".to_string()), "AuthGuard must have run");
+            assert!(
+                order.contains(&"controller:auth_only".to_string()),
+                "Controller must run after guard allows"
+            );
         })
         .await;
 }
 
-// ============================================================================
-// DOCUMENTATION TEST
-// ============================================================================
-
-/// This test serves as documentation for the complete enhancer lifecycle
-#[test]
-fn test_enhancer_lifecycle_documentation() {
-    println!("\n=== Toni Framework Enhancer Lifecycle ===\n");
-
-    println!("Request Flow:");
-    println!("1. HTTP Request arrives");
-    println!("2. MIDDLEWARE CHAIN");
-    println!("   - Global middleware (in registration order)");
-    println!("   - Module-specific middleware (matching route patterns)");
-    println!("   - Can short-circuit or modify request/response");
-    println!("   - Example: Authentication, CORS, Logging");
-    println!();
-
-    println!("3. GUARDS");
-    println!("   - Synchronous authorization checks");
-    println!("   - Return false to deny access");
-    println!("   - Access to full request context");
-    println!("   - Example: Role-based access control");
-    println!();
-
-    println!("4. INTERCEPTORS (Before)");
-    println!("   - Pre-processing hooks");
-    println!("   - Can modify context");
-    println!("   - Example: Request logging, timing");
-    println!();
-
-    println!("5. DTO EXTRACTION");
-    println!("   - Parse request body into typed DTO");
-    println!("   - Automatic validation if DTO implements Validatable");
-    println!();
-
-    println!("6. PIPES");
-    println!("   - Transform/validate extracted data");
-    println!("   - Can abort request via context.abort()");
-    println!("   - Example: Custom validation, data transformation");
-    println!();
-
-    println!("7. CONTROLLER EXECUTION");
-    println!("   - Your business logic runs here");
-    println!("   - Access to injected services");
-    println!();
-
-    println!("8. INTERCEPTORS (After)");
-    println!("   - Post-processing hooks");
-    println!("   - Can modify response");
-    println!("   - Example: Response logging, metrics");
-    println!();
-
-    println!("9. HTTP Response returned");
-    println!();
-
-    println!("Key Points:");
-    println!("- Each layer can abort the request");
-    println!("- Execution order is strictly enforced");
-    println!("- Context object carries data through pipeline");
-    println!("- All enhancers are trait-based for flexibility");
-    println!();
-}

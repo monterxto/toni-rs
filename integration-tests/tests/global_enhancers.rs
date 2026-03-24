@@ -50,19 +50,10 @@ impl ExecutionOrder {
     }
 }
 
-// Global tracker for testing
-static mut GLOBAL_TRACKER: Option<ExecutionOrder> = None;
-
-fn init_tracker() -> ExecutionOrder {
-    let tracker = ExecutionOrder::new();
-    unsafe {
-        GLOBAL_TRACKER = Some(tracker.clone());
-    }
-    tracker
-}
+static GLOBAL_TRACKER: std::sync::OnceLock<ExecutionOrder> = std::sync::OnceLock::new();
 
 fn get_tracker() -> ExecutionOrder {
-    unsafe { GLOBAL_TRACKER.clone().expect("Tracker not initialized") }
+    GLOBAL_TRACKER.get_or_init(ExecutionOrder::new).clone()
 }
 
 // ============================================================================
@@ -268,7 +259,8 @@ impl TestModule {}
 #[tokio::test]
 #[serial]
 async fn test_three_level_enhancer_hierarchy() {
-    let tracker = init_tracker();
+    let tracker = get_tracker();
+    tracker.clear();
     let port = 29095;
 
     let local = tokio::task::LocalSet::new();
