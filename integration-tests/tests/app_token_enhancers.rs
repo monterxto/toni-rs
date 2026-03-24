@@ -1,36 +1,30 @@
-//! Test for APP_GUARD/APP_INTERCEPTOR token-based global enhancers
-//!
-//! This test verifies that:
-//! 1. Global enhancers can be registered via provider_token!(APP_GUARD, MyGuard)
-//! 2. APP_* token enhancers support dependency injection
-//! 3. APP_* token approach works alongside imperative factory.use_global_*()
-//! 4. Execution order is maintained: factory globals → APP_* token globals → controller → method
-//! NB: APP_PIPE isn't tested due to the fundamental change in the concept of pipes.  See examples crate (examples/pipes_complete_guide.rs).
+mod common;
 
-use serial_test::serial;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use toni::async_trait;
 use toni::enhancer::{guard, interceptor};
-use toni::{
-    controller, get, injectable, module, provider_token, Body as ToniBody, HttpRequest, ToniFactory,
-};
-use toni_axum::AxumAdapter;
-
-use toni::di::{APP_GUARD, APP_INTERCEPTOR};
 use toni::injector::Context;
 use toni::traits_helpers::{Guard, Interceptor, InterceptorNext};
+use toni::{
+    controller, get, injectable, module, provider_token, provider_value, Body as ToniBody,
+    HttpRequest,
+};
+use toni::di::{APP_GUARD, APP_INTERCEPTOR};
 
-// ============================================================================
-// EXECUTION ORDER TRACKER
-// ============================================================================
+use common::TestServer;
+use serial_test::serial;
 
-type ExecutionOrderInner = Arc<Mutex<Vec<String>>>;
+static TRACKER: OnceLock<ExecutionTracker> = OnceLock::new();
 
-#[injectable(
-    pub struct ExecutionTracker {
-        inner: ExecutionOrderInner,
-    }
-)]
+fn get_tracker() -> ExecutionTracker {
+    TRACKER.get().unwrap().clone()
+}
+
+#[derive(Clone)]
+pub struct ExecutionTracker {
+    inner: Arc<Mutex<Vec<String>>>,
+}
+
 impl ExecutionTracker {
     pub fn new() -> Self {
         Self {
@@ -51,10 +45,6 @@ impl ExecutionTracker {
     }
 }
 
-// ============================================================================
-// MOCK DEPENDENCY (for testing DI in APP_* enhancers)
-// ============================================================================
-
 #[injectable(
     pub struct MockService {
         name: String,
@@ -71,10 +61,6 @@ impl MockService {
         &self.name
     }
 }
-
-// ============================================================================
-// APP_GUARD with DI (using #[guard] attribute)
-// ============================================================================
 
 #[injectable(pub struct AppGuardWithDI {
     service: MockService,
@@ -94,10 +80,6 @@ impl Guard for AppGuardWithDI {
         true
     }
 }
-
-// ============================================================================
-// APP_INTERCEPTOR with DI (using #[interceptor] attribute)
-// ============================================================================
 
 #[injectable(pub struct AppInterceptorWithDI {
     service: MockService,
@@ -125,10 +107,6 @@ impl Interceptor for AppInterceptorWithDI {
     }
 }
 
-// ============================================================================
-// CONTROLLER
-// ============================================================================
-
 #[controller("/api", pub struct TestController {
     tracker: ExecutionTracker,
 })]
@@ -144,14 +122,10 @@ impl TestController {
     }
 }
 
-// ============================================================================
-// MODULE
-// ============================================================================
-
 #[module(
     controllers: [TestController],
     providers: [
-        ExecutionTracker,
+        provider_value!(ExecutionTracker, get_tracker()),
         MockService,
         AppGuardWithDI,
         AppInterceptorWithDI,
@@ -161,85 +135,43 @@ impl TestController {
 )]
 impl TestModule {}
 
-// ============================================================================
-// TESTS
-// ============================================================================
-
-#[tokio::test]
 #[serial]
-async fn test_app_token_enhancers_with_di() {
-    use tokio::sync::oneshot;
+#[tokio_localset_test::localset_test]
+async fn app_token_enhancers_with_di() {
+    TRACKER.set(ExecutionTracker::new()).ok();
+    let tracker = get_tracker();
 
-    let port = 29100;
-    let (tracker_tx, tracker_rx) = oneshot::channel();
+    let server = TestServer::start(TestModule::module_definition()).await;
 
-    let local = tokio::task::LocalSet::new();
+    tracker.clear();
+    let resp = server
+        .client()
+        .get(server.url("/api/test"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
 
-    local.spawn_local(async move {
-        // Create application (APP_* token enhancers will be resolved from DI)
-        let mut app = ToniFactory::create(TestModule).await;
+    let events = tracker.get_events();
+    assert!(
+        events.iter().any(|e| e.contains("guard:app_token:MockService")),
+        "APP_GUARD must run and its injected MockService must be accessible"
+    );
+    assert!(
+        events.iter().any(|e| e.contains("interceptor:app_token:MockService:before")),
+        "APP_INTERCEPTOR before must run"
+    );
+    assert!(
+        events.iter().any(|e| e == "controller:handler"),
+        "controller must run after guards and before interceptor after"
+    );
+    assert!(
+        events.iter().any(|e| e.contains("interceptor:app_token:MockService:after")),
+        "APP_INTERCEPTOR after must run"
+    );
 
-        // Get the tracker from DI container to verify APP_* enhancers work
-        let tracker = app
-            .get::<ExecutionTracker>()
-            .await
-            .expect("Failed to get ExecutionTracker from DI");
-
-        // Send tracker to test task
-        let _ = tracker_tx.send(tracker);
-
-        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
-        app.start().await;
-    });
-
-    local
-        .run_until(async move {
-            tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-            // Receive tracker from spawned task
-            let tracker = tracker_rx.await.expect("Failed to receive tracker");
-
-            let client = reqwest::Client::new();
-
-            // ================================================================
-            // TEST: APP_* token enhancers with DI + imperative factory enhancers
-            // ================================================================
-            tracker.clear();
-
-            let response = client
-                .get(format!("http://127.0.0.1:{}/api/test", port))
-                .send()
-                .await
-                .expect("Failed to call test endpoint");
-
-            assert_eq!(response.status(), 200);
-
-            let order = tracker.get_events();
-            println!("Execution order: {:?}", order);
-
-            // Verify that we have expected events from APP_* token enhancers
-            assert!(
-                order
-                    .iter()
-                    .any(|e| e.contains("guard:app_token:MockService")),
-                "Should have APP_GUARD with DI"
-            );
-            assert!(
-                order
-                    .iter()
-                    .any(|e| e.contains("interceptor:app_token:MockService")),
-                "Should have APP_INTERCEPTOR with DI"
-            );
-            assert!(
-                order.iter().any(|e| e == "controller:handler"),
-                "Should have handler execution"
-            );
-
-            // Verify that APP_* enhancers received injected dependency
-            assert!(
-                order.iter().any(|e| e.contains("MockService")),
-                "APP_* enhancers should have received MockService dependency"
-            );
-        })
-        .await;
+    // guard runs before controller
+    let guard_pos = events.iter().position(|e| e.contains("guard:app_token")).unwrap();
+    let ctrl_pos = events.iter().position(|e| e == "controller:handler").unwrap();
+    assert!(guard_pos < ctrl_pos);
 }

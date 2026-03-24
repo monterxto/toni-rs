@@ -1,14 +1,13 @@
+mod common;
+
+use common::TestServer;
 use serial_test::serial;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
 use toni::{
     controller, get, injectable, module, toni_factory::ToniFactory, Body as ToniBody, HttpRequest,
 };
-use toni_axum::AxumAdapter;
 
-// ======================
-// Test 1: Singleton Controller with Singleton Provider (OK - No Warning)
-// ======================
+// ---- Test 1: Singleton controller + singleton provider ----------------------
 
 #[injectable(pub struct SingletonProvider {})]
 impl SingletonProvider {
@@ -17,7 +16,7 @@ impl SingletonProvider {
     }
 }
 
-#[controller("/ok", pub struct OkController { #[inject]provider: SingletonProvider })]
+#[controller("/ok", pub struct OkController { #[inject] provider: SingletonProvider })]
 impl OkController {
     #[get("/test")]
     fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -25,9 +24,10 @@ impl OkController {
     }
 }
 
-// ======================
-// Test 2: Singleton Controller with Request Provider (WARNING - Scope Mismatch!)
-// ======================
+#[module(providers: [SingletonProvider], controllers: [OkController])]
+impl OkModule {}
+
+// ---- Test 2: Singleton controller + request-scoped provider (scope promotion) ---
 
 static REQUEST_COUNTER: AtomicU32 = AtomicU32::new(0);
 
@@ -38,8 +38,8 @@ impl RequestScopedProvider {
     }
 }
 
-// This should trigger a warning! Singleton controller with Request-scoped dependency
-#[controller("/problematic", pub struct ProblematicController { #[inject]provider: RequestScopedProvider })]
+// Singleton controller with a request-scoped dep — framework promotes to request scope
+#[controller("/problematic", pub struct ProblematicController { #[inject] provider: RequestScopedProvider })]
 impl ProblematicController {
     #[get("/test")]
     fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -47,9 +47,10 @@ impl ProblematicController {
     }
 }
 
-// ======================
-// Test 3: Request Controller with Request Provider (OK - No Warning)
-// ======================
+#[module(providers: [RequestScopedProvider], controllers: [ProblematicController])]
+impl ProblematicModule {}
+
+// ---- Test 3: Request controller + request provider (valid) ------------------
 
 #[injectable(scope = "request", pub struct AnotherRequestProvider {})]
 impl AnotherRequestProvider {
@@ -58,7 +59,7 @@ impl AnotherRequestProvider {
     }
 }
 
-#[controller("/correct", scope = "request", pub struct CorrectController { #[inject]provider: AnotherRequestProvider })]
+#[controller("/correct", scope = "request", pub struct CorrectController { #[inject] provider: AnotherRequestProvider })]
 impl CorrectController {
     #[get("/test")]
     fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -66,9 +67,10 @@ impl CorrectController {
     }
 }
 
-// ======================
-// Test 4: Mixed Dependencies (Singleton + Request) - WARNING
-// ======================
+#[module(providers: [AnotherRequestProvider], controllers: [CorrectController])]
+impl CorrectModule {}
+
+// ---- Test 4: Mixed singleton + request deps (scope promotion) ---------------
 
 #[injectable(pub struct CacheProvider {})]
 impl CacheProvider {
@@ -84,12 +86,9 @@ impl SessionProvider {
     }
 }
 
-// This should trigger a warning for SessionProvider being Request-scoped
 #[controller("/mixed", pub struct MixedController {
-    #[inject]
-    cache: CacheProvider,
-    #[inject]
-    session: SessionProvider,
+    #[inject] cache: CacheProvider,
+    #[inject] session: SessionProvider,
 })]
 impl MixedController {
     #[get("/test")]
@@ -102,9 +101,10 @@ impl MixedController {
     }
 }
 
-// ======================
-// Test 5: Explicit Singleton + Request Provider (CONTRADICTION - Force Elevation with WARNING!)
-// ======================
+#[module(providers: [CacheProvider, SessionProvider], controllers: [MixedController])]
+impl MixedModule {}
+
+// ---- Test 5: Explicit singleton + request dep (contradiction, still promotes) -----
 
 #[injectable(scope = "request", pub struct ContradictoryRequestProvider {})]
 impl ContradictoryRequestProvider {
@@ -113,8 +113,7 @@ impl ContradictoryRequestProvider {
     }
 }
 
-// User explicitly says "singleton" but has Request deps - should WARN and elevate anyway
-#[controller("/explicit", scope = "singleton", pub struct ExplicitSingletonController { #[inject]provider: ContradictoryRequestProvider })]
+#[controller("/explicit", scope = "singleton", pub struct ExplicitSingletonController { #[inject] provider: ContradictoryRequestProvider })]
 impl ExplicitSingletonController {
     #[get("/test")]
     fn test(&self, _req: HttpRequest) -> ToniBody {
@@ -122,227 +121,83 @@ impl ExplicitSingletonController {
     }
 }
 
-// ======================
-// Modules
-// ======================
-
-#[module(
-    providers: [SingletonProvider],
-    controllers: [OkController],
-)]
-impl OkModule {}
-
-#[module(
-    providers: [RequestScopedProvider],
-    controllers: [ProblematicController],
-)]
-impl ProblematicModule {}
-
-#[module(
-    providers: [AnotherRequestProvider],
-    controllers: [CorrectController],
-)]
-impl CorrectModule {}
-
-#[module(
-    providers: [CacheProvider, SessionProvider],
-    controllers: [MixedController],
-)]
-impl MixedModule {}
-
-#[module(
-    providers: [ContradictoryRequestProvider],
-    controllers: [ExplicitSingletonController],
-)]
+#[module(providers: [ContradictoryRequestProvider], controllers: [ExplicitSingletonController])]
 impl ExplicitSingletonModule {}
 
-// ======================
-// Tests
-// ======================
+// ---- tests ------------------------------------------------------------------
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+#[serial]
+#[tokio_localset_test::localset_test]
+async fn singleton_controller_with_singleton_provider() {
+    let server = TestServer::start(OkModule::module_definition()).await;
+    let resp = server
+        .client()
+        .get(server.url("/ok/test"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.text().await.unwrap(), "Singleton data");
+}
 
-    #[tokio::test]
-    #[serial]
-    async fn test_ok_singleton_controller_with_singleton_provider() {
-        println!("\n=== Test 1: Singleton Controller with Singleton Provider ===");
-        println!("Expected: No warnings");
+#[serial]
+#[tokio_localset_test::localset_test]
+async fn singleton_controller_promoted_to_request_scope_when_dep_is_request() {
+    // The framework detects the scope mismatch and silently promotes the controller to
+    // request-scoped rather than panicking. The endpoint must still be reachable and
+    // return the request-scoped provider's output.
+    let server = TestServer::start(ProblematicModule::module_definition()).await;
+    let resp = server
+        .client()
+        .get(server.url("/problematic/test"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert!(
+        resp.text().await.unwrap().starts_with("Request ID:"),
+        "request-scoped provider must be accessible after scope promotion"
+    );
+}
 
-        let port = 38090;
-        let local = tokio::task::LocalSet::new();
+#[serial]
+#[tokio_localset_test::localset_test]
+async fn request_controller_with_request_provider() {
+    let server = TestServer::start(CorrectModule::module_definition()).await;
+    let resp = server
+        .client()
+        .get(server.url("/correct/test"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.text().await.unwrap(), "Request data");
+}
 
-        // Spawn server in background
-        local.spawn_local(async move {
-            let mut app = ToniFactory::create(OkModule::module_definition()).await;
-            app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
-            let _ = app.start().await;
-        });
+#[serial]
+#[tokio_localset_test::localset_test]
+async fn mixed_scope_deps_promote_controller_to_request() {
+    let server = TestServer::start(MixedModule::module_definition()).await;
+    let resp = server
+        .client()
+        .get(server.url("/mixed/test"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.text().await.unwrap(), "Cached + Session");
+}
 
-        // Run tests within the LocalSet
-        local
-            .run_until(async move {
-                tokio::time::sleep(Duration::from_millis(500)).await;
-
-                let client = reqwest::Client::new();
-                let response = client
-                    .get(format!("http://127.0.0.1:{}/ok/test", port))
-                    .send()
-                    .await
-                    .unwrap();
-
-                assert_eq!(response.status(), 200);
-                let body = response.text().await.unwrap();
-                assert_eq!(body, "Singleton data");
-
-                println!("✅ Test passed - no warnings expected\n");
-            })
-            .await;
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn test_warning_singleton_controller_with_request_provider() {
-        println!("\n=== Test 2: Singleton Controller with Request Provider ===");
-        println!("Expected: ⚠️  WARNING about scope mismatch");
-
-        let port = 38091;
-        let local = tokio::task::LocalSet::new();
-
-        // Spawn server in background - THIS SHOULD PRINT A WARNING
-        local.spawn_local(async move {
-            let mut app = ToniFactory::create(ProblematicModule::module_definition()).await;
-            app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
-            let _ = app.start().await;
-        });
-
-        local
-            .run_until(async move {
-                tokio::time::sleep(Duration::from_millis(500)).await;
-
-                // The endpoint must respond even when the controller has a scope-mismatched dep.
-                // The framework elevates the controller scope and logs a warning; it must not panic.
-                let client = reqwest::Client::new();
-                let response = client
-                    .get(format!("http://127.0.0.1:{}/problematic/test", port))
-                    .send()
-                    .await
-                    .unwrap();
-                assert_eq!(response.status(), 200);
-            })
-            .await;
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn test_ok_request_controller_with_request_provider() {
-        println!("\n=== Test 3: Request Controller with Request Provider ===");
-        println!("Expected: No warnings");
-
-        let port = 38092;
-        let local = tokio::task::LocalSet::new();
-
-        // Spawn server in background
-        local.spawn_local(async move {
-            let mut app = ToniFactory::create(CorrectModule::module_definition()).await;
-            app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
-            let _ = app.start().await;
-        });
-
-        // Run tests within the LocalSet
-        local
-            .run_until(async move {
-                tokio::time::sleep(Duration::from_millis(500)).await;
-
-                let client = reqwest::Client::new();
-                let response = client
-                    .get(format!("http://127.0.0.1:{}/correct/test", port))
-                    .send()
-                    .await
-                    .unwrap();
-
-                assert_eq!(response.status(), 200);
-                let body = response.text().await.unwrap();
-                assert_eq!(body, "Request data");
-
-                println!("✅ Test passed - no warnings expected\n");
-            })
-            .await;
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn test_warning_mixed_dependencies() {
-        println!("\n=== Test 4: Mixed Dependencies (Singleton + Request) ===");
-        println!("Expected: ⚠️  WARNING about SessionProvider being Request-scoped");
-
-        let port = 38093;
-        let local = tokio::task::LocalSet::new();
-
-        // Spawn server in background - THIS SHOULD PRINT A WARNING
-        local.spawn_local(async move {
-            let mut app = ToniFactory::create(MixedModule::module_definition()).await;
-            app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
-            let _ = app.start().await;
-        });
-
-        local
-            .run_until(async move {
-                tokio::time::sleep(Duration::from_millis(500)).await;
-
-                // Mixed deps (one singleton, one request-scoped) — framework elevates and warns.
-                // Endpoint must still be reachable and return both values.
-                let client = reqwest::Client::new();
-                let response = client
-                    .get(format!("http://127.0.0.1:{}/mixed/test", port))
-                    .send()
-                    .await
-                    .unwrap();
-                assert_eq!(response.status(), 200);
-                let body = response.text().await.unwrap();
-                assert_eq!(body, "Cached + Session");
-            })
-            .await;
-    }
-
-    #[tokio::test]
-    #[serial]
-    async fn test_explicit_singleton_forced_elevation() {
-        println!("\n=== Test 5: Explicit Singleton + Request Provider (CONTRADICTION!) ===");
-        println!("Expected: ⚠️  WARNING - user explicitly set singleton but has Request deps");
-
-        let port = 38094;
-        let local = tokio::task::LocalSet::new();
-
-        // Spawn server in background - THIS SHOULD PRINT A STRONG WARNING
-        local.spawn_local(async move {
-            let mut app = ToniFactory::create(ExplicitSingletonModule::module_definition()).await;
-            app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
-            let _ = app.start().await;
-        });
-
-        // Run tests within the LocalSet
-        local
-            .run_until(async move {
-                tokio::time::sleep(Duration::from_millis(500)).await;
-
-                let client = reqwest::Client::new();
-                let response = client
-                    .get(format!("http://127.0.0.1:{}/explicit/test", port))
-                    .send()
-                    .await
-                    .unwrap();
-
-                assert_eq!(response.status(), 200);
-                let body = response.text().await.unwrap();
-                assert_eq!(body, "contradictory");
-
-                println!("⚠️  Check console output above - you should see a WARNING (not INFO)");
-                println!("    about ExplicitSingletonController being explicitly set to singleton");
-                println!("    but having Request-scoped dependencies. It was elevated anyway.");
-                println!("✅ Test passed - explicit contradiction detected and warned\n");
-            })
-            .await;
-    }
+#[serial]
+#[tokio_localset_test::localset_test]
+async fn explicit_singleton_with_request_dep_still_promotes() {
+    let server = TestServer::start(ExplicitSingletonModule::module_definition()).await;
+    let resp = server
+        .client()
+        .get(server.url("/explicit/test"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.text().await.unwrap(), "contradictory");
 }
