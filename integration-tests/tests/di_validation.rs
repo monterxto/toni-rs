@@ -66,7 +66,7 @@ async fn valid_transient_injects_any_scope() {
 }
 
 #[serial]
-#[tokio_localset_test::localset_test]
+#[tokio::test]
 #[should_panic(expected = "Scope validation error")]
 async fn singleton_cannot_inject_request_scoped() {
     #[injectable(scope = "request", pub struct RequestService {})]
@@ -151,7 +151,7 @@ async fn complex_valid_hierarchy() {
 }
 
 #[serial]
-#[tokio_localset_test::localset_test]
+#[tokio::test]
 #[should_panic(expected = "Scope validation error")]
 async fn explicit_singleton_with_request_fails() {
     #[injectable(scope = "request", pub struct RequestService {})]
