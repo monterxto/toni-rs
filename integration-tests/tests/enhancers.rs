@@ -354,25 +354,30 @@ async fn guard_authorization() {
     let server = TestServer::start(TestModule::module_definition()).await;
 
     tracker.clear();
-    let _resp = server
+    let resp = server
         .client()
         .get(server.url("/api/auth-only"))
         .send()
         .await
         .unwrap();
+    assert_eq!(resp.status(), 403);
     let events = tracker.events();
     assert!(events.contains(&"guard:auth".to_string()));
+    assert!(!events.contains(&"controller:auth_only".to_string()));
 
     tracker.clear();
-    let _resp = server
+    let resp = server
         .client()
         .get(server.url("/api/auth-only"))
         .header("Authorization", "Bearer valid-token")
         .send()
         .await
         .unwrap();
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.text().await.unwrap(), "Authenticated resource");
     let events = tracker.events();
     assert!(events.contains(&"guard:auth".to_string()));
+    assert!(events.contains(&"controller:auth_only".to_string()));
 }
 
 #[serial]
