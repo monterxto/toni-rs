@@ -217,13 +217,19 @@ mod tests {
             let _ = app.start().await;
         });
 
-        // Run tests within the LocalSet
         local
             .run_until(async move {
                 tokio::time::sleep(Duration::from_millis(500)).await;
 
-                println!("⚠️  Check console output above - you should see a warning about ProblematicController");
-                println!("    having a Request-scoped dependency (RequestScopedProvider)\n");
+                // The endpoint must respond even when the controller has a scope-mismatched dep.
+                // The framework elevates the controller scope and logs a warning; it must not panic.
+                let client = reqwest::Client::new();
+                let response = client
+                    .get(format!("http://127.0.0.1:{}/problematic/test", port))
+                    .send()
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), 200);
             })
             .await;
     }
@@ -281,15 +287,21 @@ mod tests {
             let _ = app.start().await;
         });
 
-        // Run tests within the LocalSet
         local
             .run_until(async move {
                 tokio::time::sleep(Duration::from_millis(500)).await;
 
-                println!(
-                    "ℹ️  Check console output above - you should see INFO about MixedController"
-                );
-                println!("    having a Request-scoped dependency (SessionProvider)\n");
+                // Mixed deps (one singleton, one request-scoped) — framework elevates and warns.
+                // Endpoint must still be reachable and return both values.
+                let client = reqwest::Client::new();
+                let response = client
+                    .get(format!("http://127.0.0.1:{}/mixed/test", port))
+                    .send()
+                    .await
+                    .unwrap();
+                assert_eq!(response.status(), 200);
+                let body = response.text().await.unwrap();
+                assert_eq!(body, "Cached + Session");
             })
             .await;
     }

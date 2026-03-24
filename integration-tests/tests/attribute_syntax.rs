@@ -85,7 +85,18 @@ impl CustomInitService {
 )]
 impl TestModule {}
 
-#[test]
-fn test_attribute_syntax_compiles() {
-    println!("Pattern C syntax test compiles successfully!");
+#[tokio::test]
+async fn test_attribute_syntax_runtime() {
+    use toni::toni_factory::ToniFactory;
+
+    let mut app = ToniFactory::create(TestModule::module_definition()).await;
+
+    let simple = app.get::<SimpleService>().await.expect("SimpleService should resolve");
+    assert_eq!(simple.get_value(), "test");
+
+    let mixed = app.get::<MixedService>().await.expect("MixedService should resolve");
+    assert_eq!(mixed.get_max_size(), 100);
+
+    let custom = app.get::<CustomInitService>().await.expect("CustomInitService should resolve");
+    assert_eq!(custom.get_prefix(), "custom:");
 }

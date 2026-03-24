@@ -84,8 +84,6 @@ impl AppModule {}
 
 #[tokio::test]
 async fn test_module_ref_strict_mode() {
-    use toni_axum::AxumAdapter;
-
     let mut app = ToniFactory::create(AppModule::module_definition()).await;
 
     // Get PluginLoader from Module1
@@ -105,8 +103,6 @@ async fn test_module_ref_strict_mode() {
 
 #[tokio::test]
 async fn test_module_ref_global_mode() {
-    use toni_axum::AxumAdapter;
-
     let mut app = ToniFactory::create(AppModule::module_definition()).await;
 
     let plugin_loader = app
@@ -125,8 +121,6 @@ async fn test_module_ref_global_mode() {
 
 #[tokio::test]
 async fn test_module_ref_strict_mode_fails_for_non_local_provider() {
-    use toni_axum::AxumAdapter;
-
     let mut app = ToniFactory::create(AppModule::module_definition()).await;
 
     let plugin_loader = app
@@ -145,8 +139,6 @@ async fn test_module_ref_strict_mode_fails_for_non_local_provider() {
 
 #[tokio::test]
 async fn test_module_ref_token_based_resolution() {
-    use toni_axum::AxumAdapter;
-
     let mut app = ToniFactory::create(AppModule::module_definition()).await;
 
     let plugin_loader = app
@@ -166,8 +158,6 @@ async fn test_module_ref_token_based_resolution() {
 
 #[tokio::test]
 async fn test_module_ref_current_module() {
-    use toni_axum::AxumAdapter;
-
     let mut app = ToniFactory::create(AppModule::module_definition()).await;
 
     let plugin_loader = app
@@ -182,8 +172,6 @@ async fn test_module_ref_current_module() {
 
 #[tokio::test]
 async fn test_module_ref_singleton_behavior() {
-    use toni_axum::AxumAdapter;
-
     let mut app = ToniFactory::create(AppModule::module_definition()).await;
 
     let plugin_loader1 = app

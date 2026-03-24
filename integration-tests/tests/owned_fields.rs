@@ -192,24 +192,18 @@ impl ComplexService {
 )]
 impl TestModule {}
 
-#[test]
-fn test_owned_fields_compile() {
-    // This test verifies that the macro generates valid code
-    // Actual runtime testing would require instantiating the module
-    println!("Owned fields test compiles successfully!");
-}
-
 #[tokio::test]
 async fn test_owned_fields_runtime() {
     use toni::toni_factory::ToniFactory;
-    use toni_axum::AxumAdapter;
 
-    // This would test actual runtime behavior
-    // For now, just ensure it compiles
-    let _adapter = AxumAdapter::new("127.0.0.1", 0);
-    let _factory = ToniFactory::new();
+    let mut app = ToniFactory::create(TestModule::module_definition()).await;
 
-    // TODO: Create the app and verify field values
-    // let mut app = ToniFactory::create(TestModule::module_definition(), adapter).await;
-    // ... test that services have correct default values ...
+    let standalone = app.get::<StandaloneService>().await.expect("StandaloneService should resolve");
+    assert_eq!(standalone.get_cache_ttl(), Duration::from_secs(300));
+    assert_eq!(standalone.get_buffer_size(), 1024);
+    assert_eq!(standalone.get_prefix(), "cache:");
+
+    let complex = app.get::<ComplexService>().await.expect("ComplexService should resolve");
+    assert_eq!(complex.get_default_values(), vec![1, 2, 3]);
+    assert_eq!(complex.get_service_version(), "service_v1");
 }

@@ -182,11 +182,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_module_compiles() {
-        // Verify the module can be created
-        // This tests that all the generated code compiles and types match
-        let _app = ToniFactory::create(TestModule::module_definition()).await;
+    async fn test_di_resolves() {
+        // Verify the module wires correctly: UserService (singleton) must resolve,
+        // and its business logic must be callable without an HTTP server.
+        let mut app = ToniFactory::create(TestModule::module_definition()).await;
 
-        println!("✅ Module with from_request pattern compiles successfully!");
+        let service = app
+            .get::<UserService>()
+            .await
+            .expect("UserService should resolve as singleton");
+        assert_eq!(service.get_user_data("alice"), "Data for user: alice");
     }
 }
