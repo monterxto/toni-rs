@@ -130,12 +130,12 @@ pub struct AppModule;
 impl _AppController {
     #[post("")]
     fn create(&self, _req: HttpRequest) -> Body {
-        Body::Text(self.app_service.create())
+        Body::text(self.app_service.create())
     }
 
     #[get("")]
     fn find_all(&self, _req: HttpRequest) -> Body {
-        Body::Text(self.app_service.find_all())
+        Body::text(self.app_service.find_all())
     }
 }
 ```

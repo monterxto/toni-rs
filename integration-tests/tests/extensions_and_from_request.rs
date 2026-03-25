@@ -97,7 +97,7 @@ impl UserController {
 
         let data = self.user_service.get_user_data(user_id);
 
-        ToniBody::Text(format!(
+        ToniBody::text(format!(
             "Request ID: {}\nUser: {}\nData: {}",
             request_id, user_id, data
         ))
@@ -107,8 +107,8 @@ impl UserController {
     fn protected_route(&self, _req: HttpRequest) -> ToniBody {
         // Easy auth check
         match self.context.require_auth() {
-            Ok(user_id) => ToniBody::Text(format!("Protected data for user: {}", user_id)),
-            Err(msg) => ToniBody::Text(msg.to_string()),
+            Ok(user_id) => ToniBody::text(format!("Protected data for user: {}", user_id)),
+            Err(msg) => ToniBody::text(msg.to_string()),
         }
     }
 }
@@ -131,7 +131,7 @@ mod tests {
     fn test_request_context_construction() {
         // Test that we can construct RequestContext manually for testing
         let mut req = HttpRequest {
-            body: ToniBody::Text("".to_string()),
+            body: Default::default(),
             headers: vec![],
             method: "GET".to_string(),
             uri: "/test".to_string(),
@@ -157,7 +157,7 @@ mod tests {
     fn test_request_context_anonymous() {
         // Test with no extensions (anonymous user)
         let req = HttpRequest {
-            body: ToniBody::Text("".to_string()),
+            body: Default::default(),
             headers: vec![],
             method: "GET".to_string(),
             uri: "/test".to_string(),

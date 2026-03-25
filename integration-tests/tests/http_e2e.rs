@@ -36,7 +36,7 @@ async fn async_controller_methods_with_http_server() {
         #[get("/async")]
         async fn async_endpoint(&self) -> ToniBody {
             let result = self.service.process().await;
-            ToniBody::Text(result)
+            ToniBody::text(result)
         }
     }
 
@@ -67,7 +67,7 @@ async fn config_service_injection_in_controllers() {
     impl TestController {
         #[get("/env")]
         fn get_env(&self) -> ToniBody {
-            ToniBody::Text(self.config.get_ref().env.clone())
+            ToniBody::text(self.config.get_ref().env.clone())
         }
     }
 
@@ -104,7 +104,7 @@ async fn singleton_controllers_share_state() {
 
         #[get("/id")]
         fn get_id(&self) -> ToniBody {
-            ToniBody::Text(format!("{}", self.instance_id))
+            ToniBody::text(format!("{}", self.instance_id))
         }
     }
 
@@ -142,7 +142,7 @@ async fn request_scoped_controllers_create_per_request() {
 
         #[get("/id")]
         fn get_id(&self) -> ToniBody {
-            ToniBody::Text(format!("{}", self.request_id))
+            ToniBody::text(format!("{}", self.request_id))
         }
     }
 
@@ -179,7 +179,7 @@ async fn optional_request_extractor() {
         #[get("/headers")]
         fn get_headers(&self, req: Request) -> ToniBody {
             let has_header = req.header("X-Test-Header").is_some();
-            ToniBody::Text(format!("{}", has_header))
+            ToniBody::text(format!("{}", has_header))
         }
     }
 
@@ -212,7 +212,7 @@ async fn json_body_and_request_extraction() {
         #[post("/users")]
         fn create_user(&self, Json(user): Json<CreateUser>, req: Request) -> ToniBody {
             let content_type = req.header("content-type").unwrap_or("unknown");
-            ToniBody::Text(format!("created {} ({})", user.name, content_type))
+            ToniBody::text(format!("created {} ({})", user.name, content_type))
         }
     }
 
@@ -265,8 +265,8 @@ async fn request_extensions_pattern() {
         fn get_user(&self, req: Request) -> ToniBody {
             let user_id = req.extensions().get::<UserId>();
             match user_id {
-                Some(id) => ToniBody::Text(id.0.clone()),
-                None => ToniBody::Text("no_user".to_string()),
+                Some(id) => ToniBody::text(id.0.clone()),
+                None => ToniBody::text("no_user".to_string()),
             }
         }
     }

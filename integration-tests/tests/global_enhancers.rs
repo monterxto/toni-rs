@@ -228,14 +228,14 @@ impl TestController {
     #[get("/three-level")]
     fn three_level_endpoint(&self, _req: HttpRequest) -> ToniBody {
         get_tracker().track("controller:three_level");
-        ToniBody::Text("Three-level test".to_string())
+        ToniBody::text("Three-level test".to_string())
     }
 
     /// Endpoint with only global + controller levels (no method-level)
     #[get("/two-level")]
     fn two_level_endpoint(&self, _req: HttpRequest) -> ToniBody {
         get_tracker().track("controller:two_level");
-        ToniBody::Text("Two-level test".to_string())
+        ToniBody::text("Two-level test".to_string())
     }
 
     /// Endpoint with duplicated guard at all three levels
@@ -243,7 +243,7 @@ impl TestController {
     #[get("/duplicate")]
     fn duplicate_endpoint(&self, _req: HttpRequest) -> ToniBody {
         get_tracker().track("controller:duplicate");
-        ToniBody::Text("Duplicate test".to_string())
+        ToniBody::text("Duplicate test".to_string())
     }
 }
 

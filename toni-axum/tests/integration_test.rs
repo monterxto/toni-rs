@@ -1,4 +1,4 @@
-use toni::{controller, get, injectable, module, post, Body as ToniBody, HttpAdapter, HttpRequest};
+use toni::{controller, get, http_helpers::Body as ToniBody, injectable, module, post, HttpAdapter, HttpRequest};
 use toni_axum::AxumAdapter;
 
 // Simple service for testing
@@ -26,19 +26,13 @@ impl TestService {
 impl TestController {
     #[get("/hello")]
     fn hello(&self, _req: HttpRequest) -> ToniBody {
-        let response: String = self.test_service.get_greeting();
-        ToniBody::Text(response)
+        ToniBody::text(self.test_service.get_greeting())
     }
 
     #[post("/echo")]
     fn echo(&self, req: HttpRequest) -> ToniBody {
-        let message = match req.body {
-            ToniBody::Text(text) => text,
-            ToniBody::Json(json) => json.to_string(),
-            ToniBody::Binary(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
-        };
-        let response: String = self.test_service.echo(message);
-        ToniBody::Text(response)
+        let message = String::from_utf8_lossy(&req.body).into_owned();
+        ToniBody::text(self.test_service.echo(message))
     }
 }
 

@@ -8,12 +8,12 @@ use toni::{controller, get, injectable, module, Body as ToniBody, HttpRequest};
 impl StaticController {
     #[get("/hello")]
     fn hello(_req: HttpRequest) -> ToniBody {
-        ToniBody::Text("Hello from static method".to_string())
+        ToniBody::text("Hello from static method".to_string())
     }
 
     #[get("/world")]
     fn world(_req: HttpRequest) -> ToniBody {
-        ToniBody::Text("World from static method".to_string())
+        ToniBody::text("World from static method".to_string())
     }
 }
 
@@ -58,12 +58,12 @@ impl MixedService {
 impl MixedController {
     #[get("/instance")]
     fn instance_method(&self, _req: HttpRequest) -> ToniBody {
-        ToniBody::Text(self.service.get_instance_message())
+        ToniBody::text(self.service.get_instance_message())
     }
 
     #[get("/static")]
     fn static_method(_req: HttpRequest) -> ToniBody {
-        ToniBody::Text("From static method".to_string())
+        ToniBody::text("From static method".to_string())
     }
 }
 
@@ -98,7 +98,7 @@ async fn mixed_static_and_instance_methods() {
 impl RequestScopedStaticController {
     #[get("/test")]
     fn test(_req: HttpRequest) -> ToniBody {
-        ToniBody::Text("Static method in request-scoped controller".to_string())
+        ToniBody::text("Static method in request-scoped controller".to_string())
     }
 }
 
@@ -128,7 +128,7 @@ impl AsyncStaticController {
     #[get("/test")]
     async fn test(_req: HttpRequest) -> ToniBody {
         tokio::time::sleep(tokio::time::Duration::from_millis(1)).await;
-        ToniBody::Text("Async static method".to_string())
+        ToniBody::text("Async static method".to_string())
     }
 }
 

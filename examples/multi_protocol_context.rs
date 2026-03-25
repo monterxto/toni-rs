@@ -8,7 +8,7 @@
 
 use std::collections::HashMap;
 use toni::{
-    Body, Context, HttpRequest, ProtocolType, RpcContext, RpcData, WsClient, WsMessage,
+    Context, HttpRequest, ProtocolType, RpcContext, RpcData, WsClient, WsMessage,
 };
 use toni::websocket::WsHandshake;
 
@@ -89,7 +89,7 @@ fn main() {
             ("authorization".to_string(), "Bearer valid-secret".to_string()),
             ("user-agent".to_string(), "example/1.0".to_string()),
         ],
-        body: Body::Text(String::new()),
+        body: Default::default(),
         query_params: HashMap::new(),
         path_params: HashMap::new(),
         extensions: Default::default(),

@@ -365,7 +365,7 @@ impl ExamplesController {
     ///   -d '{"name":"John","email":"john@example.com"}'
     #[post("/users")]
     fn create_user(&self, Json(dto): Json<CreateUserDto>) -> ToniBody {
-        ToniBody::Json(serde_json::json!({
+        ToniBody::json(serde_json::json!({
             "id": 1,
             "name": dto.name,
             "email": dto.email
@@ -376,7 +376,7 @@ impl ExamplesController {
     /// curl http://localhost:3000/api/users/123
     #[get("/users/{id}")]
     fn get_user(&self, Path(params): Path<UserParams>) -> ToniBody {
-        ToniBody::Json(serde_json::json!({
+        ToniBody::json(serde_json::json!({
             "id": params.id,
             "name": "John Doe"
         }))
@@ -389,7 +389,7 @@ impl ExamplesController {
         let page = query.page.unwrap_or(1);
         let limit = query.limit.unwrap_or(10);
 
-        ToniBody::Json(serde_json::json!({
+        ToniBody::json(serde_json::json!({
             "page": page,
             "limit": limit,
             "items": []
@@ -408,7 +408,7 @@ impl ExamplesController {
     ///   -d '{"name":"Wi","price":-10,"contact_email":"invalid"}'
     #[post("/products")]
     fn create_product(&self, Validated(Json(dto)): Validated<Json<CreateProductDto>>) -> ToniBody {
-        ToniBody::Json(serde_json::json!({
+        ToniBody::json(serde_json::json!({
             "success": true,
             "product": {
                 "name": dto.name,
@@ -423,7 +423,7 @@ impl ExamplesController {
     /// curl http://localhost:3000/api/products/abc  ← Returns 400 automatically
     #[get("/products/{id}")]
     fn get_product(&self, Path(params): Path<ProductIdParam>) -> ToniBody {
-        ToniBody::Json(serde_json::json!({
+        ToniBody::json(serde_json::json!({
             "id": params.id,
             "name": "Product"
         }))
@@ -433,7 +433,7 @@ impl ExamplesController {
     /// curl "http://localhost:3000/api/search?active=true&min_price=100"
     #[get("/search")]
     fn search(&self, Query(query): Query<SearchQuery>) -> ToniBody {
-        ToniBody::Json(serde_json::json!({
+        ToniBody::json(serde_json::json!({
             "active": query.active,
             "min_price": query.min_price,
             "results": []
@@ -445,7 +445,7 @@ impl ExamplesController {
     /// curl "http://localhost:3000/api/items?page=3&limit=50"
     #[get("/items")]
     fn list_items(&self, Query(query): Query<ItemsQueryWithDefaults>) -> ToniBody {
-        ToniBody::Json(serde_json::json!({
+        ToniBody::json(serde_json::json!({
             "page": query.page,
             "limit": query.limit,
             "items": []
@@ -459,7 +459,7 @@ impl ExamplesController {
     /// Result: Trimmed strings + validation
     #[post("/comments")]
     fn create_comment(&self, Validated(Json(dto)): Validated<Json<CreateCommentDto>>) -> ToniBody {
-        ToniBody::Json(serde_json::json!({
+        ToniBody::json(serde_json::json!({
             "success": true,
             "comment": {
                 "text": dto.text,  // Trimmed
@@ -474,7 +474,7 @@ impl ExamplesController {
     ///   -d '{"email":"user@example.com","password":"SecurePass123","confirm_password":"SecurePass123"}'
     #[post("/register")]
     fn register(&self, Validated(Json(dto)): Validated<Json<RegisterDto>>) -> ToniBody {
-        ToniBody::Json(serde_json::json!({
+        ToniBody::json(serde_json::json!({
             "success": true,
             "email": dto.email
         }))
@@ -486,7 +486,7 @@ impl ExamplesController {
     ///   -d '{"title":"  My Post  ","content":"  This is content  ","tags":["rust","web"]}'
     #[post("/posts")]
     fn create_post(&self, Validated(Json(dto)): Validated<Json<CreatePostDto>>) -> ToniBody {
-        ToniBody::Json(serde_json::json!({
+        ToniBody::json(serde_json::json!({
             "success": true,
             "post": {
                 "title": dto.title,

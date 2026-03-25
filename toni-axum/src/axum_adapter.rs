@@ -14,13 +14,12 @@ use axum::{
     RequestPartsExt, Router,
 };
 use futures_util::{SinkExt, StreamExt};
-use serde_json::Value;
 use std::str::FromStr;
 
 use toni::websocket::{WsMessage, WsSink};
 use toni::{
-    async_trait, http_helpers::Extensions, Body as ToniBody, HttpAdapter, HttpMethod, HttpRequest,
-    HttpResponse, InstanceWrapper, ToResponse, WebSocketAdapter, WsConnectionCallbacks,
+    async_trait, http_helpers::{Bytes as ToniBytes, Extensions}, HttpAdapter, HttpMethod,
+    HttpRequest, HttpResponse, InstanceWrapper, ToResponse, WebSocketAdapter, WsConnectionCallbacks,
 };
 
 use crate::axum_websocket_adapter::{axum_to_ws_message, extract_headers, ws_message_to_axum};
@@ -118,27 +117,6 @@ impl HttpAdapter for AxumAdapter {
         let (mut parts, body) = request.into_parts();
         let body_bytes = to_bytes(body, usize::MAX).await?;
 
-        let content_type = parts
-            .headers
-            .get("content-type")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("")
-            .to_lowercase();
-
-        let body = if content_type.contains("application/octet-stream")
-            || content_type.contains("multipart/form-data")
-        {
-            ToniBody::Binary(body_bytes.to_vec())
-        } else if let Ok(body_str) = String::from_utf8(body_bytes.to_vec()) {
-            if let Ok(json) = serde_json::from_str::<Value>(&body_str) {
-                ToniBody::Json(json)
-            } else {
-                ToniBody::Text(body_str)
-            }
-        } else {
-            ToniBody::Binary(body_bytes.to_vec())
-        };
-
         let Path(path_params) = parts
             .extract::<Path<HashMap<String, String>>>()
             .await
@@ -156,7 +134,7 @@ impl HttpAdapter for AxumAdapter {
             .collect();
 
         Ok(HttpRequest {
-            body,
+            body: ToniBytes::from(body_bytes.to_vec()),
             headers,
             method: parts.method.to_string(),
             uri: parts.uri.to_string(),
@@ -174,29 +152,23 @@ impl HttpAdapter for AxumAdapter {
         let status =
             StatusCode::from_u16(response.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
-        let mut body_content_type = "text/plain";
-
-        let body = match response.body {
-            Some(ToniBody::Text(text)) => Body::from(text),
-            Some(ToniBody::Json(json)) => {
-                body_content_type = "application/json";
-                let vec = serde_json::to_vec(&json)
-                    .map_err(|e| anyhow!("Failed to serialize JSON: {}", e))?;
-                Body::from(vec)
+        let (body, body_content_type) = match response.body {
+            Some(toni_body) => {
+                let ct = toni_body.content_type().unwrap_or("application/octet-stream").to_string();
+                (Body::from(toni_body.into_bytes().to_vec()), Some(ct))
             }
-            Some(ToniBody::Binary(bytes)) => {
-                body_content_type = "application/octet-stream";
-                Body::from(bytes)
-            }
-            _ => Body::empty(),
+            None => (Body::empty(), None),
         };
 
         let mut headers = HeaderMap::new();
-        headers.insert(
-            HeaderName::from_str("Content-Type")
-                .map_err(|e| anyhow!("Failed to parse header name: {}", e))?,
-            HeaderValue::from_static(body_content_type),
-        );
+        if let Some(ct) = body_content_type {
+            headers.insert(
+                HeaderName::from_str("Content-Type")
+                    .map_err(|e| anyhow!("Failed to parse header name: {}", e))?,
+                HeaderValue::from_str(&ct)
+                    .map_err(|e| anyhow!("Failed to parse content-type value: {}", e))?,
+            );
+        }
 
         for (k, v) in &response.headers {
             if let Ok(header_name) = HeaderName::from_bytes(k.as_bytes()) {

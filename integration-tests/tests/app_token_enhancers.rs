@@ -118,7 +118,7 @@ impl TestController {
     #[get("/test")]
     fn test_endpoint(&self, _req: HttpRequest) -> ToniBody {
         self.tracker.track("controller:handler");
-        ToniBody::Text("OK".to_string())
+        ToniBody::text("OK".to_string())
     }
 }
 

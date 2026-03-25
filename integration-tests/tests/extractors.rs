@@ -30,17 +30,17 @@ impl ExtractorController {
     #[get("/search")]
     fn search(&self, Query(params): Query<SearchParams>) -> ToniBody {
         let limit = params.limit.unwrap_or(10);
-        ToniBody::Text(format!("Searching for '{}' with limit {}", params.q, limit))
+        ToniBody::text(format!("Searching for '{}' with limit {}", params.q, limit))
     }
 
     #[post("/users")]
     fn create_user(&self, Json(dto): Json<CreateUserDto>) -> ToniBody {
-        ToniBody::Text(format!("Created user: {} <{}>", dto.name, dto.email))
+        ToniBody::text(format!("Created user: {} <{}>", dto.name, dto.email))
     }
 
     #[post("/echo")]
     fn echo_json(&self, body: Json<serde_json::Value>) -> ToniBody {
-        ToniBody::Json(body.into_inner())
+        ToniBody::json(body.into_inner())
     }
 }
 
@@ -137,7 +137,7 @@ struct ValidatedUserDto {
 impl ValidatedController {
     #[post("/users")]
     fn create_user(&self, Validated(Json(dto)): Validated<Json<ValidatedUserDto>>) -> ToniBody {
-        ToniBody::Text(format!(
+        ToniBody::text(format!(
             "Created validated user: {} <{}>",
             dto.name, dto.email
         ))

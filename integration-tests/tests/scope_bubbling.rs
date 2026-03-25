@@ -20,7 +20,7 @@ impl SingletonProvider {
 impl OkController {
     #[get("/test")]
     fn test(&self, _req: HttpRequest) -> ToniBody {
-        ToniBody::Text(self.provider.get_data())
+        ToniBody::text(self.provider.get_data())
     }
 }
 
@@ -43,7 +43,7 @@ impl RequestScopedProvider {
 impl ProblematicController {
     #[get("/test")]
     fn test(&self, _req: HttpRequest) -> ToniBody {
-        ToniBody::Text(format!("Request ID: {}", self.provider.get_request_id()))
+        ToniBody::text(format!("Request ID: {}", self.provider.get_request_id()))
     }
 }
 
@@ -63,7 +63,7 @@ impl AnotherRequestProvider {
 impl CorrectController {
     #[get("/test")]
     fn test(&self, _req: HttpRequest) -> ToniBody {
-        ToniBody::Text(self.provider.get_data())
+        ToniBody::text(self.provider.get_data())
     }
 }
 
@@ -93,7 +93,7 @@ impl SessionProvider {
 impl MixedController {
     #[get("/test")]
     fn test(&self, _req: HttpRequest) -> ToniBody {
-        ToniBody::Text(format!(
+        ToniBody::text(format!(
             "{} + {}",
             self.cache.get_cached(),
             self.session.get_session()
@@ -117,7 +117,7 @@ impl ContradictoryRequestProvider {
 impl ExplicitSingletonController {
     #[get("/test")]
     fn test(&self, _req: HttpRequest) -> ToniBody {
-        ToniBody::Text(self.provider.get_id())
+        ToniBody::text(self.provider.get_id())
     }
 }
 

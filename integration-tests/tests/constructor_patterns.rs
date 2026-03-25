@@ -101,7 +101,7 @@ async fn provider_constructor_patterns() {
     impl ProviderTestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text(format!(
+            ToniBody::text(format!(
                 "{}|{}|{}|{}|{}",
                 self.base.get_value(),
                 self.auto.get_value(),
@@ -165,7 +165,7 @@ async fn controller_constructor_patterns() {
 
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text(format!("auto: {}", self.data_value))
+            ToniBody::text(format!("auto: {}", self.data_value))
         }
     }
 
@@ -181,7 +181,7 @@ async fn controller_constructor_patterns() {
 
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text(self.combined.clone())
+            ToniBody::text(self.combined.clone())
         }
     }
 
@@ -192,7 +192,7 @@ async fn controller_constructor_patterns() {
     impl DefaultFallbackController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text(format!("name='{}', count={}", self.name, self.count))
+            ToniBody::text(format!("name='{}', count={}", self.name, self.count))
         }
     }
 
@@ -301,7 +301,7 @@ async fn constructor_param_injection_patterns() {
     impl BasicParamController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text(self.service.get_data(&self.db))
+            ToniBody::text(self.service.get_data(&self.db))
         }
     }
 
@@ -314,7 +314,7 @@ async fn constructor_param_injection_patterns() {
     impl TokenParamController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text(self.service.get_data(&self.db))
+            ToniBody::text(self.service.get_data(&self.db))
         }
     }
 
@@ -329,7 +329,7 @@ async fn constructor_param_injection_patterns() {
     impl MixedParamController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text(self.service.get_info(&self.config, &self.cache))
+            ToniBody::text(self.service.get_info(&self.config, &self.cache))
         }
     }
 

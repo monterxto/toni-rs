@@ -139,18 +139,15 @@ impl OrdersHttpController {
 
         let req_dto = json!({ "item": item, "qty": qty });
         match self.client.send_json::<_, serde_json::Value>("order.create", &req_dto).await {
-            Ok(order) => ToniBody::Json(order),
-            Err(e) => ToniBody::Json(json!({ "error": e.to_string() })),
+            Ok(order) => ToniBody::json(order),
+            Err(e) => ToniBody::json(json!({ "error": e.to_string() })),
         }
     }
 
     #[post("/ship")]
     async fn ship_order(&self, req: HttpRequest) -> ToniBody {
-        let payload = match &req.body {
-            ToniBody::Json(v) => v.clone(),
-            ToniBody::Text(s) => serde_json::from_str(s).unwrap_or_else(|_| json!({})),
-            ToniBody::Binary(_) => json!({}),
-        };
+        let payload: serde_json::Value = serde_json::from_slice(&req.body)
+            .unwrap_or_else(|_| json!({}));
 
         let order_id = payload["order_id"].as_u64().unwrap_or(0);
         println!(
@@ -159,8 +156,8 @@ impl OrdersHttpController {
         );
 
         match self.client.emit_json("order.shipped", &payload).await {
-            Ok(()) => ToniBody::Json(json!({ "status": "accepted" })),
-            Err(e) => ToniBody::Json(json!({ "error": e.to_string() })),
+            Ok(()) => ToniBody::json(json!({ "status": "accepted" })),
+            Err(e) => ToniBody::json(json!({ "error": e.to_string() })),
         }
     }
 }

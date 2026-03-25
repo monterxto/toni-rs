@@ -294,7 +294,7 @@ impl ApiController {
     #[get("/protected")]
     #[use_guards(AuthGuard{})]
     fn protected(&self, _req: HttpRequest) -> ToniBody {
-        ToniBody::Json(json!({"message": "Access granted"}))
+        ToniBody::json(json!({"message": "Access granted"}))
     }
 
     #[get("/not-found")]
@@ -322,7 +322,7 @@ impl UserController {
             .ok_or_else(|| HttpError::bad_request("Missing user ID"))?;
 
         let user = self.service.find_user(id)?;
-        Ok(ToniBody::Json(user))
+        Ok(ToniBody::json(user))
     }
 
     #[get("/me")]
@@ -333,7 +333,7 @@ impl UserController {
 
         self.service.authenticate(token)?;
 
-        Ok(ToniBody::Json(json!({
+        Ok(ToniBody::json(json!({
             "id": "current-user",
             "name": "Authenticated User"
         })))
@@ -342,13 +342,12 @@ impl UserController {
     #[post("/")]
     #[use_error_handlers(ValidationErrorHandler{}, DatabaseErrorHandler{})]
     fn create_user(&self, req: HttpRequest) -> Result<HttpResponse, HttpError> {
-        let email = if let ToniBody::Json(body) = &req.body {
-            body.get("email")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| HttpError::bad_request("Email is required"))?
-        } else {
-            return Err(HttpError::bad_request("Invalid request body"));
-        };
+        let body: serde_json::Value = serde_json::from_slice(&req.body)
+            .map_err(|_| HttpError::bad_request("Invalid request body"))?;
+        let email = body
+            .get("email")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| HttpError::bad_request("Email is required"))?;
 
         let user = self.service.create_user(email)?;
 
@@ -376,7 +375,7 @@ impl ProductController {
             .ok_or_else(|| HttpError::bad_request("Missing product ID"))?;
 
         if id == "1" {
-            Ok(ToniBody::Json(json!({
+            Ok(ToniBody::json(json!({
                 "id": "1",
                 "name": "Widget",
                 "price": 19.99
@@ -388,7 +387,7 @@ impl ProductController {
 
     #[get("/")]
     fn list_products(&self, _req: HttpRequest) -> ToniBody {
-        ToniBody::Json(json!([
+        ToniBody::json(json!([
             {"id": "1", "name": "Widget", "price": 19.99}
         ]))
     }

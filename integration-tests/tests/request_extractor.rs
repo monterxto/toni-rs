@@ -14,20 +14,20 @@ struct CreateDto {
 impl RequestExtractorController {
     #[get("/hello")]
     fn hello(&self) -> ToniBody {
-        ToniBody::Text("Hello, World!".to_string())
+        ToniBody::text("Hello, World!".to_string())
     }
 
     #[get("/info")]
     fn get_info(&self, req: Request) -> ToniBody {
         let method = req.method();
         let uri = req.uri();
-        ToniBody::Text(format!("Method: {}, URI: {}", method, uri))
+        ToniBody::text(format!("Method: {}, URI: {}", method, uri))
     }
 
     #[post("/create")]
     fn create(&self, Json(dto): Json<CreateDto>, req: Request) -> ToniBody {
         let content_type = req.header("content-type").unwrap_or("unknown");
-        ToniBody::Text(format!(
+        ToniBody::text(format!(
             "Created {} with content-type: {}",
             dto.name, content_type
         ))
@@ -36,8 +36,8 @@ impl RequestExtractorController {
     #[get("/protected")]
     fn protected(&self, req: Request) -> ToniBody {
         match req.header("authorization") {
-            Some(auth) => ToniBody::Text(format!("Authorized: {}", auth)),
-            None => ToniBody::Text("Unauthorized".to_string()),
+            Some(auth) => ToniBody::text(format!("Authorized: {}", auth)),
+            None => ToniBody::text("Unauthorized".to_string()),
         }
     }
 
@@ -48,7 +48,7 @@ impl RequestExtractorController {
             .get("q")
             .map(|s| s.as_str())
             .unwrap_or("");
-        ToniBody::Text(format!("Searching for: {}", q))
+        ToniBody::text(format!("Searching for: {}", q))
     }
 }
 

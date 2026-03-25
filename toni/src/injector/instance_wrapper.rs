@@ -158,7 +158,7 @@ impl InstanceWrapper {
 
                 let mut error_response = HttpResponse::new();
                 error_response.status = 500;
-                error_response.body = Some(crate::http_helpers::Body::Json(serde_json::json!({
+                error_response.body = Some(crate::http_helpers::Body::json(serde_json::json!({
                     "error": "Internal Server Error",
                     "message": "An error occurred while processing the request"
                 })));
@@ -188,7 +188,7 @@ impl InstanceWrapper {
                 } else {
                     let mut forbidden = HttpResponse::new();
                     forbidden.status = 403;
-                    forbidden.body = Some(crate::Body::Text("Forbidden".to_string()));
+                    forbidden.body = Some(crate::Body::text("Forbidden"));
                     forbidden
                 };
 
@@ -285,7 +285,7 @@ impl InstanceWrapper {
                         "details": validation_errors.to_string()
                     });
                     let response = crate::http_helpers::HttpResponse {
-                        body: Some(crate::http_helpers::Body::Json(error_body)),
+                        body: Some(crate::http_helpers::Body::json(error_body)),
                         status: 400,
                         headers: vec![],
                     };
@@ -346,13 +346,17 @@ impl InstanceWrapper {
     /// Reconstruct HttpError from HttpResponse
     /// This preserves the error type for proper error handler matching
     fn response_to_http_error(response: &HttpResponse) -> crate::errors::HttpError {
-        let message = if let Some(crate::http_helpers::Body::Json(ref body)) = response.body {
-            body.get("message")
-                .and_then(|v| v.as_str())
-                .unwrap_or("HTTP Error")
-                .to_string()
-        } else if let Some(crate::http_helpers::Body::Text(ref text)) = response.body {
-            text.clone()
+        let message = if let Some(body) = &response.body {
+            if let Ok(v) = serde_json::from_slice::<serde_json::Value>(body.bytes()) {
+                v.get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("HTTP Error")
+                    .to_string()
+            } else {
+                std::str::from_utf8(body.bytes())
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|_| format!("HTTP {} Error", response.status))
+            }
         } else {
             format!("HTTP {} Error", response.status)
         };

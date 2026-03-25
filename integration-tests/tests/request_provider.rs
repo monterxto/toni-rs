@@ -13,13 +13,13 @@ impl TestController {
     fn get_info(&self, _req: HttpRequest) -> ToniBody {
         let method = self.request.method();
         let uri = self.request.uri();
-        ToniBody::Text(format!("Method: {}, URI: {}", method, uri))
+        ToniBody::text(format!("Method: {}, URI: {}", method, uri))
     }
 
     #[get("/headers")]
     fn get_headers(&self, _req: HttpRequest) -> ToniBody {
         let content_type = self.request.header("content-type").unwrap_or("not found");
-        ToniBody::Text(format!("Content-Type: {}", content_type))
+        ToniBody::text(format!("Content-Type: {}", content_type))
     }
 }
 

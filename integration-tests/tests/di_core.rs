@@ -31,7 +31,7 @@ async fn singleton_providers_created_once_across_requests() {
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text(format!("{}", SINGLETON_COUNTER.load(Ordering::SeqCst)))
+            ToniBody::text(format!("{}", SINGLETON_COUNTER.load(Ordering::SeqCst)))
         }
     }
 
@@ -86,7 +86,7 @@ async fn transient_providers_create_unique_instances_per_injection() {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
             let (id1, id2) = self.service.ids();
-            ToniBody::Text(format!("{}|{}", id1, id2))
+            ToniBody::text(format!("{}|{}", id1, id2))
         }
     }
 
@@ -138,7 +138,7 @@ async fn field_injection_with_inject_attribute() {
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text(format!("{}", self.service.get_value()))
+            ToniBody::text(format!("{}", self.service.get_value()))
         }
     }
 
@@ -173,7 +173,7 @@ async fn field_injection_with_default_fallback() {
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text(format!("{}", self.service.get_value()))
+            ToniBody::text(format!("{}", self.service.get_value()))
         }
     }
 
@@ -208,7 +208,7 @@ async fn config_service_injection_in_providers() {
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text(self.service.get_value())
+            ToniBody::text(self.service.get_value())
         }
     }
 
@@ -246,7 +246,7 @@ async fn new_attribute_syntax() {
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text("ok".to_string())
+            ToniBody::text("ok".to_string())
         }
     }
 

@@ -231,12 +231,12 @@ impl HttpError {
     pub fn to_response(&self) -> HttpResponse {
         HttpResponse {
             status: self.status_code(),
-            body: Some(Body::Json(json!({
+            body: Some(Body::json(json!({
                 "statusCode": self.status_code(),
                 "message": self.message(),
                 "error": self.error_type(),
             }))),
-            headers: vec![("Content-Type".to_string(), "application/json".to_string())],
+            headers: vec![],
         }
     }
 }
@@ -296,7 +296,7 @@ mod tests {
         let response = error.to_response();
 
         assert_eq!(response.status, 404);
-        assert!(matches!(response.body, Some(Body::Json(_))));
+        assert!(response.body.is_some());
     }
 
     #[test]

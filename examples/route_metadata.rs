@@ -99,7 +99,7 @@ impl ApiController {
     #[set_metadata(Public)]
     #[get("/health")]
     fn health(&self) -> ToniBody {
-        ToniBody::Json(serde_json::json!({ "status": "ok" }))
+        ToniBody::json(serde_json::json!({ "status": "ok" }))
     }
 
     /// User endpoint - any authenticated user
@@ -107,21 +107,21 @@ impl ApiController {
     #[set_metadata(RateLimit { max_requests: 100, window_secs: 60 })]
     #[get("/profile")]
     fn profile(&self) -> ToniBody {
-        ToniBody::Json(serde_json::json!({ "user": "current_user" }))
+        ToniBody::json(serde_json::json!({ "user": "current_user" }))
     }
 
     /// Admin only endpoint
     #[set_metadata(Roles(&["admin"]))]
     #[get("/admin/stats")]
     fn admin_stats(&self) -> ToniBody {
-        ToniBody::Json(serde_json::json!({ "total_users": 1000 }))
+        ToniBody::json(serde_json::json!({ "total_users": 1000 }))
     }
 
     /// Moderator or admin
     #[set_metadata(Roles(&["admin", "moderator"]))]
     #[get("/moderate")]
     fn moderate(&self) -> ToniBody {
-        ToniBody::Json(serde_json::json!({ "queue": [] }))
+        ToniBody::json(serde_json::json!({ "queue": [] }))
     }
 }
 

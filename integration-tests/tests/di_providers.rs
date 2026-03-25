@@ -15,7 +15,7 @@ async fn provider_value_injects_constant() {
     impl TestController {
         #[get("/port")]
         fn get_port(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text("3000".to_string())
+            ToniBody::text("3000".to_string())
         }
     }
 
@@ -46,7 +46,7 @@ async fn provider_factory_sync_without_deps() {
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text("ok".to_string())
+            ToniBody::text("ok".to_string())
         }
     }
 
@@ -95,7 +95,7 @@ async fn provider_factory_sync_with_deps() {
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text("ok".to_string())
+            ToniBody::text("ok".to_string())
         }
     }
 
@@ -142,7 +142,7 @@ async fn provider_factory_async_with_deps() {
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text("ok".to_string())
+            ToniBody::text("ok".to_string())
         }
     }
 
@@ -204,7 +204,7 @@ async fn provider_alias_creates_alternate_token() {
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text(self.verify.report())
+            ToniBody::text(self.verify.report())
         }
     }
 
@@ -262,7 +262,7 @@ async fn provider_token_for_custom_types() {
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text(self.app.get_info())
+            ToniBody::text(self.app.get_info())
         }
     }
 
@@ -340,7 +340,7 @@ async fn all_provider_variants_work_together() {
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text(self.consumer.report())
+            ToniBody::text(self.consumer.report())
         }
     }
 

@@ -22,7 +22,7 @@
 //!         let method = self.request.method();
 //!         let uri = self.request.uri();
 //!
-//!         ToniBody::Text(format!("Method: {}, URI: {}", method, uri))
+//!         ToniBody::text(format!("Method: {}, URI: {}", method, uri))
 //!     }
 //! }
 //! ```
@@ -44,9 +44,9 @@
 //!     fn get_profile(&self, _req: HttpRequest) -> ToniBody {
 //!         // Access typed data from extensions (set by middleware)
 //!         if let Some(user_id) = self.request.extensions().get::<UserId>() {
-//!             ToniBody::Text(format!("Profile for user: {}", user_id.0))
+//!             ToniBody::text(format!("Profile for user: {}", user_id.0))
 //!         } else {
-//!             ToniBody::Text("Anonymous user".to_string())
+//!             ToniBody::text("Anonymous user".to_string())
 //!         }
 //!     }
 //! }
@@ -69,9 +69,9 @@
 //!         let content_type = self.request.header("Content-Type");
 //!
 //!         if auth.is_some() {
-//!             ToniBody::Text("Authenticated".to_string())
+//!             ToniBody::text("Authenticated".to_string())
 //!         } else {
-//!             ToniBody::Text("Not authenticated".to_string())
+//!             ToniBody::text("Not authenticated".to_string())
 //!         }
 //!     }
 //! }
@@ -118,7 +118,7 @@ use std::sync::Arc;
 use crate::FxHashMap;
 use crate::async_trait;
 use crate::extractors::FromRequest;
-use crate::http_helpers::{Body, Extensions, HttpRequest};
+use crate::http_helpers::{Extensions, HttpRequest};
 use crate::provider_scope::ProviderScope;
 use crate::traits_helpers::{Provider, ProviderFactory};
 
@@ -175,11 +175,11 @@ impl Request {
     /// # Examples
     ///
     /// ```rust
-    /// use toni::{Request, HttpRequest, Body, http_helpers::Extensions};
+    /// use toni::{Request, HttpRequest, http_helpers::Extensions};
     /// use std::collections::HashMap;
     ///
     /// let http_req = HttpRequest {
-    ///     body: Body::Text("".to_string()),
+    ///     body: bytes::Bytes::new(),
     ///     headers: vec![("content-type".to_string(), "application/json".to_string())],
     ///     method: "GET".to_string(),
     ///     uri: "/users/123".to_string(),
@@ -202,10 +202,10 @@ impl Request {
     /// # Examples
     ///
     /// ```rust
-    /// # use toni::{Request, HttpRequest, Body, http_helpers::Extensions};
+    /// # use toni::{Request, HttpRequest, http_helpers::Extensions};
     /// # use std::collections::HashMap;
     /// # let http_req = HttpRequest {
-    /// #     body: Body::Text("".to_string()),
+    /// #     body: bytes::Bytes::new(),
     /// #     headers: vec![],
     /// #     method: "POST".to_string(),
     /// #     uri: "/".to_string(),
@@ -225,10 +225,10 @@ impl Request {
     /// # Examples
     ///
     /// ```rust
-    /// # use toni::{Request, HttpRequest, Body, http_helpers::Extensions};
+    /// # use toni::{Request, HttpRequest, http_helpers::Extensions};
     /// # use std::collections::HashMap;
     /// # let http_req = HttpRequest {
-    /// #     body: Body::Text("".to_string()),
+    /// #     body: bytes::Bytes::new(),
     /// #     headers: vec![],
     /// #     method: "GET".to_string(),
     /// #     uri: "/users/123".to_string(),
@@ -248,10 +248,10 @@ impl Request {
     /// # Examples
     ///
     /// ```rust
-    /// # use toni::{Request, HttpRequest, Body, http_helpers::Extensions};
+    /// # use toni::{Request, HttpRequest, http_helpers::Extensions};
     /// # use std::collections::HashMap;
     /// let http_req = HttpRequest {
-    ///     body: Body::Text("".to_string()),
+    ///     body: bytes::Bytes::new(),
     ///     headers: vec![
     ///         ("Content-Type".to_string(), "application/json".to_string()),
     ///         ("Authorization".to_string(), "Bearer token123".to_string()),
@@ -283,10 +283,10 @@ impl Request {
     /// # Examples
     ///
     /// ```rust
-    /// # use toni::{Request, HttpRequest, Body, http_helpers::Extensions};
+    /// # use toni::{Request, HttpRequest, http_helpers::Extensions};
     /// # use std::collections::HashMap;
     /// # let http_req = HttpRequest {
-    /// #     body: Body::Text("".to_string()),
+    /// #     body: bytes::Bytes::new(),
     /// #     headers: vec![("content-type".to_string(), "text/plain".to_string())],
     /// #     method: "GET".to_string(),
     /// #     uri: "/".to_string(),
@@ -307,14 +307,14 @@ impl Request {
     /// # Examples
     ///
     /// ```rust
-    /// # use toni::{Request, HttpRequest, Body, http_helpers::Extensions};
+    /// # use toni::{Request, HttpRequest, http_helpers::Extensions};
     /// # use std::collections::HashMap;
     /// let mut query_params = HashMap::new();
     /// query_params.insert("page".to_string(), "1".to_string());
     /// query_params.insert("limit".to_string(), "10".to_string());
     ///
     /// let http_req = HttpRequest {
-    ///     body: Body::Text("".to_string()),
+    ///     body: bytes::Bytes::new(),
     ///     headers: vec![],
     ///     method: "GET".to_string(),
     ///     uri: "/users?page=1&limit=10".to_string(),
@@ -335,13 +335,13 @@ impl Request {
     /// # Examples
     ///
     /// ```rust
-    /// # use toni::{Request, HttpRequest, Body, http_helpers::Extensions};
+    /// # use toni::{Request, HttpRequest, http_helpers::Extensions};
     /// # use std::collections::HashMap;
     /// let mut path_params = HashMap::new();
     /// path_params.insert("id".to_string(), "123".to_string());
     ///
     /// let http_req = HttpRequest {
-    ///     body: Body::Text("".to_string()),
+    ///     body: bytes::Bytes::new(),
     ///     headers: vec![],
     ///     method: "GET".to_string(),
     ///     uri: "/users/123".to_string(),
@@ -357,15 +357,16 @@ impl Request {
         &self.inner.path_params
     }
 
-    /// Get the request body.
+    /// Get the raw request body bytes.
     ///
     /// # Examples
     ///
     /// ```rust
-    /// # use toni::{Request, HttpRequest, Body, http_helpers::Extensions};
+    /// # use toni::{Request, HttpRequest, http_helpers::Extensions};
+    /// # use bytes::Bytes;
     /// # use std::collections::HashMap;
     /// let http_req = HttpRequest {
-    ///     body: Body::Text("Hello, World!".to_string()),
+    ///     body: Bytes::from("Hello, World!"),
     ///     headers: vec![],
     ///     method: "POST".to_string(),
     ///     uri: "/".to_string(),
@@ -375,12 +376,9 @@ impl Request {
     /// };
     ///
     /// let request = Request::from_request(&http_req);
-    /// match request.body() {
-    ///     Body::Text(text) => assert_eq!(text, "Hello, World!"),
-    ///     _ => panic!("Expected text body"),
-    /// }
+    /// assert_eq!(request.body().as_ref(), b"Hello, World!");
     /// ```
-    pub fn body(&self) -> &Body {
+    pub fn body(&self) -> &bytes::Bytes {
         &self.inner.body
     }
 
@@ -392,13 +390,13 @@ impl Request {
     /// # Examples
     ///
     /// ```rust
-    /// # use toni::{Request, HttpRequest, Body, http_helpers::Extensions};
+    /// # use toni::{Request, HttpRequest, http_helpers::Extensions};
     /// # use std::collections::HashMap;
     /// #[derive(Clone)]
     /// struct UserId(String);
     ///
     /// let mut http_req = HttpRequest {
-    ///     body: Body::Text("".to_string()),
+    ///     body: bytes::Bytes::new(),
     ///     headers: vec![],
     ///     method: "GET".to_string(),
     ///     uri: "/".to_string(),
@@ -421,10 +419,10 @@ impl Request {
     /// # Examples
     ///
     /// ```rust
-    /// # use toni::{Request, HttpRequest, Body, http_helpers::Extensions};
+    /// # use toni::{Request, HttpRequest, http_helpers::Extensions};
     /// # use std::collections::HashMap;
     /// # let http_req = HttpRequest {
-    /// #     body: Body::Text("".to_string()),
+    /// #     body: bytes::Bytes::new(),
     /// #     headers: vec![],
     /// #     method: "GET".to_string(),
     /// #     uri: "/".to_string(),
@@ -465,7 +463,7 @@ impl ProviderFactory for RequestFactory {
         // Placeholder — the real instance is created per-request in execute()
         let provider = Request {
             inner: Arc::new(HttpRequest {
-                body: Body::Text(String::new()),
+                body: bytes::Bytes::new(),
                 headers: vec![],
                 method: String::new(),
                 uri: String::new(),
@@ -490,7 +488,7 @@ mod tests {
         path_params.insert("id".to_string(), "123".to_string());
 
         HttpRequest {
-            body: Body::Text("test body".to_string()),
+            body: bytes::Bytes::from("test body"),
             headers: vec![
                 ("content-type".to_string(), "application/json".to_string()),
                 ("Authorization".to_string(), "Bearer token123".to_string()),
@@ -572,10 +570,7 @@ mod tests {
         let http_req = create_test_request();
         let request = Request::from_request(&http_req);
 
-        match request.body() {
-            Body::Text(text) => assert_eq!(text, "test body"),
-            _ => panic!("Expected text body"),
-        }
+        assert_eq!(request.body().as_ref(), b"test body");
     }
 
     #[test]

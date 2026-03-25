@@ -6,10 +6,9 @@ use actix_web::{
     dev::Server, web, web::Bytes, App, HttpRequest as ActixHttpRequest,
     HttpResponse as ActixHttpResponse, HttpServer,
 };
-use serde_json::Value;
 use toni::{
-    http_helpers::Extensions, Body, HttpAdapter, HttpMethod, HttpRequest, HttpResponse,
-    InstanceWrapper, ToResponse,
+    http_helpers::{Bytes as ToniBytes, Extensions}, HttpAdapter, HttpMethod, HttpRequest,
+    HttpResponse, InstanceWrapper, ToResponse,
 };
 
 #[derive(Clone)]
@@ -42,27 +41,7 @@ impl HttpAdapter for ActixAdapter {
     async fn adapt_request(request: Self::Request) -> Result<HttpRequest> {
         let (req, body) = request;
 
-        let content_type = req
-            .headers()
-            .get("content-type")
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("")
-            .to_lowercase();
-
         let body_vec = body.to_vec();
-        let body = if content_type.contains("application/octet-stream")
-            || content_type.contains("multipart/form-data")
-        {
-            Body::Binary(body_vec)
-        } else if let Ok(body_str) = String::from_utf8(body_vec.clone()) {
-            if let Ok(json) = serde_json::from_str::<Value>(&body_str) {
-                Body::Json(json)
-            } else {
-                Body::Text(body_str)
-            }
-        } else {
-            Body::Binary(body_vec)
-        };
 
         let path_params: HashMap<String, String> = req
             .match_info()
@@ -95,7 +74,7 @@ impl HttpAdapter for ActixAdapter {
             .collect();
 
         Ok(HttpRequest {
-            body,
+            body: ToniBytes::from(body_vec),
             headers,
             method: req.method().to_string(),
             uri: req.uri().to_string(),
@@ -116,14 +95,9 @@ impl HttpAdapter for ActixAdapter {
         let mut builder = ActixHttpResponse::build(status);
 
         let actix_response = match response.body {
-            Some(Body::Text(text)) => builder.content_type("text/plain").body(text),
-            Some(Body::Json(json)) => {
-                let json_str = serde_json::to_string(&json)
-                    .map_err(|e| anyhow!("Failed to serialize JSON: {}", e))?;
-                builder.content_type("application/json").body(json_str)
-            }
-            Some(Body::Binary(bytes)) => {
-                builder.content_type("application/octet-stream").body(bytes)
+            Some(toni_body) => {
+                let ct = toni_body.content_type().unwrap_or("application/octet-stream").to_string();
+                builder.content_type(ct.as_str()).body(toni_body.into_bytes().to_vec())
             }
             None => builder.finish(),
         };

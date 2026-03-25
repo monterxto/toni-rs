@@ -238,7 +238,7 @@ impl TriggerController {
     #[post("/")]
     async fn trigger(&self) -> ToniBody {
         self.gateway.push("server_push").await;
-        ToniBody::Text("ok".to_string())
+        ToniBody::text("ok".to_string())
     }
 }
 

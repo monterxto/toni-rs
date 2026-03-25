@@ -54,7 +54,7 @@ impl ConfigController {
     #[get("/")]
     fn get_config(&self, _req: HttpRequest) -> Body {
         let cfg = self.service.get_config();
-        Body::Json(json!({
+        Body::json(json!({
             "name":            cfg.name,
             "port":            cfg.port,
             "log_level":       cfg.log_level,

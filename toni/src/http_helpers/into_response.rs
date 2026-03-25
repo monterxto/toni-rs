@@ -63,32 +63,12 @@ impl ToResponse for (u16, Body) {
     }
 }
 
-// impl<T1, T2> ToResponse for (T1, T2)
-// where
-//     T1: ToResponse<Response = HttpResponse>,
-//     T2: ToResponse<Response = HttpResponse>,
-// {
-//     type Response = HttpResponse;
-
-//     fn to_response(&self) -> HttpResponse {
-//         let mut response = self.0.to_response();
-//         let part = self.1.to_response();
-
-//         response.status = part.status;
-//         response.headers.extend(part.headers);
-//         response.body = part.body;
-
-//         response
-//     }
-// }
-
 impl ToResponse for Value {
     type Response = HttpResponse;
 
     fn to_response(&self) -> Self::Response {
         HttpResponse {
-            body: Some(Body::Json(self.clone())),
-            headers: vec![("Content-Type".to_string(), "application/json".to_string())],
+            body: Some(Body::json(self.clone())),
             ..HttpResponse::new()
         }
     }
@@ -99,7 +79,7 @@ impl ToResponse for String {
 
     fn to_response(&self) -> Self::Response {
         HttpResponse {
-            body: Some(Body::Text(self.clone())),
+            body: Some(Body::text(self.clone())),
             ..HttpResponse::new()
         }
     }
@@ -110,13 +90,12 @@ impl ToResponse for &'static str {
 
     fn to_response(&self) -> Self::Response {
         HttpResponse {
-            body: Some(Body::Text(self.to_string())),
+            body: Some(Body::text(*self)),
             ..HttpResponse::new()
         }
     }
 }
 
-// Support for Result<T, E> where both T and E implement ToResponse
 impl<T, E> ToResponse for Result<T, E>
 where
     T: ToResponse<Response = HttpResponse>,
