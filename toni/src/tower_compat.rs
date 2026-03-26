@@ -40,8 +40,8 @@ fn to_http_request(req: HttpRequest) -> Result<http::Request<Bytes>, http::Error
 }
 
 // The response body comes back as raw Bytes — Tower may have transformed it
-// (e.g. CompressionLayer). Always Body::Binary; the adapter resolves Content-Type
-// from the headers that Tower set.
+// (e.g. CompressionLayer). The Content-Type Tower set is propagated onto the
+// Body so adapters see the correct hint via body.content_type().
 fn to_toni_response(resp: http::Response<Bytes>) -> HttpResponse {
     let (parts, body) = resp.into_parts();
 
@@ -53,9 +53,18 @@ fn to_toni_response(resp: http::Response<Bytes>) -> HttpResponse {
         })
         .collect();
 
+    let toni_body = match parts
+        .headers
+        .get(http::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+    {
+        Some(ct) => Body::from(body).with_content_type(ct),
+        None => Body::from(body),
+    };
+
     HttpResponse {
         status: parts.status.as_u16(),
-        body: Some(Body::from(body)),
+        body: Some(toni_body),
         headers,
     }
 }

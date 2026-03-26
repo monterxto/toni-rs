@@ -51,17 +51,17 @@ if let Some(ext) = toni_extensions(&req) {
 
 `ToniNextService` panics if called more than once. `Next::run(self: Box<Self>)` is intentionally single-use — the framework has already routed to a specific handler. Tower layers that call the inner service multiple times (`tower::retry`, `tower::hedge`) are client-side patterns and will panic at runtime.
 
-### Response body is always `Body::Binary`
+### Response body content-type comes from headers
 
-`to_toni_response` always wraps the body as `Body::Binary`. Tower may have transformed it (e.g. `CompressionLayer`), so the original type is unknown. Adapters that set `Content-Type` based on `Body` variant will see `Binary` for all Tower-processed responses; the correct `Content-Type` will be whatever Tower (or the controller's own headers) set.
+Tower may have transformed the response body (e.g. `CompressionLayer`), so the original content-type hint is unknown. `to_toni_response` reads the `Content-Type` header Tower set and forwards it onto the `Body` so adapters see the correct hint via `body.content_type()`. If Tower strips or rewrites `Content-Type`, the body will have no content-type hint and adapters fall back to `application/octet-stream`.
 
 ---
 
 ## What is not yet handled
 
-### Streaming bodies
+### Streaming response bodies
 
-Both `to_http_request` and `ToniNextService::call` buffer the full body into `Bytes`. Large upload/download paths (file streaming, chunked responses) will load the entire body into memory. Proper streaming would require `HttpRequest.body` and `HttpResponse.body` to carry an `http_body::Body` impl rather than the current owned `Body` enum. That is a deeper framework change.
+`HttpRequest.body` is intentionally `bytes::Bytes` — requests are always fully buffered at the adapter boundary, which keeps the middleware chain simple and avoids single-use stream problems. Response streaming is still future work: `to_toni_response` buffers the full response body into `Bytes`. Large download paths (file streaming, chunked responses) will load the entire body into memory. Proper response streaming would require `HttpResponse.body` to carry an `http_body::Body` impl. That is a deeper framework change tracked separately.
 
 ### `!Send` futures
 
@@ -69,7 +69,7 @@ Both `to_http_request` and `ToniNextService::call` buffer the full body into `By
 
 ### Body type recovery on response
 
-Currently the response `Content-Type` header is the only signal for what kind of body came back. The axum adapter reads headers to decide how to respond downstream. If a Tower layer strips or rewrites `Content-Type`, body handling will degrade gracefully (binary fallback), but this is worth testing explicitly with `CompressionLayer` or `BodyTransformLayer`.
+`to_toni_response` reads the `Content-Type` header and sets it on the `Body` directly, so adapters get the right hint via `body.content_type()` rather than relying on the header loop to patch it afterwards. If a Tower layer strips or rewrites `Content-Type`, body handling degrades gracefully (no content-type hint, adapter falls back to `application/octet-stream`).
 
 ### Tower layers requiring `B: http_body::Body + Clone`
 
@@ -78,10 +78,6 @@ Some Tower middleware (certain retry patterns, request cloning) require the body
 ---
 
 ## Optimization opportunities
-
-### Redundant allocations in body conversion
-
-`Body::Text(s)` → `Bytes::from(s.into_bytes())` → (if Tower doesn't touch body) → `Body::Text(String::from_utf8(...))` allocates twice and copies the string data. If Tower does not transform the body, this round-trip is pure overhead. An optimization would be to detect pass-through (e.g. compare body bytes length pre/post) or to skip conversion for body-transparent layers, though there is no clean way to detect this without Tower-layer cooperation.
 
 ### Header Vec allocation
 
