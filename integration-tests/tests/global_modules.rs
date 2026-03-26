@@ -84,12 +84,12 @@ impl UserService {
 impl UserController {
     #[get("/{id}")]
     fn get_user(&self, _req: HttpRequest) -> ToniBody {
-        ToniBody::Text(self.user_service.get_user(123))
+        ToniBody::text(self.user_service.get_user(123))
     }
 
     #[get("/count")]
     fn get_count(&self, _req: HttpRequest) -> ToniBody {
-        ToniBody::Text(self.user_service.get_logger_count().to_string())
+        ToniBody::text(self.user_service.get_logger_count().to_string())
     }
 }
 
@@ -132,7 +132,7 @@ impl OrderService {
 impl OrderController {
     #[get("/create")]
     fn create_order(&self, _req: HttpRequest) -> ToniBody {
-        ToniBody::Text(self.order_service.create_order(456, "laptop"))
+        ToniBody::text(self.order_service.create_order(456, "laptop"))
     }
 }
 
@@ -243,7 +243,7 @@ impl ProductService {
 impl ProductController {
     #[get("/{id}")]
     fn get_product(&self, _req: HttpRequest) -> ToniBody {
-        ToniBody::Text(self.product_service.get_product(789))
+        ToniBody::text(self.product_service.get_product(789))
     }
 }
 

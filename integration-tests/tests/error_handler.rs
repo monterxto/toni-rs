@@ -40,7 +40,7 @@ impl ErrorHandler for GlobalHandler {
         if let Some(e) = error.downcast_ref::<HttpError>() {
             let mut resp = HttpResponse::new();
             resp.status = e.status_code();
-            resp.body = Some(ToniBody::Text(format!("global:{}", e.message())));
+            resp.body = Some(ToniBody::text(format!("global:{}", e.message())));
             return Some(resp);
         }
         None
@@ -60,7 +60,7 @@ impl ErrorHandler for BadRequestHandler {
             if e.status_code() == 400 {
                 let mut resp = HttpResponse::new();
                 resp.status = 400;
-                resp.body = Some(ToniBody::Text(format!("method:{}", e.message())));
+                resp.body = Some(ToniBody::text(format!("method:{}", e.message())));
                 return Some(resp);
             }
         }

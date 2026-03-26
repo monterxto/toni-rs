@@ -93,7 +93,7 @@ async fn provide_macro_patterns() {
     impl AppController {
         #[get("/info")]
         fn info(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text(self.app.get_info())
+            ToniBody::text(self.app.get_info())
         }
     }
 

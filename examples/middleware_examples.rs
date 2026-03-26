@@ -50,7 +50,7 @@ impl Middleware for AuthMiddleware {
 
         let mut response = HttpResponse::new();
         response.status = 401;
-        response.body = Some(Body::Json(json!({
+        response.body = Some(Body::json(json!({
             "statusCode": 401,
             "error": "Unauthorized",
             "message": "Missing or invalid Bearer token"
@@ -63,12 +63,12 @@ impl Middleware for AuthMiddleware {
 impl ApiController {
     #[get("/public")]
     fn public(&self) -> Body {
-        Body::Text("Public — no token required".to_string())
+        Body::text("Public — no token required".to_string())
     }
 
     #[get("/profile")]
     fn profile(&self) -> Body {
-        Body::Text("Authenticated — token accepted".to_string())
+        Body::text("Authenticated — token accepted".to_string())
     }
 }
 

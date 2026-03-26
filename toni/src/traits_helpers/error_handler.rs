@@ -91,12 +91,12 @@ impl ErrorHandler for DefaultErrorHandler {
 
         Some(HttpResponse {
             status: 500,
-            body: Some(Body::Json(json!({
+            body: Some(Body::json(json!({
                 "statusCode": 500,
                 "message": "Internal Server Error",
                 "error": "Internal Server Error",
             }))),
-            headers: vec![("Content-Type".to_string(), "application/json".to_string())],
+            headers: vec![],
         })
     }
 }
@@ -134,7 +134,7 @@ mod tests {
 
     fn create_test_request() -> HttpRequest {
         HttpRequest {
-            body: Body::Text(String::new()),
+            body: bytes::Bytes::new(),
             headers: vec![],
             method: "GET".to_string(),
             uri: "/test".to_string(),

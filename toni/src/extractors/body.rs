@@ -3,15 +3,12 @@
 use serde::de::DeserializeOwned;
 
 use super::FromRequest;
-use crate::http_helpers::{Body as HttpBody, HttpRequest};
+use crate::http_helpers::HttpRequest;
 
-/// Extractor for request body that auto-detects content type
+/// Extractor for request body that auto-detects content type.
 ///
-/// Supports:
-/// - `application/json` - parses as JSON
-/// - `application/x-www-form-urlencoded` - parses as form data
-///
-/// For raw binary data (`application/octet-stream`), use the `Bytes` extractor instead.
+/// Supports `application/json` and `application/x-www-form-urlencoded`.
+/// For raw binary data, use the [`Bytes`](super::bytes::Bytes) extractor.
 ///
 /// # Example
 ///
@@ -24,7 +21,6 @@ use crate::http_helpers::{Body as HttpBody, HttpRequest};
 ///
 /// #[post("/users")]
 /// fn create_user(&self, Body(dto): Body<CreateUserDto>) -> String {
-///     // Works with both JSON and form data
 ///     format!("Created user: {}", dto.name)
 /// }
 /// ```
@@ -32,7 +28,6 @@ use crate::http_helpers::{Body as HttpBody, HttpRequest};
 pub struct Body<T>(pub T);
 
 impl<T> Body<T> {
-    /// Extract the inner value
     pub fn into_inner(self) -> T {
         self.0
     }
@@ -40,7 +35,6 @@ impl<T> Body<T> {
 
 impl<T> std::ops::Deref for Body<T> {
     type Target = T;
-
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -52,12 +46,9 @@ impl<T> std::ops::DerefMut for Body<T> {
     }
 }
 
-/// Error type for body extraction
 #[derive(Debug)]
 pub enum BodyError {
-    /// Content type not supported
     UnsupportedContentType(String),
-    /// Failed to deserialize body
     DeserializeError(String),
 }
 
@@ -67,9 +58,7 @@ impl std::fmt::Display for BodyError {
             BodyError::UnsupportedContentType(ct) => {
                 write!(f, "Unsupported content type: {}", ct)
             }
-            BodyError::DeserializeError(msg) => {
-                write!(f, "Failed to deserialize body: {}", msg)
-            }
+            BodyError::DeserializeError(msg) => write!(f, "Failed to deserialize body: {}", msg),
         }
     }
 }
@@ -80,7 +69,10 @@ impl<T: DeserializeOwned> FromRequest for Body<T> {
     type Error = BodyError;
 
     fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        // Get content type from headers
+        if req.body.is_empty() {
+            return Err(BodyError::DeserializeError("Empty body".to_string()));
+        }
+
         let content_type = req
             .headers
             .iter()
@@ -89,61 +81,20 @@ impl<T: DeserializeOwned> FromRequest for Body<T> {
             .unwrap_or_default();
 
         if content_type.contains("application/json") {
-            // Parse as JSON
-            match &req.body {
-                HttpBody::Json(value) => {
-                    let parsed: T = serde_json::from_value(value.clone())
-                        .map_err(|e| BodyError::DeserializeError(e.to_string()))?;
-                    Ok(Body(parsed))
-                }
-                HttpBody::Text(text) => {
-                    // Try to parse text as JSON
-                    let parsed: T = serde_json::from_str(text)
-                        .map_err(|e| BodyError::DeserializeError(e.to_string()))?;
-                    Ok(Body(parsed))
-                }
-                HttpBody::Binary(_) => Err(BodyError::DeserializeError(
-                    "Expected JSON but got binary data".to_string(),
-                )),
-            }
+            let parsed: T = serde_json::from_slice(&req.body)
+                .map_err(|e| BodyError::DeserializeError(e.to_string()))?;
+            Ok(Body(parsed))
         } else if content_type.contains("application/x-www-form-urlencoded") {
-            // Parse as form data
-            match &req.body {
-                HttpBody::Text(text) => {
-                    let parsed: T = serde_urlencoded::from_str(text)
-                        .map_err(|e| BodyError::DeserializeError(e.to_string()))?;
-                    Ok(Body(parsed))
-                }
-                HttpBody::Json(_) => Err(BodyError::DeserializeError(
-                    "Expected form data but got JSON".to_string(),
-                )),
-                HttpBody::Binary(_) => Err(BodyError::DeserializeError(
-                    "Expected form data but got binary data".to_string(),
-                )),
-            }
+            let parsed: T = serde_urlencoded::from_bytes(&req.body)
+                .map_err(|e| BodyError::DeserializeError(e.to_string()))?;
+            Ok(Body(parsed))
         } else if content_type.is_empty() {
-            // No content type - try JSON first, then form
-            match &req.body {
-                HttpBody::Json(value) => {
-                    let parsed: T = serde_json::from_value(value.clone())
-                        .map_err(|e| BodyError::DeserializeError(e.to_string()))?;
-                    Ok(Body(parsed))
-                }
-                HttpBody::Text(text) => {
-                    // Try JSON first
-                    if let Ok(parsed) = serde_json::from_str::<T>(text) {
-                        return Ok(Body(parsed));
-                    }
-                    // Fall back to form data
-                    let parsed: T = serde_urlencoded::from_str(text)
-                        .map_err(|e| BodyError::DeserializeError(e.to_string()))?;
-                    Ok(Body(parsed))
-                }
-                HttpBody::Binary(_) => Err(BodyError::DeserializeError(
-                    "Cannot deserialize binary data. Use Bytes extractor for raw binary data"
-                        .to_string(),
-                )),
+            if let Ok(parsed) = serde_json::from_slice::<T>(&req.body) {
+                return Ok(Body(parsed));
             }
+            let parsed: T = serde_urlencoded::from_bytes(&req.body)
+                .map_err(|e| BodyError::DeserializeError(e.to_string()))?;
+            Ok(Body(parsed))
         } else {
             Err(BodyError::UnsupportedContentType(content_type))
         }

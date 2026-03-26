@@ -24,24 +24,24 @@ impl AsyncService {
 impl AsyncController {
     #[get("/data")]
     async fn get_data(&self, _req: HttpRequest) -> ToniBody {
-        ToniBody::Text(self.service.fetch_data().await)
+        ToniBody::text(self.service.fetch_data().await)
     }
 
     #[get("/compute")]
     async fn compute(&self, _req: HttpRequest) -> ToniBody {
-        ToniBody::Text(format!("Result: {}", self.service.compute(42).await))
+        ToniBody::text(format!("Result: {}", self.service.compute(42).await))
     }
 
     #[get("/sync")]
     fn sync_method(&self, _req: HttpRequest) -> ToniBody {
-        ToniBody::Text("sync response".to_string())
+        ToniBody::text("sync response".to_string())
     }
 
     #[get("/multi")]
     async fn multi_await(&self, _req: HttpRequest) -> ToniBody {
         let data = self.service.fetch_data().await;
         let result = self.service.compute(10).await;
-        ToniBody::Text(format!("{} - {}", data, result))
+        ToniBody::text(format!("{} - {}", data, result))
     }
 }
 

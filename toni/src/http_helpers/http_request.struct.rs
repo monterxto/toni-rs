@@ -1,10 +1,13 @@
 use std::collections::HashMap;
 
-use super::{Body, Extensions};
+use bytes::Bytes;
+
+use super::Extensions;
 
 #[derive(Clone, Debug)]
 pub struct HttpRequest {
-    pub body: Body,
+    /// Raw buffered request body. Content-type is in `headers`.
+    pub body: Bytes,
     pub headers: Vec<(String, String)>,
     pub method: String,
     pub uri: String,
@@ -14,17 +17,15 @@ pub struct HttpRequest {
 }
 
 impl HttpRequest {
-    /// Get a reference to the headers
     pub fn headers(&self) -> &Vec<(String, String)> {
         &self.headers
     }
 
-    /// Get a mutable reference to the headers
     pub fn headers_mut(&mut self) -> &mut Vec<(String, String)> {
         &mut self.headers
     }
 
-    /// Get a specific header value by name (case-insensitive)
+    /// Get a specific header value by name (case-insensitive).
     pub fn header(&self, name: &str) -> Option<&str> {
         let name_lower = name.to_lowercase();
         self.headers
@@ -33,7 +34,7 @@ impl HttpRequest {
             .map(|(_, v)| v.as_str())
     }
 
-    /// Check if a header exists (case-insensitive)
+    /// Check if a header exists (case-insensitive).
     pub fn has_header(&self, name: &str) -> bool {
         let name_lower = name.to_lowercase();
         self.headers

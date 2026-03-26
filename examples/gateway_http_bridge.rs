@@ -71,7 +71,7 @@ impl NotifyController {
     #[post("/")]
     async fn notify(&self, Json(payload): Json<NotifyPayload>) -> Body {
         self.gateway.push(&payload.message).await;
-        Body::Text(format!("broadcast: {}", payload.message))
+        Body::text(format!("broadcast: {}", payload.message))
     }
 }
 

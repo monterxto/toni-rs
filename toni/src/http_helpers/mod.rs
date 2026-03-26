@@ -1,6 +1,7 @@
 #[path = "body.enum.rs"]
 mod body;
 pub use self::body::Body;
+pub use bytes::Bytes;
 
 #[path = "http_response.enum.rs"]
 mod http_response;

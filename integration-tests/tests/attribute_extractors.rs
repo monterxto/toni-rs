@@ -30,7 +30,7 @@ impl AttributeController {
     /// Extract JSON body using #[body] attribute
     #[post("/users")]
     fn create_user(&self, #[body] dto: CreateUserDto) -> ToniBody {
-        ToniBody::Text(format!("Created user: {} <{}>", dto.name, dto.email))
+        ToniBody::text(format!("Created user: {} <{}>", dto.name, dto.email))
     }
 
     /// Extract individual query parameters using #[query] attributes
@@ -41,20 +41,20 @@ impl AttributeController {
         #[query("limit")] limit: Option<usize>,
     ) -> ToniBody {
         let limit = limit.unwrap_or(10);
-        ToniBody::Text(format!("Searching for '{}' with limit {}", query, limit))
+        ToniBody::text(format!("Searching for '{}' with limit {}", query, limit))
     }
 
     /// Extract path parameter using #[param] attribute
     #[get("/users/{id}")]
     fn get_user(&self, #[param("id")] user_id: i32) -> ToniBody {
-        ToniBody::Text(format!("User ID: {}", user_id))
+        ToniBody::text(format!("User ID: {}", user_id))
     }
 
     /// Extract ALL query params as struct using #[query] without argument
     #[get("/advanced-search")]
     fn advanced_search(&self, #[query] params: SearchParams) -> ToniBody {
         let limit = params.limit.unwrap_or(10);
-        ToniBody::Text(format!(
+        ToniBody::text(format!(
             "Advanced search: '{}' (limit: {})",
             params.q, limit
         ))
@@ -67,7 +67,7 @@ impl AttributeController {
         #[query("page", default = "1")] page: usize,
         #[query("pageSize", default = "20")] page_size: usize,
     ) -> ToniBody {
-        ToniBody::Text(format!("Products page {} (size: {})", page, page_size))
+        ToniBody::text(format!("Products page {} (size: {})", page, page_size))
     }
 
     /// Mix multiple attribute extractors: #[param] + #[body] + HttpRequest
@@ -78,7 +78,7 @@ impl AttributeController {
         #[body] dto: CreateUserDto,
         _req: HttpRequest,
     ) -> ToniBody {
-        ToniBody::Text(format!(
+        ToniBody::text(format!(
             "Updated user {}: {} <{}>",
             user_id, dto.name, dto.email
         ))
@@ -87,7 +87,7 @@ impl AttributeController {
     /// Extract binary data using Bytes extractor
     #[post("/upload")]
     fn upload_file(&self, data: Bytes) -> ToniBody {
-        ToniBody::Text(format!("Uploaded {} bytes", data.len()))
+        ToniBody::text(format!("Uploaded {} bytes", data.len()))
     }
 }
 

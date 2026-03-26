@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use serde::Deserialize;
 use std::sync::Arc;
 use toni::traits_helpers::{Controller, ControllerFactory, Guard, Interceptor, Pipe, Provider};
-use toni::{Body, FxHashMap, HttpMethod, HttpRequest, HttpResponse, ToResponse};
+use toni::{http_helpers::Body, FxHashMap, HttpMethod, HttpRequest, HttpResponse, ToResponse};
 
 /// GraphQL request payload
 #[derive(Debug, Deserialize)]
@@ -131,44 +131,15 @@ where
         req: HttpRequest,
     ) -> Box<dyn ToResponse<Response = HttpResponse> + Send> {
         // Parse GraphQL request from body
-        let gql_request: GraphQLRequest = match &req.body {
-            Body::Json(json) => match serde_json::from_value(json.clone()) {
-                Ok(req) => req,
-                Err(e) => {
-                    return Box::new(HttpResponse {
-                        status: 400,
-                        body: Some(Body::Json(serde_json::json!({
-                            "errors": [{
-                                "message": format!("Invalid GraphQL request: {}", e)
-                            }]
-                        }))),
-                        headers: vec![("content-type".to_string(), "application/json".to_string())],
-                    });
-                }
-            },
-            Body::Text(text) => match serde_json::from_str(text) {
-                Ok(req) => req,
-                Err(e) => {
-                    return Box::new(HttpResponse {
-                        status: 400,
-                        body: Some(Body::Json(serde_json::json!({
-                            "errors": [{
-                                "message": format!("Invalid GraphQL request: {}", e)
-                            }]
-                        }))),
-                        headers: vec![("content-type".to_string(), "application/json".to_string())],
-                    });
-                }
-            },
-            Body::Binary(_) => {
+        let gql_request: GraphQLRequest = match serde_json::from_slice(&req.body) {
+            Ok(req) => req,
+            Err(e) => {
                 return Box::new(HttpResponse {
                     status: 400,
-                    body: Some(Body::Json(serde_json::json!({
-                        "errors": [{
-                            "message": "GraphQL requests must be JSON or text, not binary"
-                        }]
+                    body: Some(Body::json(serde_json::json!({
+                        "errors": [{"message": format!("Invalid GraphQL request: {}", e)}]
                     }))),
-                    headers: vec![("content-type".to_string(), "application/json".to_string())],
+                    headers: vec![],
                 });
             }
         };
@@ -195,8 +166,8 @@ where
 
         Box::new(HttpResponse {
             status: 200,
-            body: Some(Body::Json(response_json)),
-            headers: vec![("content-type".to_string(), "application/json".to_string())],
+            body: Some(Body::json(response_json)),
+            headers: vec![],
         })
     }
 
@@ -246,8 +217,8 @@ impl Controller for GraphQLPlaygroundController {
     ) -> Box<dyn ToResponse<Response = HttpResponse> + Send> {
         Box::new(HttpResponse {
             status: 200,
-            body: Some(Body::Text(self.playground_html.clone())),
-            headers: vec![("content-type".to_string(), "text/html".to_string())],
+            body: Some(Body::text(self.playground_html.clone())),
+            headers: vec![],
         })
     }
 

@@ -592,7 +592,7 @@ impl AuthController {
     /// ```
     #[get("/profile")]
     fn get_profile(&self, CurrentUser(user): CurrentUser) -> ToniBody {
-        ToniBody::Json(serde_json::json!({
+        ToniBody::json(serde_json::json!({
             "id": user.id,
             "email": user.email,
             "name": user.name,
@@ -611,7 +611,7 @@ impl AuthController {
     /// ```
     #[get("/token")]
     fn get_token(&self, BearerToken(token): BearerToken) -> ToniBody {
-        ToniBody::Json(serde_json::json!({
+        ToniBody::json(serde_json::json!({
             "token": token,
             "length": token.len()
         }))
@@ -635,7 +635,7 @@ impl ApiController {
     /// ```
     #[get("/data")]
     fn get_data(&self, ApiKey(key): ApiKey) -> ToniBody {
-        ToniBody::Json(serde_json::json!({
+        ToniBody::json(serde_json::json!({
             "message": "Authenticated with API key",
             "key_prefix": &key[..8]
         }))
@@ -659,7 +659,7 @@ impl MetadataController {
     /// ```
     #[get("/ip")]
     fn get_ip(&self, ClientIp(ip): ClientIp) -> ToniBody {
-        ToniBody::Text(format!("Your IP: {}", ip))
+        ToniBody::text(format!("Your IP: {}", ip))
     }
 
     /// Example 5: Extract user agent
@@ -673,7 +673,7 @@ impl MetadataController {
     /// ```
     #[get("/user-agent")]
     fn get_user_agent(&self, UserAgent(ua): UserAgent) -> ToniBody {
-        ToniBody::Json(serde_json::json!({
+        ToniBody::json(serde_json::json!({
             "userAgent": ua
         }))
     }
@@ -689,7 +689,7 @@ impl MetadataController {
     /// ```
     #[get("/trace")]
     fn trace(&self, RequestId(id): RequestId) -> ToniBody {
-        ToniBody::Json(serde_json::json!({
+        ToniBody::json(serde_json::json!({
             "requestId": id,
             "message": "Use this ID for request tracing"
         }))
@@ -713,7 +713,7 @@ impl SessionController {
     /// ```
     #[get("/cookies")]
     fn get_cookies(&self, Cookies(cookies): Cookies) -> ToniBody {
-        ToniBody::Json(serde_json::json!(cookies))
+        ToniBody::json(serde_json::json!(cookies))
     }
 
     /// Example 8: Extract specific cookie
@@ -727,7 +727,7 @@ impl SessionController {
     /// ```
     #[get("/session")]
     fn get_session(&self, SessionCookie(session_id): SessionCookie) -> ToniBody {
-        ToniBody::Json(serde_json::json!({
+        ToniBody::json(serde_json::json!({
             "sessionId": session_id
         }))
     }
@@ -743,13 +743,13 @@ impl OptionalController {
     #[get("/feed")]
     fn get_feed(&self, user: Option<CurrentUser>) -> ToniBody {
         if let Some(CurrentUser(user)) = user {
-            ToniBody::Json(serde_json::json!({
+            ToniBody::json(serde_json::json!({
                 "type": "personalized",
                 "message": format!("Welcome back, {}!", user.name),
                 "items": ["Based on your interests", "Recommended for you"]
             }))
         } else {
-            ToniBody::Json(serde_json::json!({
+            ToniBody::json(serde_json::json!({
                 "type": "public",
                 "message": "Sign in for personalized content",
                 "items": ["Popular posts", "Trending articles"]
@@ -761,20 +761,20 @@ impl OptionalController {
     #[get("/data")]
     fn get_data(&self, user: Option<CurrentUser>, api_key: Option<ApiKey>) -> ToniBody {
         if let Some(CurrentUser(user)) = user {
-            return ToniBody::Json(serde_json::json!({
+            return ToniBody::json(serde_json::json!({
                 "auth": "jwt",
                 "userId": user.id
             }));
         }
 
         if let Some(ApiKey(key)) = api_key {
-            return ToniBody::Json(serde_json::json!({
+            return ToniBody::json(serde_json::json!({
                 "auth": "apiKey",
                 "keyPrefix": &key[..8]
             }));
         }
 
-        ToniBody::Json(serde_json::json!({
+        ToniBody::json(serde_json::json!({
             "auth": "none",
             "message": "Public access (limited)"
         }))
@@ -807,7 +807,7 @@ impl AdvancedController {
         ClientIp(ip): ClientIp,
         Json(data): Json<AuditData>,
     ) -> ToniBody {
-        ToniBody::Json(serde_json::json!({
+        ToniBody::json(serde_json::json!({
             "user": {
                 "id": user.id,
                 "email": user.email
@@ -829,7 +829,7 @@ impl AdvancedController {
     /// ```
     #[get("/context")]
     fn get_context(&self, context: AuthContext) -> ToniBody {
-        ToniBody::Json(serde_json::json!({
+        ToniBody::json(serde_json::json!({
             "user": {
                 "id": context.user.id,
                 "email": context.user.email

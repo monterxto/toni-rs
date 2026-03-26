@@ -59,12 +59,12 @@ impl AppService {
 impl AppController {
     #[get("/info")]
     fn get_info(&self, _req: HttpRequest) -> ToniBody {
-        ToniBody::Text(self.service.get_app_info())
+        ToniBody::text(self.service.get_app_info())
     }
 
     #[get("/database")]
     fn get_database(&self, _req: HttpRequest) -> ToniBody {
-        ToniBody::Text(self.service.get_database_info())
+        ToniBody::text(self.service.get_database_info())
     }
 
     #[get("/config")]
@@ -76,7 +76,7 @@ impl AppController {
             "database_url": config.database_url,
             "max_connections": config.max_connections,
         });
-        ToniBody::Json(json)
+        ToniBody::json(json)
     }
 }
 

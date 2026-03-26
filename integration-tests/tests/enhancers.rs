@@ -61,7 +61,7 @@ impl Middleware for HeaderCheckMiddleware {
         if !req.has_header(&self.required_header) {
             let mut response = HttpResponse::new();
             response.status = 400;
-            response.body = Some(ToniBody::Text(format!(
+            response.body = Some(ToniBody::text(format!(
                 "Missing required header: {}",
                 self.required_header
             )));
@@ -158,7 +158,7 @@ impl Pipe for ValidationPipe {
         if is_invalid {
             let mut response = HttpResponse::new();
             response.status = 400;
-            response.body = Some(ToniBody::Text("Validation failed".to_string()));
+            response.body = Some(ToniBody::text("Validation failed".to_string()));
             context.set_response(Box::new(response));
             context.abort();
         }
@@ -219,14 +219,14 @@ async fn enhancers_execution_order() {
         #[get("/protected")]
         fn protected_endpoint(&self, _req: HttpRequest) -> ToniBody {
             self.tracker.track("controller:protected");
-            ToniBody::Text("Protected resource".to_string())
+            ToniBody::text("Protected resource".to_string())
         }
 
         #[use_guards(AuthGuard::new(get_tracker()))]
         #[get("/auth-only")]
         fn auth_only_endpoint(&self, _req: HttpRequest) -> ToniBody {
             self.tracker.track("controller:auth_only");
-            ToniBody::Text("Authenticated resource".to_string())
+            ToniBody::text("Authenticated resource".to_string())
         }
 
         #[use_interceptors(LoggingInterceptor::new("validate", get_tracker()))]
@@ -235,13 +235,13 @@ async fn enhancers_execution_order() {
         fn validate_endpoint(&self, _req: HttpRequest) -> ToniBody {
             self.tracker.track("controller:validate");
             let result = self.service.process("data");
-            ToniBody::Text(result)
+            ToniBody::text(result)
         }
 
         #[get("/public")]
         fn public_endpoint(&self, _req: HttpRequest) -> ToniBody {
             self.tracker.track("controller:public");
-            ToniBody::Text("Public resource".to_string())
+            ToniBody::text("Public resource".to_string())
         }
     }
 
@@ -338,7 +338,7 @@ async fn guard_authorization() {
         #[get("/auth-only")]
         fn auth_only(&self, _req: HttpRequest) -> ToniBody {
             self.tracker.track("controller:auth_only");
-            ToniBody::Text("Authenticated resource".to_string())
+            ToniBody::text("Authenticated resource".to_string())
         }
     }
 
@@ -413,7 +413,7 @@ async fn di_in_enhancers() {
     impl TestController {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text("ok".to_string())
+            ToniBody::text("ok".to_string())
         }
     }
 
@@ -467,7 +467,7 @@ async fn app_token_global_enhancers() {
         #[get("/test")]
         fn test(&self, _req: HttpRequest) -> ToniBody {
             self.tracker.track("controller:test");
-            ToniBody::Text("ok".to_string())
+            ToniBody::text("ok".to_string())
         }
     }
 

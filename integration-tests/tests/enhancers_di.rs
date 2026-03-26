@@ -113,7 +113,7 @@ impl Middleware for HeaderValidationMiddleware {
         if !req.has_header("X-Request-ID") {
             let mut response = toni::HttpResponse::new();
             response.status = 400;
-            response.body = Some(ToniBody::Text("Missing X-Request-ID header".to_string()));
+            response.body = Some(ToniBody::text("Missing X-Request-ID header".to_string()));
             return Ok(response);
         }
         next.run(req).await
@@ -211,7 +211,7 @@ impl EnhancerTestController {
     #[use_interceptors(LoggingInterceptor)]
     fn admin_endpoint(&self, _req: HttpRequest) -> ToniBody {
         self.tracker.track("controller:admin");
-        ToniBody::Text("Admin access granted".to_string())
+        ToniBody::text("Admin access granted".to_string())
     }
 
     #[get("/user")]
@@ -219,13 +219,13 @@ impl EnhancerTestController {
     #[use_interceptors(TimingInterceptor, LoggingInterceptor)]
     fn user_endpoint(&self, _req: HttpRequest) -> ToniBody {
         self.tracker.track("controller:user");
-        ToniBody::Text("User access granted".to_string())
+        ToniBody::text("User access granted".to_string())
     }
 
     #[get("/public")]
     fn public_endpoint(&self, _req: HttpRequest) -> ToniBody {
         self.tracker.track("controller:public");
-        ToniBody::Text("Public access".to_string())
+        ToniBody::text("Public access".to_string())
     }
 }
 

@@ -57,7 +57,7 @@ async fn scope_behavior() {
     impl RequestController {
         #[get("/get")]
         fn get_value(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text(format!(
+            ToniBody::text(format!(
                 "s:{}|{};r:{}|{};t:{}|{}",
                 self.singleton1.id,
                 self.singleton2.id,
@@ -78,7 +78,7 @@ async fn scope_behavior() {
     impl SingletonController {
         #[get("/get")]
         fn get_value(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text(format!("t:{}|{}", self.transient1.id, self.transient2.id))
+            ToniBody::text(format!("t:{}|{}", self.transient1.id, self.transient2.id))
         }
     }
 

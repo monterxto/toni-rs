@@ -15,12 +15,12 @@ use toni_axum::AxumAdapter;
 impl HelloController {
     #[get("/")]
     fn hello(&self) -> Body {
-        Body::Text("Hello, World!".to_string())
+        Body::text("Hello, World!".to_string())
     }
 
     #[get("/json")]
     fn hello_json(&self) -> Body {
-        Body::Json(json!({
+        Body::json(json!({
             "message": "Hello, World!",
             "framework": "toni"
         }))

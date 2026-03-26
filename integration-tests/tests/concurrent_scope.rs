@@ -27,7 +27,7 @@ async fn request_scoped_instances_are_isolated_under_concurrency() {
     impl TestController {
         #[get("/id")]
         fn get_id(&self, _req: HttpRequest) -> ToniBody {
-            ToniBody::Text(self.req_id.id.clone())
+            ToniBody::text(self.req_id.id.clone())
         }
     }
 
