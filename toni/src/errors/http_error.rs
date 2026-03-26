@@ -35,7 +35,7 @@
 use serde_json::json;
 use std::fmt;
 
-use crate::http_helpers::{Body, HttpResponse, ToResponse};
+use crate::http_helpers::{Body, HttpResponse, IntoResponse};
 
 /// HTTP error types that map to standard HTTP status codes
 ///
@@ -255,11 +255,8 @@ impl From<serde_json::Error> for HttpError {
     }
 }
 
-// Implement ToResponse for HttpError to enable automatic conversion in handlers
-impl ToResponse for HttpError {
-    type Response = HttpResponse;
-
-    fn to_response(&self) -> Self::Response {
+impl IntoResponse for HttpError {
+    fn into_response(self) -> HttpResponse {
         self.to_response()
     }
 }

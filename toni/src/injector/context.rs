@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    http_helpers::{HttpRequest, HttpResponse, RouteMetadata, ToResponse},
+    http_helpers::{HttpRequest, HttpResponse, RouteMetadata},
     rpc::{RpcContext, RpcData, RpcError},
     traits_helpers::validate::Validatable,
     websocket::{WsClient, WsMessage},
@@ -210,9 +210,9 @@ impl Context {
 
     /// # Panics
     /// Panics if context is not HTTP. Use `switch_to_http_mut()` for type-safe access.
-    pub fn set_response(&mut self, response: Box<dyn ToResponse<Response = HttpResponse> + Send>) {
+    pub fn set_response(&mut self, response: HttpResponse) {
         if let Some((_, response_slot)) = self.switch_to_http_mut() {
-            *response_slot = Some(response.to_response());
+            *response_slot = Some(response);
         } else {
             panic!("Expected HTTP context");
         }
@@ -220,14 +220,10 @@ impl Context {
 
     /// # Panics
     /// Panics if context is not HTTP or response not set.
-    pub fn get_response(self) -> Box<dyn ToResponse<Response = HttpResponse> + Send> {
+    pub fn get_response(self) -> HttpResponse {
         match self.protocol {
             Protocol::Http { response, .. } => {
-                if let Some(resp) = response {
-                    Box::new(resp)
-                } else {
-                    panic!("Response not set in context");
-                }
+                response.expect("Response not set in context")
             }
             Protocol::WebSocket { .. } => {
                 panic!("get_response() only works for HTTP. Use switch_to_ws() for WebSocket.");

@@ -3,7 +3,7 @@ use std::{future::Future, pin::Pin, sync::Arc};
 use anyhow::Result;
 
 use crate::adapter::WsConnectionCallbacks;
-use crate::http_helpers::{HttpMethod, HttpRequest, HttpResponse, ToResponse};
+use crate::http_helpers::{HttpMethod, HttpRequest, HttpResponse};
 use crate::injector::InstanceWrapper;
 
 pub trait HttpAdapter: Clone + Send + Sync {
@@ -12,9 +12,7 @@ pub trait HttpAdapter: Clone + Send + Sync {
 
     fn adapt_request(request: Self::Request) -> impl Future<Output = Result<HttpRequest>>;
 
-    fn adapt_response(
-        response: Box<dyn ToResponse<Response = HttpResponse>>,
-    ) -> Result<Self::Response>;
+    fn adapt_response(response: HttpResponse) -> impl Future<Output = Result<Self::Response>>;
 
     /// Framework adapters should not override this — implement `adapt_request` and `adapt_response`.
     fn handle_request(
@@ -24,7 +22,7 @@ pub trait HttpAdapter: Clone + Send + Sync {
         async move {
             let http_request = Self::adapt_request(request).await?;
             let http_response = controller.handle_request(http_request).await;
-            Self::adapt_response(http_response)
+            Self::adapt_response(http_response).await
         }
     }
 

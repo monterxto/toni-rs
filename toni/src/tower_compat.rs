@@ -143,9 +143,16 @@ impl Service<http::Request<Bytes>> for ToniNextService {
             let status = http::StatusCode::from_u16(toni_resp.status)
                 .unwrap_or(http::StatusCode::INTERNAL_SERVER_ERROR);
 
-            let resp_bytes: Bytes = toni_resp.body
-                .map(|b| b.into_bytes())
-                .unwrap_or_default();
+            let resp_bytes: Bytes = if let Some(body) = toni_resp.body {
+                use http_body_util::BodyExt;
+                body.into_box_body()
+                    .collect()
+                    .await
+                    .map(|c| c.to_bytes())
+                    .unwrap_or_default()
+            } else {
+                Bytes::new()
+            };
 
             let mut builder = http::Response::builder().status(status);
             for (name, value) in &toni_resp.headers {

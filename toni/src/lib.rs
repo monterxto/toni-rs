@@ -26,7 +26,8 @@ pub mod websocket;
 pub use adapter::{RpcAdapter, RpcClientTransport, RpcMessageCallbacks, WebSocketAdapter, WsConnectionCallbacks};
 pub use http_adapter::HttpAdapter;
 pub use http_helpers::{
-    Body, HttpMethod, HttpRequest, HttpResponse, HttpResponseBuilder, RouteMetadata, ToResponse,
+    Body, BoxBody, HttpMethod, HttpRequest, HttpResponse, HttpResponseBuilder, IntoResponse,
+    RouteMetadata,
 };
 pub use injector::{InstanceWrapper, Protocol, ProtocolType};
 pub use rpc::{
