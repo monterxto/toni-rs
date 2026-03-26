@@ -8,7 +8,7 @@ use actix_web::{
 };
 use toni::{
     http_helpers::{Bytes as ToniBytes, Extensions},
-    HttpAdapter, HttpMethod, HttpRequest, HttpResponse, InstanceWrapper, ToResponse,
+    HttpAdapter, HttpMethod, HttpRequest, HttpResponse, InstanceWrapper,
 };
 
 #[derive(Clone)]
@@ -84,11 +84,7 @@ impl HttpAdapter for ActixAdapter {
         })
     }
 
-    fn adapt_response(
-        response: Box<dyn ToResponse<Response = HttpResponse>>,
-    ) -> Result<Self::Response> {
-        let response = response.to_response();
-
+    async fn adapt_response(response: HttpResponse) -> Result<Self::Response> {
         let status = actix_web::http::StatusCode::from_u16(response.status)
             .unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR);
 
@@ -100,9 +96,16 @@ impl HttpAdapter for ActixAdapter {
                     .content_type()
                     .unwrap_or("application/octet-stream")
                     .to_string();
-                builder
-                    .content_type(ct.as_str())
-                    .body(toni_body.into_bytes().to_vec())
+                let bytes = {
+                    use http_body_util::BodyExt;
+                    toni_body
+                        .into_box_body()
+                        .collect()
+                        .await
+                        .map(|c| c.to_bytes())
+                        .unwrap_or_default()
+                };
+                builder.content_type(ct.as_str()).body(bytes.to_vec())
             }
             None => builder.finish(),
         };

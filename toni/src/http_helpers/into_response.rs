@@ -1,112 +1,95 @@
-use std::fmt::Debug;
-
 use serde_json::Value;
 
 use super::{Body, HttpResponse};
 
-pub trait ToResponse: Debug {
-    type Response;
-
-    fn to_response(&self) -> Self::Response;
+/// Converts a value into an [`HttpResponse`].
+///
+/// Implement this to make a type returnable from a controller handler.
+/// All built-in types (`Body`, `String`, `&str`, `serde_json::Value`, etc.)
+/// are already covered.
+pub trait IntoResponse {
+    fn into_response(self) -> HttpResponse;
 }
 
-impl ToResponse for HttpResponse {
-    type Response = Self;
-
-    fn to_response(&self) -> Self {
-        self.clone()
+impl IntoResponse for HttpResponse {
+    fn into_response(self) -> HttpResponse {
+        self
     }
 }
 
-impl ToResponse for Body {
-    type Response = HttpResponse;
-
-    fn to_response(&self) -> Self::Response {
+impl IntoResponse for Body {
+    fn into_response(self) -> HttpResponse {
         HttpResponse {
-            body: Some(self.clone()),
+            body: Some(self),
             ..HttpResponse::new()
         }
     }
 }
 
-impl ToResponse for u16 {
-    type Response = HttpResponse;
-
-    fn to_response(&self) -> Self::Response {
+impl IntoResponse for u16 {
+    fn into_response(self) -> HttpResponse {
         HttpResponse {
-            status: *self,
+            status: self,
             ..HttpResponse::new()
         }
     }
 }
 
-impl ToResponse for Vec<(String, String)> {
-    type Response = HttpResponse;
-
-    fn to_response(&self) -> Self::Response {
+impl IntoResponse for Vec<(String, String)> {
+    fn into_response(self) -> HttpResponse {
         HttpResponse {
-            headers: self.clone(),
+            headers: self,
             ..HttpResponse::new()
         }
     }
 }
 
-impl ToResponse for (u16, Body) {
-    type Response = HttpResponse;
-
-    fn to_response(&self) -> Self::Response {
+impl IntoResponse for (u16, Body) {
+    fn into_response(self) -> HttpResponse {
         HttpResponse {
-            body: Some(self.1.clone()),
             status: self.0,
+            body: Some(self.1),
             ..HttpResponse::new()
         }
     }
 }
 
-impl ToResponse for Value {
-    type Response = HttpResponse;
-
-    fn to_response(&self) -> Self::Response {
+impl IntoResponse for Value {
+    fn into_response(self) -> HttpResponse {
         HttpResponse {
-            body: Some(Body::json(self.clone())),
+            body: Some(Body::json(self)),
             ..HttpResponse::new()
         }
     }
 }
 
-impl ToResponse for String {
-    type Response = HttpResponse;
-
-    fn to_response(&self) -> Self::Response {
+impl IntoResponse for String {
+    fn into_response(self) -> HttpResponse {
         HttpResponse {
-            body: Some(Body::text(self.clone())),
+            body: Some(Body::text(self)),
             ..HttpResponse::new()
         }
     }
 }
 
-impl ToResponse for &'static str {
-    type Response = HttpResponse;
-
-    fn to_response(&self) -> Self::Response {
+impl IntoResponse for &'static str {
+    fn into_response(self) -> HttpResponse {
         HttpResponse {
-            body: Some(Body::text(*self)),
+            body: Some(Body::text(self)),
             ..HttpResponse::new()
         }
     }
 }
 
-impl<T, E> ToResponse for Result<T, E>
+impl<T, E> IntoResponse for Result<T, E>
 where
-    T: ToResponse<Response = HttpResponse>,
-    E: ToResponse<Response = HttpResponse>,
+    T: IntoResponse,
+    E: IntoResponse,
 {
-    type Response = HttpResponse;
-
-    fn to_response(&self) -> Self::Response {
+    fn into_response(self) -> HttpResponse {
         match self {
-            Ok(value) => value.to_response(),
-            Err(error) => error.to_response(),
+            Ok(value) => value.into_response(),
+            Err(error) => error.into_response(),
         }
     }
 }

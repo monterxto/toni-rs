@@ -8,7 +8,7 @@ pub struct HttpResponseDefault {
     pub status: Option<u16>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct HttpResponse {
     pub body: Option<Body>,
     pub status: u16,

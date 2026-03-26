@@ -190,11 +190,11 @@ pub fn generate_extractor_extractions(
                                 "error": "Extraction failed",
                                 "details": e.to_string()
                             });
-                            return Box::new(::toni::http_helpers::HttpResponse {
+                            return ::toni::http_helpers::HttpResponse {
                                 body: Some(::toni::http_helpers::Body::json(error_body)),
                                 status: 400,
                                 headers: vec![],
-                            });
+                            };
                         }
                     };
                 };
@@ -211,11 +211,11 @@ pub fn generate_extractor_extractions(
                                 "error": "Extraction failed",
                                 "details": e.to_string()
                             });
-                            return Box::new(::toni::http_helpers::HttpResponse {
+                            return ::toni::http_helpers::HttpResponse {
                                 body: Some(::toni::http_helpers::Body::json(error_body)),
                                 status: 400,
                                 headers: vec![],
-                            });
+                            };
                         }
                     };
                 };

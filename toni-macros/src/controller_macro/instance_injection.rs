@@ -885,13 +885,14 @@ fn generate_singleton_controller_wrapper(
             async fn execute(
                 &self,
                 req: ::toni::http_helpers::HttpRequest,
-            ) -> Box<dyn ::toni::http_helpers::ToResponse<Response = ::toni::http_helpers::HttpResponse> + Send> {
+            ) -> ::toni::http_helpers::HttpResponse {
                 #(#marker_params_extraction)*
 
                 #instance_downcast
 
+                use ::toni::http_helpers::IntoResponse;
                 let result = #method_call;
-                Box::new(result)
+                result.into_response()
             }
 
             fn get_method(&self) -> ::toni::http_helpers::HttpMethod {
@@ -1084,15 +1085,16 @@ fn generate_request_controller_wrapper(
             async fn execute(
                 &self,
                 req: ::toni::http_helpers::HttpRequest,
-            ) -> Box<dyn ::toni::http_helpers::ToResponse<Response = ::toni::http_helpers::HttpResponse> + Send> {
+            ) -> ::toni::http_helpers::HttpResponse {
                 #(#field_resolutions)*
                 #(#marker_params_extraction)*
                 #struct_instantiation
                 #init_call
                 #bootstrap_call
 
+                use ::toni::http_helpers::IntoResponse;
                 let result = #method_call;
-                Box::new(result)
+                result.into_response()
             }
 
             fn get_method(&self) -> ::toni::http_helpers::HttpMethod {

@@ -4,6 +4,8 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use bytes::Bytes;
+use http_body::Body as HttpBody;
+use http_body_util::BodyExt;
 use tower::{Layer, Service, ServiceExt};
 
 use crate::async_trait;
@@ -39,10 +41,14 @@ fn to_http_request(req: HttpRequest) -> Result<http::Request<Bytes>, http::Error
     Ok(http_req)
 }
 
-// The response body comes back as raw Bytes — Tower may have transformed it
-// (e.g. CompressionLayer). The Content-Type Tower set is propagated onto the
-// Body so adapters see the correct hint via body.content_type().
-fn to_toni_response(resp: http::Response<Bytes>) -> HttpResponse {
+// The Tower layer's response body is wrapped as a streaming BoxBody so toni
+// adapters can forward it without buffering. Content-Type from Tower headers
+// is propagated onto the Body via with_content_type().
+fn to_toni_response<B>(resp: http::Response<B>) -> HttpResponse
+where
+    B: HttpBody<Data = Bytes> + Send + Sync + 'static,
+    B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+{
     let (parts, body) = resp.into_parts();
 
     let headers: Vec<(String, String)> = parts
@@ -53,13 +59,14 @@ fn to_toni_response(resp: http::Response<Bytes>) -> HttpResponse {
         })
         .collect();
 
+    let box_body = body.map_err(Into::into).boxed();
     let toni_body = match parts
         .headers
         .get(http::header::CONTENT_TYPE)
         .and_then(|v| v.to_str().ok())
     {
-        Some(ct) => Body::from(body).with_content_type(ct),
-        None => Body::from(body),
+        Some(ct) => Body::from_box_body(box_body).with_content_type(ct),
+        None => Body::from_box_body(box_body),
     };
 
     HttpResponse {
@@ -85,7 +92,7 @@ impl ToniNextService {
 }
 
 impl Service<http::Request<Bytes>> for ToniNextService {
-    type Response = http::Response<Bytes>;
+    type Response = http::Response<crate::http_helpers::BoxBody>;
     type Error = Box<dyn std::error::Error + Send + Sync>;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
@@ -143,9 +150,12 @@ impl Service<http::Request<Bytes>> for ToniNextService {
             let status = http::StatusCode::from_u16(toni_resp.status)
                 .unwrap_or(http::StatusCode::INTERNAL_SERVER_ERROR);
 
-            let resp_bytes: Bytes = toni_resp.body
-                .map(|b| b.into_bytes())
-                .unwrap_or_default();
+            let resp_body = match toni_resp.body {
+                Some(body) => body.into_box_body(),
+                None => http_body_util::Empty::new()
+                    .map_err(|never: std::convert::Infallible| match never {})
+                    .boxed(),
+            };
 
             let mut builder = http::Response::builder().status(status);
             for (name, value) in &toni_resp.headers {
@@ -153,7 +163,7 @@ impl Service<http::Request<Bytes>> for ToniNextService {
             }
 
             builder
-                .body(resp_bytes)
+                .body(resp_body)
                 .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
         })
     }
@@ -221,10 +231,12 @@ impl<L> TowerLayer<L> {
 }
 
 #[async_trait]
-impl<L> Middleware for TowerLayer<L>
+impl<L, B> Middleware for TowerLayer<L>
 where
     L: Layer<ToniNextService> + Send + Sync,
-    L::Service: Service<http::Request<Bytes>, Response = http::Response<Bytes>> + Send,
+    L::Service: Service<http::Request<Bytes>, Response = http::Response<B>> + Send,
+    B: HttpBody<Data = Bytes> + Send + Sync + 'static,
+    B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
     <L::Service as Service<http::Request<Bytes>>>::Error:
         Into<Box<dyn std::error::Error + Send + Sync>>,
     <L::Service as Service<http::Request<Bytes>>>::Future: Send,

@@ -1,6 +1,6 @@
 #[path = "body.enum.rs"]
 mod body;
-pub use self::body::Body;
+pub use self::body::{Body, BoxBody};
 pub use bytes::Bytes;
 
 #[path = "http_response.enum.rs"]
@@ -17,7 +17,7 @@ pub use self::http_method::HttpMethod;
 
 #[path = "into_response.rs"]
 mod into_response;
-pub use self::into_response::ToResponse;
+pub use self::into_response::IntoResponse;
 
 mod extensions;
 pub use self::extensions::Extensions;

@@ -10,7 +10,7 @@ This document covers the current state of the `tower-compat` feature, its known 
 
 - Converts `HttpRequest → http::Request<Bytes>` before handing off to Tower.
 - Wraps `Box<dyn Next>` as a `tower::Service<http::Request<Bytes>>` (`ToniNextService`) so Tower can call downstream.
-- Converts `http::Response<Bytes> → HttpResponse` on the way back.
+- Converts `http::Response<B: Body> → HttpResponse` on the way back, wrapping the body as a streaming `BoxBody` without buffering.
 - Preserves path params across the round-trip via `ToniPathParams` stored in `http::Request` extensions (Tower has no path-param concept).
 - Preserves toni extensions across the round-trip via `ToniExtensionBridge` — the full `HttpRequest.extensions` map is wrapped as a single opaque entry in `http::Request` extensions and restored intact before downstream toni middleware runs.
 
@@ -59,9 +59,9 @@ Tower may have transformed the response body (e.g. `CompressionLayer`), so the o
 
 ## What is not yet handled
 
-### Streaming response bodies
+### Streaming request bodies
 
-`HttpRequest.body` is intentionally `bytes::Bytes` — requests are always fully buffered at the adapter boundary, which keeps the middleware chain simple and avoids single-use stream problems. Response streaming is still future work: `to_toni_response` buffers the full response body into `Bytes`. Large download paths (file streaming, chunked responses) will load the entire body into memory. Proper response streaming would require `HttpResponse.body` to carry an `http_body::Body` impl. That is a deeper framework change tracked separately.
+`HttpRequest.body` is intentionally `bytes::Bytes` — requests are always fully buffered at the adapter boundary, which keeps the middleware chain simple and avoids single-use stream problems. This is not expected to change: request streaming in a middleware chain requires careful lifecycle management that outweighs the cost for the typical middleware use case.
 
 ### `!Send` futures
 
@@ -95,9 +95,9 @@ Both `ToniPathParams` and `ToniExtensionBridge` derive `Clone` because `http::Ex
 
 `ServiceBuilder::new().layer(A).layer(B).service(inner)` produces a `Stack<A, Stack<B, inner>>` which itself implements `Layer`. A single `TowerLayer::new(ServiceBuilder::new().layer(cors).layer(trace))` should work today without any changes — worth testing explicitly and documenting as the idiomatic way to compose multiple Tower middlewares before applying them.
 
-### Streaming support design
+### Body type recovery on Tower response
 
-The right path to streaming is making `Body` a trait object rather than an enum. The bridge would then hold `Box<dyn http_body::Body<Data = Bytes, Error = ...>>` and avoid buffering. This is a breaking change to `HttpRequest`/`HttpResponse` and should be evaluated as a separate framework-level concern, not specific to tower-compat.
+`to_toni_response` wraps the Tower response body as a streaming `BoxBody` — the body is not buffered. If a Tower layer rewrites the body (e.g. `CompressionLayer`), the compressed bytes stream through to the adapter intact. Content-Type is read from the Tower response headers and forwarded onto the toni `Body` as the content-type hint.
 
 ### Error type unification
 

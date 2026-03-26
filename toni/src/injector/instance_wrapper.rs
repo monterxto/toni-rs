@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     async_trait,
-    http_helpers::{HttpMethod, HttpRequest, HttpResponse, RouteMetadata, ToResponse},
+    http_helpers::{HttpMethod, HttpRequest, HttpResponse, RouteMetadata},
     middleware::{Middleware, MiddlewareChain},
     structs_helpers::EnhancerMetadata,
     traits_helpers::{Controller, ErrorHandler, Guard, Interceptor, InterceptorNext, Pipe},
@@ -100,10 +100,7 @@ impl InstanceWrapper {
         self.instance.clone()
     }
 
-    pub async fn handle_request(
-        &self,
-        req: HttpRequest,
-    ) -> Box<dyn ToResponse<Response = HttpResponse> + Send> {
+    pub async fn handle_request(&self, req: HttpRequest) -> HttpResponse {
         let instance = self.instance.clone();
         let guards = self.guards.clone();
         let interceptors = self.interceptors.clone();
@@ -144,7 +141,7 @@ impl InstanceWrapper {
 
         // Handle the result from middleware chain
         match middleware_result {
-            Ok(response) => Box::new(response),
+            Ok(response) => response,
             Err(e) => {
                 let error_msg = e.to_string();
                 for handler in error_handlers_for_middleware.iter().rev() {
@@ -152,7 +149,7 @@ impl InstanceWrapper {
                         std::io::Error::new(std::io::ErrorKind::Other, error_msg.clone()),
                     );
                     if let Some(response) = handler.handle_error(error, &req_clone).await {
-                        return Box::new(response);
+                        return response;
                     }
                 }
 
@@ -162,7 +159,7 @@ impl InstanceWrapper {
                     "error": "Internal Server Error",
                     "message": "An error occurred while processing the request"
                 })));
-                Box::new(error_response)
+                error_response
             }
         }
     }
@@ -183,8 +180,8 @@ impl InstanceWrapper {
         for guard in &guards {
             if !guard.can_activate(&context) {
                 // Get the guard's response (or create default 403 if not set)
-                let guard_response = if let Some(response_ref) = context.get_response_ref() {
-                    response_ref.to_response()
+                let guard_response = if context.get_response_ref().is_some() {
+                    std::mem::take(context.get_response_mut())
                 } else {
                     let mut forbidden = HttpResponse::new();
                     forbidden.status = 403;
@@ -210,7 +207,7 @@ impl InstanceWrapper {
         )
         .await;
 
-        context.get_response().to_response()
+        context.get_response()
     }
 
     /// Helper: Route error responses (status >= 400) through ErrorHandler
@@ -289,7 +286,7 @@ impl InstanceWrapper {
                         status: 400,
                         headers: vec![],
                     };
-                    context.set_response(Box::new(response));
+                    context.set_response(response);
                     context.abort();
                     return;
                 }
@@ -320,25 +317,25 @@ impl InstanceWrapper {
         Self::execute_handler(context, instance, pipes).await;
 
         if !error_handlers.is_empty() {
-            let response_box = context.get_response_ref();
+            let needs_error_handling = context
+                .get_response_ref()
+                .map(|r| r.status >= 400)
+                .unwrap_or(false);
 
-            if let Some(response_ref) = response_box {
-                let http_response = response_ref.to_response();
+            if needs_error_handling {
+                let http_response = std::mem::take(context.get_response_mut());
+                let request = context.take_request();
+                let http_error = Self::response_to_http_error(&http_response);
 
-                if http_response.status >= 400 {
-                    let request = context.take_request();
-
-                    // Reconstruct HttpError from response to preserve type information
-                    let http_error = Self::response_to_http_error(&http_response);
-
-                    for handler in error_handlers.iter().rev() {
-                        let error: Box<dyn std::error::Error + Send> = Box::new(http_error.clone());
-                        if let Some(handled_response) = handler.handle_error(error, request).await {
-                            context.set_response(Box::new(handled_response));
-                            return;
-                        }
+                for handler in error_handlers.iter().rev() {
+                    let error: Box<dyn std::error::Error + Send> = Box::new(http_error.clone());
+                    if let Some(handled_response) = handler.handle_error(error, request).await {
+                        context.set_response(handled_response);
+                        return;
                     }
                 }
+
+                context.set_response(http_response);
             }
         }
     }
@@ -347,15 +344,19 @@ impl InstanceWrapper {
     /// This preserves the error type for proper error handler matching
     fn response_to_http_error(response: &HttpResponse) -> crate::errors::HttpError {
         let message = if let Some(body) = &response.body {
-            if let Ok(v) = serde_json::from_slice::<serde_json::Value>(body.bytes()) {
-                v.get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("HTTP Error")
-                    .to_string()
+            if let Some(bytes) = body.try_bytes() {
+                if let Ok(v) = serde_json::from_slice::<serde_json::Value>(bytes) {
+                    v.get("message")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("HTTP Error")
+                        .to_string()
+                } else {
+                    std::str::from_utf8(bytes)
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|_| format!("HTTP {} Error", response.status))
+                }
             } else {
-                std::str::from_utf8(body.bytes())
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|_| format!("HTTP {} Error", response.status))
+                format!("HTTP {} Error", response.status)
             }
         } else {
             format!("HTTP {} Error", response.status)
