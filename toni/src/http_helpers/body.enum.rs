@@ -134,6 +134,16 @@ impl Body {
         matches!(self.inner, BodyInner::Streaming(_))
     }
 
+    /// Wrap an already-erased body, preserving its streaming nature.
+    ///
+    /// The content-type is not set automatically — call `.with_content_type()` if needed.
+    pub fn from_box_body(box_body: BoxBody) -> Self {
+        Self {
+            inner: BodyInner::Streaming(box_body),
+            content_type: None,
+        }
+    }
+
     /// Consume this body and return a [`BoxBody`] for the adapter to write.
     pub fn into_box_body(self) -> BoxBody {
         match self.inner {
