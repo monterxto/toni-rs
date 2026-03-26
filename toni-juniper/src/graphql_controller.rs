@@ -7,7 +7,7 @@ use juniper::{
 use serde::Deserialize;
 use std::sync::Arc;
 use toni::traits_helpers::{Controller, ControllerFactory, Guard, Interceptor, Pipe, Provider};
-use toni::{http_helpers::Body, FxHashMap, HttpMethod, HttpRequest, HttpResponse, ToResponse};
+use toni::{http_helpers::Body, FxHashMap, HttpMethod, HttpRequest, HttpResponse};
 
 /// GraphQL request payload
 #[derive(Debug, Deserialize)]
@@ -217,18 +217,18 @@ where
     async fn execute(
         &self,
         req: HttpRequest,
-    ) -> Box<dyn ToResponse<Response = HttpResponse> + Send> {
+    ) -> HttpResponse {
         // Parse GraphQL request from body
         let gql_request: GraphQLRequest = match serde_json::from_slice(&req.body) {
             Ok(req) => req,
             Err(e) => {
-                return Box::new(HttpResponse {
+                return HttpResponse {
                     status: 400,
                     body: Some(Body::json(serde_json::json!({
                         "errors": [{"message": format!("Invalid GraphQL request: {}", e)}]
                     }))),
                     headers: vec![],
-                });
+                };
             }
         };
 
@@ -249,11 +249,11 @@ where
             )
             .await;
 
-        Box::new(HttpResponse {
+        HttpResponse {
             status: 200,
             body: Some(Body::json(response_json)),
             headers: vec![],
-        })
+        }
     }
 
     fn get_path(&self) -> String {
@@ -299,12 +299,12 @@ impl Controller for GraphQLPlaygroundController {
     async fn execute(
         &self,
         _req: HttpRequest,
-    ) -> Box<dyn ToResponse<Response = HttpResponse> + Send> {
-        Box::new(HttpResponse {
+    ) -> HttpResponse {
+        HttpResponse {
             status: 200,
             body: Some(Body::text(self.playground_html.clone())),
             headers: vec![],
-        })
+        }
     }
 
     fn get_path(&self) -> String {

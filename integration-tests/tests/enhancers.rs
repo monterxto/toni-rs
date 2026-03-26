@@ -159,7 +159,7 @@ impl Pipe for ValidationPipe {
             let mut response = HttpResponse::new();
             response.status = 400;
             response.body = Some(ToniBody::text("Validation failed".to_string()));
-            context.set_response(Box::new(response));
+            context.set_response(response);
             context.abort();
         }
     }
