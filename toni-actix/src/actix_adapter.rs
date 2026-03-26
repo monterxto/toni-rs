@@ -7,8 +7,8 @@ use actix_web::{
     HttpResponse as ActixHttpResponse, HttpServer,
 };
 use toni::{
-    http_helpers::{Bytes as ToniBytes, Extensions}, HttpAdapter, HttpMethod, HttpRequest,
-    HttpResponse, InstanceWrapper, ToResponse,
+    http_helpers::{Bytes as ToniBytes, Extensions},
+    HttpAdapter, HttpMethod, HttpRequest, HttpResponse, InstanceWrapper, ToResponse,
 };
 
 #[derive(Clone)]
@@ -96,8 +96,13 @@ impl HttpAdapter for ActixAdapter {
 
         let actix_response = match response.body {
             Some(toni_body) => {
-                let ct = toni_body.content_type().unwrap_or("application/octet-stream").to_string();
-                builder.content_type(ct.as_str()).body(toni_body.into_bytes().to_vec())
+                let ct = toni_body
+                    .content_type()
+                    .unwrap_or("application/octet-stream")
+                    .to_string();
+                builder
+                    .content_type(ct.as_str())
+                    .body(toni_body.into_bytes().to_vec())
             }
             None => builder.finish(),
         };

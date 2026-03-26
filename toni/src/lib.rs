@@ -67,3 +67,8 @@ pub mod enhancer {
 
 pub use toni_factory::ToniFactory;
 pub use toni_application::ToniApplication;
+
+#[cfg(feature = "tower-compat")]
+pub mod tower_compat;
+#[cfg(feature = "tower-compat")]
+pub use tower_compat::TowerLayer;

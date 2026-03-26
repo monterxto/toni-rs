@@ -26,8 +26,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use toni::{
-    Body as ToniBody, HttpRequest, RpcClient, ToniFactory,
-    controller, get, injectable, module, post,
+    controller, get, injectable, module, post, Body as ToniBody, HttpRequest, RpcClient,
+    ToniFactory,
 };
 use toni_macros::{provider_value, rpc_controller};
 
@@ -62,7 +62,12 @@ struct ShipOrderDto {
 impl OrdersService {
     fn create_order(&self, item: &str, qty: u32) -> OrderDto {
         println!("  [OrdersService] Creating order: {} x{}", item, qty);
-        OrderDto { id: 1001, item: item.to_string(), qty, status: "created" }
+        OrderDto {
+            id: 1001,
+            item: item.to_string(),
+            qty,
+            status: "created",
+        }
     }
 
     fn handle_shipment(&self, order_id: u64) {
@@ -138,7 +143,11 @@ impl OrdersHttpController {
         );
 
         let req_dto = json!({ "item": item, "qty": qty });
-        match self.client.send_json::<_, serde_json::Value>("order.create", &req_dto).await {
+        match self
+            .client
+            .send_json::<_, serde_json::Value>("order.create", &req_dto)
+            .await
+        {
             Ok(order) => ToniBody::json(order),
             Err(e) => ToniBody::json(json!({ "error": e.to_string() })),
         }
@@ -146,8 +155,8 @@ impl OrdersHttpController {
 
     #[post("/ship")]
     async fn ship_order(&self, req: HttpRequest) -> ToniBody {
-        let payload: serde_json::Value = serde_json::from_slice(&req.body)
-            .unwrap_or_else(|_| json!({}));
+        let payload: serde_json::Value =
+            serde_json::from_slice(&req.body).unwrap_or_else(|_| json!({}));
 
         let order_id = payload["order_id"].as_u64().unwrap_or(0);
         println!(
@@ -192,11 +201,10 @@ async fn main() {
     println!("  POST /order/ship   {{\"order_id\":1001}}    → fire-and-forget via RpcClient");
     println!();
 
-    let mut app = ToniFactory::new()
-        .create_with(OrdersModule)
-        .await;
+    let mut app = ToniFactory::new().create_with(OrdersModule).await;
 
-    app.use_http_adapter(toni_axum::AxumAdapter::new("127.0.0.1", 8080)).unwrap();
+    app.use_http_adapter(toni_axum::AxumAdapter::new("127.0.0.1", 8080))
+        .unwrap();
     app.use_rpc_adapter(toni_nats::NatsAdapter::new("nats://127.0.0.1:4222"))
         .unwrap();
 

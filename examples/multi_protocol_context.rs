@@ -7,10 +7,8 @@
 //! Run with:  cargo run --example multi_protocol_context
 
 use std::collections::HashMap;
-use toni::{
-    Context, HttpRequest, ProtocolType, RpcContext, RpcData, WsClient, WsMessage,
-};
 use toni::websocket::WsHandshake;
+use toni::{Context, HttpRequest, ProtocolType, RpcContext, RpcData, WsClient, WsMessage};
 
 // ---- universal auth guard ----------------------------------------------------
 //
@@ -86,7 +84,10 @@ fn main() {
         method: "GET".to_string(),
         uri: "/api/orders".to_string(),
         headers: vec![
-            ("authorization".to_string(), "Bearer valid-secret".to_string()),
+            (
+                "authorization".to_string(),
+                "Bearer valid-secret".to_string(),
+            ),
             ("user-agent".to_string(), "example/1.0".to_string()),
         ],
         body: Default::default(),
