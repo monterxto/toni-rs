@@ -20,7 +20,7 @@ use toni::websocket::{WsMessage, WsSink};
 use toni::{
     async_trait,
     http_helpers::{Bytes as ToniBytes, Extensions},
-    HttpAdapter, HttpMethod, HttpRequest, HttpResponse, InstanceWrapper, ToResponse,
+    HttpAdapter, HttpMethod, HttpRequest, HttpResponse, InstanceWrapper,
     WebSocketAdapter, WsConnectionCallbacks,
 };
 
@@ -146,21 +146,14 @@ impl HttpAdapter for AxumAdapter {
         })
     }
 
-    fn adapt_response(
-        response: Box<dyn ToResponse<Response = HttpResponse>>,
-    ) -> Result<Self::Response> {
-        let response = response.to_response();
-
+    async fn adapt_response(response: HttpResponse) -> Result<Self::Response> {
         let status =
             StatusCode::from_u16(response.status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
 
         let (body, body_content_type) = match response.body {
             Some(toni_body) => {
-                let ct = toni_body
-                    .content_type()
-                    .unwrap_or("application/octet-stream")
-                    .to_string();
-                (Body::from(toni_body.into_bytes().to_vec()), Some(ct))
+                let ct = toni_body.content_type().map(|s| s.to_string());
+                (Body::new(toni_body.into_box_body()), ct)
             }
             None => (Body::empty(), None),
         };
