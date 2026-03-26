@@ -10,17 +10,19 @@ use crate::async_trait;
 use crate::http_helpers::{Body, Extensions, HttpRequest, HttpResponse};
 use crate::traits_helpers::middleware::{Middleware, MiddlewareResult, Next};
 
-// Carries path params through the http::Request extension map so they survive
-// the Tower round-trip. Tower middleware has no concept of path params.
+// Carries path params and toni extensions through the http::Request extension
+// map so they survive the Tower round-trip.
 #[derive(Clone)]
 struct ToniPathParams(HashMap<String, String>);
 
+// Wraps toni's entire extension map as a single opaque entry in http::Extensions.
+// Tower middleware cannot read these values (it doesn't know the wrapper type),
+// but they are restored intact for downstream toni middleware after the layer runs.
+#[derive(Clone)]
+struct ToniExtensionBridge(Extensions);
+
 fn to_http_request(req: HttpRequest) -> Result<http::Request<Bytes>, http::Error> {
-    let body_bytes: Bytes = match req.body {
-        Body::Text(text) => Bytes::from(text.into_bytes()),
-        Body::Json(json) => Bytes::from(serde_json::to_vec(&json).unwrap_or_default()),
-        Body::Binary(bytes) => Bytes::from(bytes),
-    };
+    let body_bytes: Bytes = req.body;
 
     let mut builder = http::Request::builder()
         .method(req.method.as_str())
@@ -32,6 +34,7 @@ fn to_http_request(req: HttpRequest) -> Result<http::Request<Bytes>, http::Error
 
     let mut http_req = builder.body(body_bytes)?;
     http_req.extensions_mut().insert(ToniPathParams(req.path_params));
+    http_req.extensions_mut().insert(ToniExtensionBridge(req.extensions));
 
     Ok(http_req)
 }
@@ -52,7 +55,7 @@ fn to_toni_response(resp: http::Response<Bytes>) -> HttpResponse {
 
     HttpResponse {
         status: parts.status.as_u16(),
-        body: Some(Body::Binary(body.to_vec())),
+        body: Some(Body::from(body)),
         headers,
     }
 }
@@ -110,31 +113,20 @@ impl Service<http::Request<Bytes>> for ToniNextService {
                 })
                 .collect();
 
-            let content_type = headers
-                .iter()
-                .find(|(k, _)| k.eq_ignore_ascii_case("content-type"))
-                .map(|(_, v)| v.as_str())
-                .unwrap_or("");
-
-            let toni_body = if content_type.contains("application/json") {
-                serde_json::from_slice(&body)
-                    .map(Body::Json)
-                    .unwrap_or_else(|_| Body::Binary(body.to_vec()))
-            } else {
-                match String::from_utf8(body.to_vec()) {
-                    Ok(text) => Body::Text(text),
-                    Err(e) => Body::Binary(e.into_bytes()),
-                }
-            };
+            let extensions = parts
+                .extensions
+                .remove::<ToniExtensionBridge>()
+                .map(|b| b.0)
+                .unwrap_or_default();
 
             let toni_req = HttpRequest {
                 method: parts.method.to_string(),
                 uri: parts.uri.to_string(),
                 headers,
-                body: toni_body,
+                body,
                 query_params,
                 path_params,
-                extensions: Extensions::new(),
+                extensions,
             };
 
             let toni_resp = next.run(toni_req).await?;
@@ -142,14 +134,9 @@ impl Service<http::Request<Bytes>> for ToniNextService {
             let status = http::StatusCode::from_u16(toni_resp.status)
                 .unwrap_or(http::StatusCode::INTERNAL_SERVER_ERROR);
 
-            let resp_bytes: Bytes = match toni_resp.body {
-                Some(Body::Text(text)) => Bytes::from(text.into_bytes()),
-                Some(Body::Json(json)) => {
-                    Bytes::from(serde_json::to_vec(&json).unwrap_or_default())
-                }
-                Some(Body::Binary(bytes)) => Bytes::from(bytes),
-                None => Bytes::new(),
-            };
+            let resp_bytes: Bytes = toni_resp.body
+                .map(|b| b.into_bytes())
+                .unwrap_or_default();
 
             let mut builder = http::Response::builder().status(status);
             for (name, value) in &toni_resp.headers {
@@ -172,9 +159,10 @@ impl Service<http::Request<Bytes>> for ToniNextService {
 ///
 /// # Known limitations
 ///
-/// - Typed extensions set by preceding toni middleware are not forwarded
-///   through the Tower layer — if auth data lives in `HttpRequest.extensions`,
-///   place `TowerLayer` outermost in the chain.
+/// - Off-the-shelf Tower layers (e.g. `TraceLayer`) cannot read toni-typed
+///   extensions — they don't know the internal bridge type. Custom Tower
+///   layers can use [`toni_extensions`] to access the toni extension map
+///   explicitly.
 /// - Tower layers that call the inner service more than once (`tower::retry`,
 ///   `tower::hedge`) panic at runtime. Use a toni `Interceptor` for retry
 ///   logic, or apply retry at the provider level for outbound calls.
@@ -196,6 +184,26 @@ impl Service<http::Request<Bytes>> for ToniNextService {
 /// }
 /// ```
 pub struct TowerLayer<L>(L);
+
+/// Returns a reference to the toni [`Extensions`] stored inside an
+/// `http::Request`, if the request passed through a [`TowerLayer`].
+///
+/// Useful when writing a custom `tower::Layer` that needs to read typed
+/// values set by preceding toni middleware:
+///
+/// ```rust,no_run
+/// use toni::tower_compat::toni_extensions;
+///
+/// // inside your Tower layer's Service::call:
+/// if let Some(ext) = toni_extensions(&req) {
+///     if let Some(user) = ext.get::<MyUser>() {
+///         // use user
+///     }
+/// }
+/// ```
+pub fn toni_extensions<B>(req: &http::Request<B>) -> Option<&Extensions> {
+    req.extensions().get::<ToniExtensionBridge>().map(|b| &b.0)
+}
 
 impl<L> TowerLayer<L> {
     pub fn new(layer: L) -> Self {

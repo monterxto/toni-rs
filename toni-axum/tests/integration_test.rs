@@ -1,4 +1,7 @@
-use toni::{controller, get, http_helpers::Body as ToniBody, injectable, module, post, HttpAdapter, HttpRequest};
+use toni::{
+    controller, get, http_helpers::Body as ToniBody, injectable, module, post, HttpAdapter,
+    HttpRequest,
+};
 use toni_axum::AxumAdapter;
 
 // Simple service for testing
@@ -56,7 +59,8 @@ async fn test_axum_e2e() {
     // Spawn server in background
     local.spawn_local(async move {
         let mut app = ToniFactory::create(TestModule::module_definition()).await;
-        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port))
+            .unwrap();
         let _ = app.start().await;
     });
 

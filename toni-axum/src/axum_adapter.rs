@@ -18,8 +18,10 @@ use std::str::FromStr;
 
 use toni::websocket::{WsMessage, WsSink};
 use toni::{
-    async_trait, http_helpers::{Bytes as ToniBytes, Extensions}, HttpAdapter, HttpMethod,
-    HttpRequest, HttpResponse, InstanceWrapper, ToResponse, WebSocketAdapter, WsConnectionCallbacks,
+    async_trait,
+    http_helpers::{Bytes as ToniBytes, Extensions},
+    HttpAdapter, HttpMethod, HttpRequest, HttpResponse, InstanceWrapper, ToResponse,
+    WebSocketAdapter, WsConnectionCallbacks,
 };
 
 use crate::axum_websocket_adapter::{axum_to_ws_message, extract_headers, ws_message_to_axum};
@@ -154,7 +156,10 @@ impl HttpAdapter for AxumAdapter {
 
         let (body, body_content_type) = match response.body {
             Some(toni_body) => {
-                let ct = toni_body.content_type().unwrap_or("application/octet-stream").to_string();
+                let ct = toni_body
+                    .content_type()
+                    .unwrap_or("application/octet-stream")
+                    .to_string();
                 (Body::from(toni_body.into_bytes().to_vec()), Some(ct))
             }
             None => (Body::empty(), None),

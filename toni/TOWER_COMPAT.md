@@ -12,6 +12,7 @@ This document covers the current state of the `tower-compat` feature, its known 
 - Wraps `Box<dyn Next>` as a `tower::Service<http::Request<Bytes>>` (`ToniNextService`) so Tower can call downstream.
 - Converts `http::Response<Bytes> → HttpResponse` on the way back.
 - Preserves path params across the round-trip via `ToniPathParams` stored in `http::Request` extensions (Tower has no path-param concept).
+- Preserves toni extensions across the round-trip via `ToniExtensionBridge` — the full `HttpRequest.extensions` map is wrapped as a single opaque entry in `http::Request` extensions and restored intact before downstream toni middleware runs.
 
 The adapter (axum, actix, future) never sees Tower. The conversion is entirely internal to `tower_compat.rs`, so the feature works regardless of which adapter is in use.
 
@@ -25,11 +26,26 @@ toni = { version = "...", features = ["tower-compat"] }
 
 ## Known limitations
 
-### Extensions are dropped
+### Tower middleware cannot read toni-typed extensions
 
-`HttpRequest.extensions` set by preceding toni middleware (e.g. an auth guard storing a `User` struct) are not forwarded through the Tower layer. `ToniNextService::call` reconstructs `HttpRequest` from scratch; there is no generic way to ferry typed extensions through `http::Request<Bytes>`.
+Toni extensions set by preceding toni middleware survive the Tower round-trip — they are restored on `HttpRequest` for any downstream toni middleware. However, Tower middleware itself (e.g. `TraceLayer`, a custom `tower::Layer`) cannot read them, because `ToniExtensionBridge` is an internal type.
 
-**Consequence**: place `TowerLayer` outermost in the middleware chain if downstream toni middleware reads extensions set by toni guards/interceptors. If Tower middleware needs to read toni-specific data, that data must be encoded into headers before the Tower call.
+Tower middleware reads from `http::Request` extensions by type — it calls `req.extensions().get::<SomeType>()`. It will only find types it was explicitly written to look for. `ToniExtensionBridge` is sitting in the map, but no off-the-shelf Tower layer knows to ask for it.
+
+**If a custom Tower layer needs access to toni extension data**, use the `toni_extensions` helper:
+
+```rust
+use toni::tower_compat::toni_extensions;
+
+// inside your Tower layer's Service::call:
+if let Some(ext) = toni_extensions(&req) {
+    if let Some(user) = ext.get::<MyUser>() {
+        // use user
+    }
+}
+```
+
+`toni_extensions` reads from the internal `ToniExtensionBridge` entry without exposing the internal type. Off-the-shelf Tower layers (e.g. `TraceLayer`) will never call this — it is only useful in custom layers you control.
 
 ### Single-use inner service
 
@@ -71,9 +87,9 @@ Some Tower middleware (certain retry patterns, request cloning) require the body
 
 Both `to_http_request` and `to_toni_response` collect headers into `Vec<(String, String)>`. Headers are usually small, but for hot paths this is a repeated allocation. A smallvec or stack-allocated approach would reduce pressure.
 
-### `ToniPathParams` clone bound
+### `ToniPathParams` and `ToniExtensionBridge` clone bounds
 
-`ToniPathParams` derives `Clone` but is removed from extensions immediately after the first (and only) use. The `Clone` bound exists because it was derived reflexively. It can be removed — `http::Extensions::remove` does not require `Clone`.
+Both `ToniPathParams` and `ToniExtensionBridge` derive `Clone` because `http::Extensions::insert` requires `T: Clone`. However, both are removed from extensions after the first (and only) use via `remove`, which does not require `Clone`. The bound exists solely to satisfy `insert`. A wrapper type that implements `Clone` trivially (or a different storage mechanism) could avoid the requirement if the clone turns out to be measurable overhead — unlikely given extensions are small.
 
 ---
 
@@ -90,7 +106,3 @@ The right path to streaming is making `Body` a trait object rather than an enum.
 ### Error type unification
 
 `MiddlewareResult` uses `Box<dyn std::error::Error + Send + Sync>` as the error type. Tower uses the same erased error. There is an opportunity to introduce a proper `ToniError` enum at the middleware layer that carries HTTP status + message — this would make error propagation across Tower and toni layers consistent and would eliminate the string-based error paths that currently exist.
-
-### Typed extension forwarding
-
-One approach to the extension-drop problem: serialize known toni extension types into request headers (with a toni-specific header prefix, e.g. `x-toni-ext-*`), and deserialize on the other side. This is ugly but would allow auth data to cross the Tower boundary without changing the framework's type system. Worth prototyping if extension forwarding turns out to be a common pain point.
