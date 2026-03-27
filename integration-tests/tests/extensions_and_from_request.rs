@@ -29,15 +29,14 @@ pub struct RequestContext {
 impl RequestContext {
     /// Special method called by framework with HttpRequest
     pub fn from_request(req: &HttpRequest) -> Self {
-        // Extract typed data from extensions
         let user_id = req
-            .extensions
+            .extensions()
             .get::<UserId>()
             .map(|u| u.0.clone())
             .unwrap_or_else(|| "anonymous".to_string());
 
         let request_id = req
-            .extensions
+            .extensions()
             .get::<RequestId>()
             .map(|r| r.0.clone())
             .unwrap_or_else(|| "no-request-id".to_string());
@@ -129,20 +128,17 @@ mod tests {
 
     #[test]
     fn test_request_context_construction() {
-        // Test that we can construct RequestContext manually for testing
-        let mut req = HttpRequest {
-            body: Default::default(),
-            headers: vec![],
-            method: "GET".to_string(),
-            uri: "/test".to_string(),
-            query_params: std::collections::HashMap::new(),
-            path_params: std::collections::HashMap::new(),
-            extensions: toni::http_helpers::Extensions::new(),
-        };
+        let mut req = HttpRequest(
+            http::Request::builder()
+                .method("GET")
+                .uri("/test")
+                .body(toni::http_helpers::Bytes::new())
+                .unwrap(),
+        );
 
-        // Add data to extensions
-        req.extensions.insert(UserId("alice".to_string()));
-        req.extensions.insert(RequestId("req-123".to_string()));
+        req.extensions_mut().insert(UserId("alice".to_string()));
+        req.extensions_mut()
+            .insert(RequestId("req-123".to_string()));
 
         // Call from_request
         let context = RequestContext::from_request(&req);
@@ -155,16 +151,13 @@ mod tests {
 
     #[test]
     fn test_request_context_anonymous() {
-        // Test with no extensions (anonymous user)
-        let req = HttpRequest {
-            body: Default::default(),
-            headers: vec![],
-            method: "GET".to_string(),
-            uri: "/test".to_string(),
-            query_params: std::collections::HashMap::new(),
-            path_params: std::collections::HashMap::new(),
-            extensions: toni::http_helpers::Extensions::new(),
-        };
+        let req = HttpRequest(
+            http::Request::builder()
+                .method("GET")
+                .uri("/test")
+                .body(toni::http_helpers::Bytes::new())
+                .unwrap(),
+        );
 
         let context = RequestContext::from_request(&req);
 

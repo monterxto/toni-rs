@@ -1,23 +1,18 @@
-//! Generic body extractor that auto-detects content type
-
 use serde::de::DeserializeOwned;
 
 use super::FromRequest;
 use crate::http_helpers::HttpRequest;
 
-/// Extractor for request body that auto-detects content type.
+/// Extracts and deserializes the request body, auto-detecting content type.
 ///
 /// Supports `application/json` and `application/x-www-form-urlencoded`.
-/// For raw binary data, use the [`Bytes`](super::bytes::Bytes) extractor.
+/// For raw bytes, use the [`Bytes`](super::bytes::Bytes) extractor instead.
 ///
 /// # Example
 ///
 /// ```rust,ignore
 /// #[derive(Deserialize)]
-/// struct CreateUserDto {
-///     name: String,
-///     email: String,
-/// }
+/// struct CreateUserDto { name: String, email: String }
 ///
 /// #[post("/users")]
 /// fn create_user(&self, Body(dto): Body<CreateUserDto>) -> String {
@@ -69,30 +64,31 @@ impl<T: DeserializeOwned> FromRequest for Body<T> {
     type Error = BodyError;
 
     fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        if req.body.is_empty() {
+        let body = req.body();
+        if body.is_empty() {
             return Err(BodyError::DeserializeError("Empty body".to_string()));
         }
 
         let content_type = req
-            .headers
-            .iter()
-            .find(|(name, _)| name.to_lowercase() == "content-type")
-            .map(|(_, value)| value.to_lowercase())
+            .headers()
+            .get(http::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_lowercase())
             .unwrap_or_default();
 
         if content_type.contains("application/json") {
-            let parsed: T = serde_json::from_slice(&req.body)
+            let parsed: T = serde_json::from_slice(body)
                 .map_err(|e| BodyError::DeserializeError(e.to_string()))?;
             Ok(Body(parsed))
         } else if content_type.contains("application/x-www-form-urlencoded") {
-            let parsed: T = serde_urlencoded::from_bytes(&req.body)
+            let parsed: T = serde_urlencoded::from_bytes(body)
                 .map_err(|e| BodyError::DeserializeError(e.to_string()))?;
             Ok(Body(parsed))
         } else if content_type.is_empty() {
-            if let Ok(parsed) = serde_json::from_slice::<T>(&req.body) {
+            if let Ok(parsed) = serde_json::from_slice::<T>(body) {
                 return Ok(Body(parsed));
             }
-            let parsed: T = serde_urlencoded::from_bytes(&req.body)
+            let parsed: T = serde_urlencoded::from_bytes(body)
                 .map_err(|e| BodyError::DeserializeError(e.to_string()))?;
             Ok(Body(parsed))
         } else {

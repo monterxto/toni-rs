@@ -34,7 +34,7 @@ impl TestController {
 
     #[post("/echo")]
     fn echo(&self, req: HttpRequest) -> ToniBody {
-        let message = String::from_utf8_lossy(&req.body).into_owned();
+        let message = String::from_utf8_lossy(req.body()).into_owned();
         ToniBody::text(self.test_service.echo(message))
     }
 }

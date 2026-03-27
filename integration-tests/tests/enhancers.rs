@@ -29,8 +29,10 @@ impl OrderTrackerMiddleware {
 impl Middleware for OrderTrackerMiddleware {
     async fn handle(&self, mut req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
         self.tracker.track(format!("middleware:{}", self.name));
-        req.headers_mut()
-            .push(("X-Middleware-Order".to_string(), self.name.clone()));
+        req.headers_mut().insert(
+            http::header::HeaderName::from_bytes(b"x-middleware-order").unwrap(),
+            http::header::HeaderValue::from_str(&self.name).unwrap(),
+        );
         let mut response = next.run(req).await?;
         response.headers.push((
             "X-Middleware-Modified".to_string(),
@@ -58,7 +60,7 @@ impl HeaderCheckMiddleware {
 impl Middleware for HeaderCheckMiddleware {
     async fn handle(&self, req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
         self.tracker.track("middleware:header_check");
-        if !req.has_header(&self.required_header) {
+        if !req.headers().contains_key(self.required_header.as_str()) {
             let mut response = HttpResponse::new();
             response.status = 400;
             response.body = Some(ToniBody::text(format!(
@@ -86,7 +88,9 @@ impl Guard for AdminGuard {
     fn can_activate(&self, context: &Context) -> bool {
         self.tracker.track("guard:admin");
         let req = context.take_request();
-        req.header("X-Admin-Token")
+        req.headers()
+            .get("x-admin-token")
+            .and_then(|v| v.to_str().ok())
             .map(|value| value == "secret123")
             .unwrap_or(false)
     }
@@ -107,7 +111,7 @@ impl Guard for AuthGuard {
     fn can_activate(&self, context: &Context) -> bool {
         self.tracker.track("guard:auth");
         let req = context.take_request();
-        req.has_header("Authorization")
+        req.headers().contains_key("authorization")
     }
 }
 
@@ -151,7 +155,9 @@ impl Pipe for ValidationPipe {
         self.tracker.track("pipe:validation");
         let req = context.take_request();
         let is_invalid = req
-            .header("X-Valid")
+            .headers()
+            .get("x-valid")
+            .and_then(|v| v.to_str().ok())
             .map(|value| value == "false")
             .unwrap_or(false);
 
@@ -403,7 +409,9 @@ async fn di_in_enhancers() {
     impl Guard for DIGuard {
         fn can_activate(&self, context: &Context) -> bool {
             let req = context.take_request();
-            req.header("X-Token")
+            req.headers()
+                .get("x-token")
+                .and_then(|v| v.to_str().ok())
                 .map(|token| self.auth.validate(token))
                 .unwrap_or(false)
         }

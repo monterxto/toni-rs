@@ -121,7 +121,7 @@ impl<H: ErrorHandler> ErrorHandler for LoggingErrorHandler<H> {
         error: Box<dyn Error + Send>,
         request: &HttpRequest,
     ) -> Option<HttpResponse> {
-        eprintln!("[ERROR] {} {} - {}", request.method, request.uri, error);
+        eprintln!("[ERROR] {} {} - {}", request.method(), request.uri(), error);
         self.inner.handle_error(error, request).await
     }
 }
@@ -129,19 +129,9 @@ impl<H: ErrorHandler> ErrorHandler for LoggingErrorHandler<H> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::http_helpers::Extensions;
-    use std::collections::HashMap;
 
     fn create_test_request() -> HttpRequest {
-        HttpRequest {
-            body: bytes::Bytes::new(),
-            headers: vec![],
-            method: "GET".to_string(),
-            uri: "/test".to_string(),
-            query_params: HashMap::new(),
-            path_params: HashMap::new(),
-            extensions: Extensions::new(),
-        }
+        HttpRequest(http::Request::new(bytes::Bytes::new()))
     }
 
     #[tokio::test]

@@ -41,7 +41,9 @@ impl AuthMiddleware {
 impl Middleware for AuthMiddleware {
     async fn handle(&self, req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
         let token = req
-            .header("authorization")
+            .headers()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
             .and_then(|v| v.strip_prefix("Bearer "));
 
         if token == Some(self.valid_token.as_str()) {

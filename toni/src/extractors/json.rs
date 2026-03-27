@@ -1,20 +1,15 @@
-//! JSON body extractor
-
 use serde::de::DeserializeOwned;
 
 use super::FromRequest;
 use crate::http_helpers::HttpRequest;
 
-/// Extractor for JSON request body.
+/// Extracts and deserializes a JSON request body.
 ///
 /// # Example
 ///
 /// ```rust,ignore
 /// #[derive(Deserialize)]
-/// struct CreateUserDto {
-///     name: String,
-///     email: String,
-/// }
+/// struct CreateUserDto { name: String, email: String }
 ///
 /// #[post("/users")]
 /// fn create_user(&self, Json(dto): Json<CreateUserDto>) -> String {
@@ -66,10 +61,11 @@ impl<T: DeserializeOwned> FromRequest for Json<T> {
     type Error = JsonError;
 
     fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        if req.body.is_empty() {
+        let body = req.body();
+        if body.is_empty() {
             return Err(JsonError::NotJson);
         }
-        let value: T = serde_json::from_slice(&req.body)
+        let value: T = serde_json::from_slice(body)
             .map_err(|e| JsonError::DeserializeError(e.to_string()))?;
         Ok(Json(value))
     }

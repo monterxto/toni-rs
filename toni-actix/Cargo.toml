@@ -11,6 +11,7 @@ categories = ["web-programming::http-server"]
 toni = { path = "../toni" }
 actix-web = "4"
 anyhow = "1.0"
+http = "1"
 http-body-util = "0.1"
 serde_json = "1.0"
 

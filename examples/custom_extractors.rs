@@ -127,7 +127,11 @@ impl FromRequest for CurrentUser {
     type Error = AuthError;
 
     fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        let auth_header = req.header("authorization").ok_or(AuthError::MissingToken)?;
+        let auth_header = req
+            .headers()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .ok_or(AuthError::MissingToken)?;
 
         let token = auth_header
             .strip_prefix("Bearer ")
@@ -198,7 +202,11 @@ impl FromRequest for BearerToken {
     type Error = TokenError;
 
     fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        let auth_header = req.header("authorization").ok_or(TokenError::Missing)?;
+        let auth_header = req
+            .headers()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
+            .ok_or(TokenError::Missing)?;
 
         let token = auth_header
             .strip_prefix("Bearer ")
@@ -251,7 +259,9 @@ impl FromRequest for ApiKey {
 
     fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
         let key = req
-            .header("x-api-key")
+            .headers()
+            .get("x-api-key")
+            .and_then(|v| v.to_str().ok())
             .ok_or(ApiKeyError::Missing)?
             .to_string();
 
@@ -302,14 +312,22 @@ impl FromRequest for ClientIp {
 
     fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
         // Check X-Forwarded-For first (proxy/load balancer support)
-        if let Some(forwarded) = req.header("x-forwarded-for") {
+        if let Some(forwarded) = req
+            .headers()
+            .get("x-forwarded-for")
+            .and_then(|v| v.to_str().ok())
+        {
             if let Some(ip) = forwarded.split(',').next() {
                 return Ok(ClientIp(ip.trim().to_string()));
             }
         }
 
         // Check X-Real-IP (nginx)
-        if let Some(real_ip) = req.header("x-real-ip") {
+        if let Some(real_ip) = req
+            .headers()
+            .get("x-real-ip")
+            .and_then(|v| v.to_str().ok())
+        {
             return Ok(ClientIp(real_ip.to_string()));
         }
 
@@ -351,7 +369,9 @@ impl FromRequest for UserAgent {
 
     fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
         let ua = req
-            .header("user-agent")
+            .headers()
+            .get("user-agent")
+            .and_then(|v| v.to_str().ok())
             .ok_or_else(|| UserAgentError("User-Agent header missing".to_string()))?
             .to_string();
 
@@ -393,7 +413,11 @@ impl FromRequest for RequestId {
 
     fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
         // Check existing header
-        if let Some(id) = req.header("x-request-id") {
+        if let Some(id) = req
+            .headers()
+            .get("x-request-id")
+            .and_then(|v| v.to_str().ok())
+        {
             return Ok(RequestId(id.to_string()));
         }
 
@@ -448,7 +472,9 @@ impl FromRequest for Cookies {
 
     fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
         let cookie_header = req
-            .header("cookie")
+            .headers()
+            .get("cookie")
+            .and_then(|v| v.to_str().ok())
             .ok_or_else(|| CookieError("No cookies present".to_string()))?;
 
         let mut cookies = HashMap::new();
@@ -492,7 +518,9 @@ impl FromRequest for SessionCookie {
 
     fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
         let cookie_header = req
-            .header("cookie")
+            .headers()
+            .get("cookie")
+            .and_then(|v| v.to_str().ok())
             .ok_or_else(|| SessionCookieError("No cookies present".to_string()))?;
 
         for pair in cookie_header.split(';') {

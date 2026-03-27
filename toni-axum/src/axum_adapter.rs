@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Context, Result};
-use std::collections::HashMap;
+use std::collections::HashMap; // still needed for ws_ports, path_params
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -8,7 +8,7 @@ use tokio::sync::watch;
 
 use axum::{
     body::{to_bytes, Body},
-    extract::{ws::WebSocketUpgrade, Path, Query},
+    extract::{ws::WebSocketUpgrade, Path},
     http::{HeaderMap, HeaderName, HeaderValue, Request, Response, StatusCode},
     routing::{connect, delete, get, head, options, patch, post, put, trace},
     RequestPartsExt, Router,
@@ -19,7 +19,7 @@ use std::str::FromStr;
 use toni::websocket::{WsMessage, WsSink};
 use toni::{
     async_trait,
-    http_helpers::{Bytes as ToniBytes, Extensions},
+    http_helpers::PathParams,
     HttpAdapter, HttpMethod, HttpRequest, HttpResponse, InstanceWrapper,
     WebSocketAdapter, WsConnectionCallbacks,
 };
@@ -124,26 +124,12 @@ impl HttpAdapter for AxumAdapter {
             .await
             .map_err(|e| anyhow!("Failed to extract path parameters: {:?}", e))?;
 
-        let Query(query_params) = parts
-            .extract::<Query<HashMap<String, String>>>()
-            .await
-            .map_err(|e| anyhow!("Failed to extract query parameters: {:?}", e))?;
+        // Query params and URI are preserved in http::Parts — no separate extraction needed.
+        // PathParams go into extensions so all extractors and middleware can read them.
+        parts.extensions.insert(PathParams(path_params));
 
-        let headers = parts
-            .headers
-            .iter()
-            .map(|(name, value)| (name.to_string(), value.to_str().unwrap_or("").to_string()))
-            .collect();
-
-        Ok(HttpRequest {
-            body: ToniBytes::from(body_bytes.to_vec()),
-            headers,
-            method: parts.method.to_string(),
-            uri: parts.uri.to_string(),
-            query_params,
-            path_params,
-            extensions: Extensions::new(),
-        })
+        let http_req = Request::from_parts(parts, body_bytes);
+        Ok(HttpRequest(http_req))
     }
 
     async fn adapt_response(response: HttpResponse) -> Result<Self::Response> {

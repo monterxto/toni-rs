@@ -6,15 +6,13 @@ This document covers the current state of the `tower-compat` feature, its known 
 
 ## What was built
 
-`TowerLayer<L>` wraps any `tower::Layer` as a toni `Middleware`, plugging into `configure_middleware` exactly like a hand-written toni middleware. The bridge:
+`TowerLayer<L>` wraps any `tower::Layer` as a toni `Middleware`, plugging into `configure_middleware` exactly like a hand-written toni middleware. The integration:
 
-- Converts `HttpRequest → http::Request<Bytes>` before handing off to Tower.
+- Passes `HttpRequest` to Tower as `http::Request<Bytes>` — no conversion needed because `HttpRequest` is a newtype over `http::Request<Bytes>`.
 - Wraps `Box<dyn Next>` as a `tower::Service<http::Request<Bytes>>` (`ToniNextService`) so Tower can call downstream.
 - Converts `http::Response<B: Body> → HttpResponse` on the way back, wrapping the body as a streaming `BoxBody` without buffering.
-- Preserves path params across the round-trip via `ToniPathParams` stored in `http::Request` extensions (Tower has no path-param concept).
-- Preserves toni extensions across the round-trip via `ToniExtensionBridge` — the full `HttpRequest.extensions` map is wrapped as a single opaque entry in `http::Request` extensions and restored intact before downstream toni middleware runs.
 
-The adapter (axum, actix, future) never sees Tower. The conversion is entirely internal to `tower_compat.rs`, so the feature works regardless of which adapter is in use.
+The adapter (axum, actix, future) never sees Tower. The `tower_compat.rs` boundary is entirely internal, so the feature works regardless of which adapter is in use.
 
 Enabled via feature flag — zero cost when not compiled in:
 
@@ -25,27 +23,6 @@ toni = { version = "...", features = ["tower-compat"] }
 ---
 
 ## Known limitations
-
-### Tower middleware cannot read toni-typed extensions
-
-Toni extensions set by preceding toni middleware survive the Tower round-trip — they are restored on `HttpRequest` for any downstream toni middleware. However, Tower middleware itself (e.g. `TraceLayer`, a custom `tower::Layer`) cannot read them, because `ToniExtensionBridge` is an internal type.
-
-Tower middleware reads from `http::Request` extensions by type — it calls `req.extensions().get::<SomeType>()`. It will only find types it was explicitly written to look for. `ToniExtensionBridge` is sitting in the map, but no off-the-shelf Tower layer knows to ask for it.
-
-**If a custom Tower layer needs access to toni extension data**, use the `toni_extensions` helper:
-
-```rust
-use toni::tower_compat::toni_extensions;
-
-// inside your Tower layer's Service::call:
-if let Some(ext) = toni_extensions(&req) {
-    if let Some(user) = ext.get::<MyUser>() {
-        // use user
-    }
-}
-```
-
-`toni_extensions` reads from the internal `ToniExtensionBridge` entry without exposing the internal type. Off-the-shelf Tower layers (e.g. `TraceLayer`) will never call this — it is only useful in custom layers you control.
 
 ### Single-use inner service
 
@@ -79,13 +56,9 @@ Some Tower middleware (certain retry patterns, request cloning) require the body
 
 ## Optimization opportunities
 
-### Header Vec allocation
+### Header Vec allocation in `to_toni_response`
 
-Both `to_http_request` and `to_toni_response` collect headers into `Vec<(String, String)>`. Headers are usually small, but for hot paths this is a repeated allocation. A smallvec or stack-allocated approach would reduce pressure.
-
-### `ToniPathParams` and `ToniExtensionBridge` clone bounds
-
-Both `ToniPathParams` and `ToniExtensionBridge` derive `Clone` because `http::Extensions::insert` requires `T: Clone`. However, both are removed from extensions after the first (and only) use via `remove`, which does not require `Clone`. The bound exists solely to satisfy `insert`. A wrapper type that implements `Clone` trivially (or a different storage mechanism) could avoid the requirement if the clone turns out to be measurable overhead — unlikely given extensions are small.
+`to_toni_response` collects headers into `Vec<(String, String)>`. Headers are usually small, but for hot paths this is a repeated allocation. A smallvec or stack-allocated approach would reduce pressure.
 
 ---
 

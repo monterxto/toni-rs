@@ -219,7 +219,7 @@ where
         req: HttpRequest,
     ) -> HttpResponse {
         // Parse GraphQL request from body
-        let gql_request: GraphQLRequest = match serde_json::from_slice(&req.body) {
+        let gql_request: GraphQLRequest = match serde_json::from_slice(req.body()) {
             Ok(req) => req,
             Err(e) => {
                 return HttpResponse {

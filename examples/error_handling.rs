@@ -44,7 +44,9 @@ impl ErrorHandler for GlobalErrorHandler {
     ) -> Option<HttpResponse> {
         eprintln!(
             "[GlobalErrorHandler] {} {}: {}",
-            request.method, request.uri, error
+            request.method(),
+            request.uri(),
+            error
         );
 
         if let Some(http_error) = error.downcast_ref::<HttpError>() {
@@ -60,7 +62,7 @@ impl ErrorHandler for GlobalErrorHandler {
                     "error": "Internal Server Error",
                     "handler": "GlobalErrorHandler",
                     "timestamp": chrono::Utc::now().to_rfc3339(),
-                    "path": request.uri,
+                    "path": request.uri().to_string(),
                 }))
                 .build(),
         )
@@ -82,7 +84,8 @@ impl ErrorHandler for ValidationErrorHandler {
             if matches!(status, 400 | 422) {
                 eprintln!(
                     "[ValidationErrorHandler] Handling validation error on {}: {}",
-                    request.uri, error
+                    request.uri(),
+                    error
                 );
                 return Some(
                     HttpResponse::builder()
@@ -93,7 +96,7 @@ impl ErrorHandler for ValidationErrorHandler {
                             "error": "Validation Error",
                             "handler": "ValidationErrorHandler",
                             "timestamp": chrono::Utc::now().to_rfc3339(),
-                            "path": request.uri,
+                            "path": request.uri().to_string(),
                         }))
                         .build(),
                 );
@@ -117,7 +120,8 @@ impl ErrorHandler for DatabaseErrorHandler {
             if http_error.status_code() == 409 {
                 eprintln!(
                     "[DatabaseErrorHandler] Handling conflict error on {}: {}",
-                    request.uri, error
+                    request.uri(),
+                    error
                 );
                 return Some(
                     HttpResponse::builder()
@@ -128,7 +132,7 @@ impl ErrorHandler for DatabaseErrorHandler {
                             "error": "Database Conflict",
                             "handler": "DatabaseErrorHandler",
                             "timestamp": chrono::Utc::now().to_rfc3339(),
-                            "path": request.uri,
+                            "path": request.uri().to_string(),
                         }))
                         .build(),
                 );
@@ -150,7 +154,9 @@ impl ErrorHandler for UserControllerErrorHandler {
     ) -> Option<HttpResponse> {
         eprintln!(
             "[UserControllerErrorHandler] {} {}: {}",
-            request.method, request.uri, error
+            request.method(),
+            request.uri(),
+            error
         );
 
         if let Some(http_error) = error.downcast_ref::<HttpError>() {
@@ -162,7 +168,7 @@ impl ErrorHandler for UserControllerErrorHandler {
                         "message": http_error.message(),
                         "handler": "UserControllerErrorHandler",
                         "timestamp": chrono::Utc::now().to_rfc3339(),
-                        "path": request.uri,
+                        "path": request.uri().to_string(),
                     }))
                     .build(),
             );
@@ -192,7 +198,8 @@ impl ErrorHandler for NotFoundErrorHandler {
             if http_error.status_code() == 404 {
                 eprintln!(
                     "[NotFoundErrorHandler - DI] Handling 404 on {}: {}",
-                    request.uri, error
+                    request.uri(),
+                    error
                 );
                 return Some(
                     HttpResponse::builder()
@@ -203,7 +210,7 @@ impl ErrorHandler for NotFoundErrorHandler {
                             "error": "Not Found",
                             "handler": "NotFoundErrorHandler (DI-based)",
                             "timestamp": chrono::Utc::now().to_rfc3339(),
-                            "path": request.uri,
+                            "path": request.uri().to_string(),
                         }))
                         .build(),
                 );
@@ -217,7 +224,7 @@ pub struct AuthGuard;
 
 impl Guard for AuthGuard {
     fn can_activate(&self, context: &Context) -> bool {
-        context.take_request().has_header("X-Auth-Token")
+        context.take_request().headers().contains_key("x-auth-token")
     }
 }
 
@@ -317,8 +324,9 @@ impl UserController {
     #[get("/{id}")]
     fn get_user(&self, req: HttpRequest) -> Result<ToniBody, HttpError> {
         let id = req
-            .path_params
-            .get("id")
+            .extensions()
+            .get::<toni::http_helpers::PathParams>()
+            .and_then(|p| p.0.get("id").map(|s| s.as_str()))
             .ok_or_else(|| HttpError::bad_request("Missing user ID"))?;
 
         let user = self.service.find_user(id)?;
@@ -328,7 +336,9 @@ impl UserController {
     #[get("/me")]
     fn get_current_user(&self, req: HttpRequest) -> Result<ToniBody, HttpError> {
         let token = req
-            .header("Authorization")
+            .headers()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())
             .ok_or_else(|| HttpError::unauthorized("Authorization header required"))?;
 
         self.service.authenticate(token)?;
@@ -342,7 +352,7 @@ impl UserController {
     #[post("/")]
     #[use_error_handlers(ValidationErrorHandler{}, DatabaseErrorHandler{})]
     fn create_user(&self, req: HttpRequest) -> Result<HttpResponse, HttpError> {
-        let body: serde_json::Value = serde_json::from_slice(&req.body)
+        let body: serde_json::Value = serde_json::from_slice(req.body())
             .map_err(|_| HttpError::bad_request("Invalid request body"))?;
         let email = body
             .get("email")
@@ -370,8 +380,9 @@ impl ProductController {
     #[get("/{id}")]
     fn get_product(&self, req: HttpRequest) -> Result<ToniBody, HttpError> {
         let id = req
-            .path_params
-            .get("id")
+            .extensions()
+            .get::<toni::http_helpers::PathParams>()
+            .and_then(|p| p.0.get("id").map(|s| s.as_str()))
             .ok_or_else(|| HttpError::bad_request("Missing product ID"))?;
 
         if id == "1" {

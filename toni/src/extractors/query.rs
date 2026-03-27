@@ -1,11 +1,9 @@
-//! Query parameter extractor
-
 use serde::de::DeserializeOwned;
 
 use super::FromRequest;
 use crate::http_helpers::HttpRequest;
 
-/// Extractor for query parameters
+/// Extracts typed query parameters from the URL.
 ///
 /// # Example
 ///
@@ -25,7 +23,6 @@ use crate::http_helpers::HttpRequest;
 pub struct Query<T>(pub T);
 
 impl<T> Query<T> {
-    /// Extract the inner value
     pub fn into_inner(self) -> T {
         self.0
     }
@@ -33,7 +30,6 @@ impl<T> Query<T> {
 
 impl<T> std::ops::Deref for Query<T> {
     type Target = T;
-
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -45,10 +41,8 @@ impl<T> std::ops::DerefMut for Query<T> {
     }
 }
 
-/// Error type for query extraction
 #[derive(Debug)]
 pub enum QueryError {
-    /// Failed to deserialize query parameters
     DeserializeError(String),
 }
 
@@ -68,17 +62,9 @@ impl<T: DeserializeOwned> FromRequest for Query<T> {
     type Error = QueryError;
 
     fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        // Convert query_params HashMap to a format serde can deserialize
-        let query_string: String = req
-            .query_params
-            .iter()
-            .map(|(k, v)| format!("{}={}", k, v))
-            .collect::<Vec<_>>()
-            .join("&");
-
-        let value: T = serde_urlencoded::from_str(&query_string)
+        let query = req.uri().query().unwrap_or("");
+        let value: T = serde_urlencoded::from_str(query)
             .map_err(|e| QueryError::DeserializeError(e.to_string()))?;
-
         Ok(Query(value))
     }
 }

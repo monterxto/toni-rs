@@ -7,6 +7,7 @@
 //! Run with:  cargo run --example multi_protocol_context
 
 use std::collections::HashMap;
+use toni::http_helpers::Bytes;
 use toni::websocket::WsHandshake;
 use toni::{Context, HttpRequest, ProtocolType, RpcContext, RpcData, WsClient, WsMessage};
 
@@ -24,7 +25,9 @@ impl UniversalAuthGuard {
             ProtocolType::Http => {
                 let (request, _) = context.switch_to_http().expect("HTTP context");
                 request
-                    .header("authorization")
+                    .headers()
+                    .get("authorization")
+                    .and_then(|v| v.to_str().ok())
                     .and_then(|h| h.strip_prefix("Bearer "))
             }
             ProtocolType::WebSocket => {
@@ -52,9 +55,11 @@ impl LoggingInterceptor {
                 let (req, _) = context.switch_to_http().unwrap();
                 println!(
                     "[HTTP]      {} {} (agent: {:?})",
-                    req.method,
-                    req.uri,
-                    req.header("user-agent")
+                    req.method(),
+                    req.uri(),
+                    req.headers()
+                        .get("user-agent")
+                        .and_then(|v| v.to_str().ok())
                 );
             }
             ProtocolType::WebSocket => {
@@ -80,21 +85,15 @@ fn main() {
 
     // HTTP — valid token in Authorization header
     println!("--- HTTP ---");
-    let http_ctx = Context::from_request(HttpRequest {
-        method: "GET".to_string(),
-        uri: "/api/orders".to_string(),
-        headers: vec![
-            (
-                "authorization".to_string(),
-                "Bearer valid-secret".to_string(),
-            ),
-            ("user-agent".to_string(), "example/1.0".to_string()),
-        ],
-        body: Default::default(),
-        query_params: HashMap::new(),
-        path_params: HashMap::new(),
-        extensions: Default::default(),
-    });
+    let http_ctx = Context::from_request(
+        HttpRequest::builder()
+            .method("GET")
+            .uri("/api/orders")
+            .header("authorization", "Bearer valid-secret")
+            .header("user-agent", "example/1.0")
+            .body(Bytes::new())
+            .unwrap(),
+    );
     logger.log_request(&http_ctx);
     println!("auth: {}\n", guard.can_activate(&http_ctx));
 

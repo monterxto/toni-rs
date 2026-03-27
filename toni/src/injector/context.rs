@@ -33,7 +33,8 @@ impl Context {
         }
     }
 
-    pub fn from_request(req: HttpRequest) -> Self {
+    pub fn from_request(req: impl Into<HttpRequest>) -> Self {
+        let req = req.into();
         Self {
             protocol: Protocol::http(req),
             route_metadata: Some(Arc::new(RouteMetadata::new())),
