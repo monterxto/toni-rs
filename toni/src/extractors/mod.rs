@@ -35,11 +35,13 @@ pub use validated::Validated;
 
 use crate::http_helpers::HttpRequest;
 
-/// Trait for types that can be extracted from an HTTP request
+/// Extracts a value from an HTTP request.
+///
+/// `from_request` receives a shared reference to the full request (including
+/// the buffered body via `req.body()`). Call `req.into_parts()` in middleware
+/// when you need to replace parts of the request before passing it downstream.
 pub trait FromRequest: Sized {
-    /// The error type returned if extraction fails
     type Error: std::fmt::Display;
 
-    /// Extract self from the request
     fn from_request(req: &HttpRequest) -> Result<Self, Self::Error>;
 }

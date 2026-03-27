@@ -61,12 +61,12 @@ impl AuthService {
 
     pub fn is_admin(&self, req: &HttpRequest) -> bool {
         self.tracker.track("service:auth_check");
-        req.has_header("X-Admin-Token")
+        req.headers().contains_key("x-admin-token")
     }
 
     pub fn validate_user(&self, req: &HttpRequest) -> bool {
         self.tracker.track("service:user_validation");
-        req.has_header("X-User-Id")
+        req.headers().contains_key("x-user-id")
     }
 }
 
@@ -110,7 +110,7 @@ impl Middleware for HeaderValidationMiddleware {
         self.auth_service
             .tracker
             .track("middleware:header_validation");
-        if !req.has_header("X-Request-ID") {
+        if !req.headers().contains_key("x-request-id") {
             let mut response = toni::HttpResponse::new();
             response.status = 400;
             response.body = Some(ToniBody::text("Missing X-Request-ID header".to_string()));

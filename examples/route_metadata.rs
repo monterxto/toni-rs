@@ -58,7 +58,11 @@ impl Guard for RolesGuard {
 
         // In production: extract user from JWT/session and check roles
         let req = context.take_request();
-        let user_role = req.header("x-user-role").unwrap_or("guest");
+        let user_role = req
+            .headers()
+            .get("x-user-role")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("guest");
 
         required.iter().any(|&r| r == user_role)
     }

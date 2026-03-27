@@ -1,11 +1,10 @@
-//! Raw bytes extractor for binary data
-
 use super::FromRequest;
 use crate::http_helpers::HttpRequest;
 
-/// Extractor for raw binary request body.
+/// Extracts the raw request body as bytes.
 ///
 /// Accepts `application/octet-stream` and requests with no content-type.
+/// For JSON or form data, use [`Json`](super::json::Json) or [`Body`](super::body::Body) instead.
 ///
 /// # Example
 ///
@@ -65,14 +64,14 @@ impl FromRequest for Bytes {
 
     fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
         let content_type = req
-            .headers
-            .iter()
-            .find(|(name, _)| name.to_lowercase() == "content-type")
-            .map(|(_, value)| value.to_lowercase())
+            .headers()
+            .get(http::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_lowercase())
             .unwrap_or_default();
 
         if content_type.is_empty() || content_type.contains("application/octet-stream") {
-            Ok(Bytes(req.body.to_vec()))
+            Ok(Bytes(req.body().to_vec()))
         } else {
             Err(BytesError::UnsupportedContentType(content_type))
         }

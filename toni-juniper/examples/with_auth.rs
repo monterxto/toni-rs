@@ -40,12 +40,12 @@ impl User {
 impl _AuthService {
     fn verify_token(&self, req: &HttpRequest) -> Option<User> {
         // In a real app, verify JWT token from headers
-        let auth_header = req
-            .headers
-            .iter()
-            .find(|(k, _)| k.to_lowercase() == "authorization")?;
+        let auth_value = req
+            .headers()
+            .get("authorization")
+            .and_then(|v| v.to_str().ok())?;
 
-        if auth_header.1.starts_with("Bearer valid-token") {
+        if auth_value.starts_with("Bearer valid-token") {
             Some(User {
                 id: 1,
                 username: "john_doe".to_string(),

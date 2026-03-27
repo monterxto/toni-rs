@@ -9,7 +9,6 @@ use http::header::{HeaderName, HeaderValue};
 use serde_json::json;
 use serial_test::serial;
 use toni::async_trait;
-use toni::tower_compat::toni_extensions;
 use toni::traits_helpers::middleware::{Middleware, MiddlewareResult, Next};
 use toni::traits_helpers::MiddlewareConsumer;
 use toni::{HttpRequest, TowerLayer, controller, get, module, post, Body as ToniBody};
@@ -69,7 +68,7 @@ async fn tower_layer_adds_response_header() {
 // ── Test 2: CorsLayer ─────────────────────────────────────────────────────────
 //
 // Verifies that a real-world tower-http layer (CorsLayer::permissive) works
-// through the bridge and adds the expected CORS headers.
+// and adds the expected CORS headers.
 
 #[serial]
 #[tokio_localset_test::localset_test]
@@ -123,7 +122,7 @@ async fn tower_layer_request_body_round_trip() {
     impl EchoController {
         #[post("/json")]
         fn echo_json(&self, req: HttpRequest) -> ToniBody {
-            ToniBody::from(req.body.clone())
+            ToniBody::from(req.body().clone())
         }
     }
 
@@ -161,17 +160,18 @@ async fn tower_layer_request_body_round_trip() {
     assert_eq!(body, payload, "JSON body should survive the Tower round-trip");
 }
 
-// ── Test 4: toni_extensions helper ────────────────────────────────────────────
+// ── Test 4: extensions visible to Tower ───────────────────────────────────────
 //
 // A toni middleware sets a typed extension. A custom Tower layer reads it via
-// the toni_extensions() helper. Verifies the documented escape hatch works.
+// req.extensions() directly — no bridge needed, because HttpRequest IS
+// http::Request<Bytes>.
 
 #[derive(Clone)]
 struct RequestId(String);
 
 // Custom Tower layer that reads a toni-typed extension and echoes it as a
-// response header. Off-the-shelf layers like TraceLayer cannot do this —
-// only layers that call toni_extensions() explicitly.
+// response header. Works like any standard Tower layer — extensions set by
+// toni middleware are visible in http::Extensions directly.
 #[derive(Clone)]
 struct EchoExtensionLayer;
 
@@ -205,8 +205,9 @@ where
 
     fn call(&mut self, req: http::Request<B>) -> Self::Future {
         // Read the RequestId extension set by the preceding toni middleware.
-        let request_id = toni_extensions(&req)
-            .and_then(|ext| ext.get::<RequestId>())
+        let request_id = req
+            .extensions()
+            .get::<RequestId>()
             .map(|id| id.0.clone())
             .unwrap_or_else(|| "not-found".to_string());
 
@@ -382,8 +383,8 @@ async fn tower_and_toni_middleware_interleaved() {
 // ── Test 7: CompressionLayer body transformation ───────────────────────────────
 //
 // CompressionLayer rewrites the response body bytes (gzip). This is the
-// definitive test that Tower body transformations stream through the bridge
-// intact — the previous tests only verified header injection, not body rewriting.
+// definitive test that Tower body transformations work end-to-end — the
+// previous tests only verified header injection, not body rewriting.
 //
 // reqwest auto-decompresses gzip when the `gzip` feature is enabled, so the
 // asserted body is the original plaintext. The Content-Encoding header confirms

@@ -1,52 +1,55 @@
-use std::collections::HashMap;
-
 use bytes::Bytes;
 
-use super::Extensions;
-
-#[derive(Clone, Debug)]
-pub struct HttpRequest {
-    /// Raw buffered request body. Content-type is in `headers`.
-    pub body: Bytes,
-    pub headers: Vec<(String, String)>,
-    pub method: String,
-    pub uri: String,
-    pub query_params: HashMap<String, String>,
-    pub path_params: HashMap<String, String>,
-    pub extensions: Extensions,
-}
+/// An HTTP request. Wraps [`http::Request<Bytes>`] so the full `http` crate
+/// surface is available — including `into_parts()` for middleware that needs
+/// to inspect or replace headers, body, or extensions.
+#[derive(Clone)]
+pub struct HttpRequest(pub http::Request<Bytes>);
 
 impl HttpRequest {
-    pub fn headers(&self) -> &Vec<(String, String)> {
-        &self.headers
+    /// Returns a request builder. See [`http::request::Builder`] for the full API.
+    pub fn builder() -> http::request::Builder {
+        http::Request::builder()
     }
 
-    pub fn headers_mut(&mut self) -> &mut Vec<(String, String)> {
-        &mut self.headers
+    pub fn into_inner(self) -> http::Request<Bytes> {
+        self.0
     }
 
-    /// Get a specific header value by name (case-insensitive).
-    pub fn header(&self, name: &str) -> Option<&str> {
-        let name_lower = name.to_lowercase();
-        self.headers
-            .iter()
-            .find(|(k, _)| k.to_lowercase() == name_lower)
-            .map(|(_, v)| v.as_str())
+    pub fn into_parts(self) -> (http::request::Parts, Bytes) {
+        self.0.into_parts()
     }
 
-    /// Check if a header exists (case-insensitive).
-    pub fn has_header(&self, name: &str) -> bool {
-        let name_lower = name.to_lowercase();
-        self.headers
-            .iter()
-            .any(|(k, _)| k.to_lowercase() == name_lower)
+    pub fn from_parts(parts: http::request::Parts, body: Bytes) -> Self {
+        Self(http::Request::from_parts(parts, body))
     }
+}
 
-    pub fn extensions(&self) -> &Extensions {
-        &self.extensions
+impl From<http::Request<Bytes>> for HttpRequest {
+    fn from(req: http::Request<Bytes>) -> Self {
+        Self(req)
     }
+}
 
-    pub fn extensions_mut(&mut self) -> &mut Extensions {
-        &mut self.extensions
+impl std::ops::Deref for HttpRequest {
+    type Target = http::Request<Bytes>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl std::ops::DerefMut for HttpRequest {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl std::fmt::Debug for HttpRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HttpRequest")
+            .field("method", self.0.method())
+            .field("uri", self.0.uri())
+            .finish()
     }
 }

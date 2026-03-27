@@ -7,7 +7,7 @@ use actix_web::{
     HttpResponse as ActixHttpResponse, HttpServer,
 };
 use toni::{
-    http_helpers::{Bytes as ToniBytes, Extensions},
+    http_helpers::PathParams,
     HttpAdapter, HttpMethod, HttpRequest, HttpResponse, InstanceWrapper,
 };
 
@@ -41,47 +41,30 @@ impl HttpAdapter for ActixAdapter {
     async fn adapt_request(request: Self::Request) -> Result<HttpRequest> {
         let (req, body) = request;
 
-        let body_vec = body.to_vec();
-
         let path_params: HashMap<String, String> = req
             .match_info()
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
 
-        let query_string = req.query_string();
-        let query_params: HashMap<String, String> = if query_string.is_empty() {
-            HashMap::new()
-        } else {
-            query_string
-                .split('&')
-                .filter_map(|pair| {
-                    if pair.is_empty() {
-                        return None;
-                    }
-                    let mut parts = pair.split('=');
-                    let key = parts.next()?;
-                    let value = parts.next().unwrap_or("");
-                    Some((key.to_string(), value.to_string()))
-                })
-                .collect()
-        };
+        let method = req.method().as_str().parse::<http::Method>()
+            .unwrap_or(http::Method::GET);
+        let uri = req.uri().to_string().parse::<http::Uri>()
+            .unwrap_or_else(|_| http::Uri::default());
 
-        let headers: Vec<(String, String)> = req
-            .headers()
-            .iter()
-            .map(|(name, value)| (name.to_string(), value.to_str().unwrap_or("").to_string()))
-            .collect();
+        let mut http_req = http::Request::new(web::Bytes::from(body.to_vec()));
+        *http_req.method_mut() = method;
+        *http_req.uri_mut() = uri;
+        for (name, value) in req.headers().iter() {
+            if let Ok(val) = http::HeaderValue::from_bytes(value.as_bytes()) {
+                if let Ok(key) = http::HeaderName::from_bytes(name.as_str().as_bytes()) {
+                    http_req.headers_mut().insert(key, val);
+                }
+            }
+        }
+        http_req.extensions_mut().insert(PathParams(path_params));
 
-        Ok(HttpRequest {
-            body: ToniBytes::from(body_vec),
-            headers,
-            method: req.method().to_string(),
-            uri: req.uri().to_string(),
-            query_params,
-            path_params,
-            extensions: Extensions::new(),
-        })
+        Ok(HttpRequest(http_req))
     }
 
     async fn adapt_response(response: HttpResponse) -> Result<Self::Response> {

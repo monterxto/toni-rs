@@ -74,41 +74,73 @@ pub fn extract_query_from_param(marker_param: &MarkerParam) -> Result<TokenStrea
         if let Some(default_val) = &marker_param.default_value {
             // With default value - never errors, uses default if missing or parse fails
             quote! {
-                let #param_name: #param_type = req.query_params.get(#marker_arg)
-                    .and_then(|v| v.parse().ok())
-                    .unwrap_or_else(|| #default_val.parse().expect("Invalid default value"));
+                let #param_name: #param_type = {
+                    let __qp: std::collections::HashMap<String, String> =
+                        <::toni::extractors::Query<std::collections::HashMap<String, String>>
+                            as ::toni::FromRequest>::from_request(&req)
+                        .map(|q| q.0)
+                        .unwrap_or_default();
+                    __qp.get(#marker_arg)
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or_else(|| #default_val.parse().expect("Invalid default value"))
+                };
             }
         } else if is_option {
             quote! {
-                let #param_name: #param_type = match req.query_params.get(#marker_arg) {
-                    Some(value) => match value.parse() {
-                        Ok(parsed) => Some(parsed),
-                        Err(e) => {
-                            let error_body = ::serde_json::json!({
-                                "error": "Failed to parse query parameter",
-                                "param": #marker_arg,
-                                "details": format!("Parse error: {}", e)
-                            });
-                            return ::toni::http_helpers::HttpResponse {
-                                body: Some(::toni::http_helpers::Body::json(error_body)),
-                                status: 400,
-                                headers: vec![],
-                            };
-                        }
-                    },
-                    None => None,
+                let #param_name: #param_type = {
+                    let __qp: std::collections::HashMap<String, String> =
+                        <::toni::extractors::Query<std::collections::HashMap<String, String>>
+                            as ::toni::FromRequest>::from_request(&req)
+                        .map(|q| q.0)
+                        .unwrap_or_default();
+                    match __qp.get(#marker_arg) {
+                        Some(value) => match value.parse() {
+                            Ok(parsed) => Some(parsed),
+                            Err(e) => {
+                                let error_body = ::serde_json::json!({
+                                    "error": "Failed to parse query parameter",
+                                    "param": #marker_arg,
+                                    "details": format!("Parse error: {}", e)
+                                });
+                                return ::toni::http_helpers::HttpResponse {
+                                    body: Some(::toni::http_helpers::Body::json(error_body)),
+                                    status: 400,
+                                    headers: vec![],
+                                };
+                            }
+                        },
+                        None => None,
+                    }
                 };
             }
         } else {
             quote! {
-                let #param_name: #param_type = match req.query_params.get(#marker_arg) {
-                    Some(value) => match value.parse() {
-                        Ok(parsed) => parsed,
-                        Err(e) => {
+                let #param_name: #param_type = {
+                    let __qp: std::collections::HashMap<String, String> =
+                        <::toni::extractors::Query<std::collections::HashMap<String, String>>
+                            as ::toni::FromRequest>::from_request(&req)
+                        .map(|q| q.0)
+                        .unwrap_or_default();
+                    match __qp.get(#marker_arg) {
+                        Some(value) => match value.parse() {
+                            Ok(parsed) => parsed,
+                            Err(e) => {
+                                let error_body = ::serde_json::json!({
+                                    "error": "Failed to parse query parameter",
+                                    "param": #marker_arg,
+                                    "details": format!("Parse error: {}", e)
+                                });
+                                return ::toni::http_helpers::HttpResponse {
+                                    body: Some(::toni::http_helpers::Body::json(error_body)),
+                                    status: 400,
+                                    headers: vec![],
+                                };
+                            }
+                        },
+                        None => {
                             let error_body = ::serde_json::json!({
-                                "error": "Failed to parse query parameter",
-                                "param": #marker_arg,
-                                "details": format!("Parse error: {}", e)
+                                "error": "Missing required query parameter",
+                                "param": #marker_arg
                             });
                             return ::toni::http_helpers::HttpResponse {
                                 body: Some(::toni::http_helpers::Body::json(error_body)),
@@ -116,17 +148,6 @@ pub fn extract_query_from_param(marker_param: &MarkerParam) -> Result<TokenStrea
                                 headers: vec![],
                             };
                         }
-                    },
-                    None => {
-                        let error_body = ::serde_json::json!({
-                            "error": "Missing required query parameter",
-                            "param": #marker_arg
-                        });
-                        return ::toni::http_helpers::HttpResponse {
-                            body: Some(::toni::http_helpers::Body::json(error_body)),
-                            status: 400,
-                            headers: vec![],
-                        };
                     }
                 };
             }
@@ -163,7 +184,10 @@ pub fn extract_path_param_from_param(marker_param: &MarkerParam) -> Result<Token
     })?;
 
     let extract_token_stream = quote! {
-        let #param_name: #param_type = match req.path_params.get(#marker_arg) {
+        let #param_name: #param_type = match req.extensions()
+            .get::<::toni::http_helpers::PathParams>()
+            .and_then(|p| p.get(#marker_arg))
+        {
             Some(value) => match value.parse() {
                 Ok(parsed) => parsed,
                 Err(e) => {

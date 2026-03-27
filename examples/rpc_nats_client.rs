@@ -26,8 +26,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use toni::{
-    controller, get, injectable, module, post, Body as ToniBody, HttpRequest, RpcClient,
-    ToniFactory,
+    controller, extractors::Query, get, injectable, module, post, Body as ToniBody, HttpRequest,
+    RpcClient, ToniFactory,
 };
 use toni_macros::{provider_value, rpc_controller};
 
@@ -124,25 +124,13 @@ impl OrdersRpcController {
 )]
 impl OrdersHttpController {
     #[get("/create")]
-    async fn create_order(&self, req: HttpRequest) -> ToniBody {
-        let item = req
-            .query_params
-            .get("item")
-            .cloned()
-            .unwrap_or_else(|| "unknown".to_string());
-
-        let qty: u32 = req
-            .query_params
-            .get("qty")
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(1);
-
+    async fn create_order(&self, Query(params): Query<CreateOrderDto>) -> ToniBody {
         println!(
             "[HTTP] GET /order/create → calling order.create via RpcClient (item={}, qty={})",
-            item, qty
+            params.item, params.qty
         );
 
-        let req_dto = json!({ "item": item, "qty": qty });
+        let req_dto = json!({ "item": params.item, "qty": params.qty });
         match self
             .client
             .send_json::<_, serde_json::Value>("order.create", &req_dto)
@@ -156,7 +144,7 @@ impl OrdersHttpController {
     #[post("/ship")]
     async fn ship_order(&self, req: HttpRequest) -> ToniBody {
         let payload: serde_json::Value =
-            serde_json::from_slice(&req.body).unwrap_or_else(|_| json!({}));
+            serde_json::from_slice(req.body()).unwrap_or_else(|_| json!({}));
 
         let order_id = payload["order_id"].as_u64().unwrap_or(0);
         println!(

@@ -11,7 +11,7 @@ homepage = "https://github.com/monterxto/toni-rs"
 readme = "README.md"
 
 [features]
-tower-compat = ["dep:tower", "dep:http"]
+tower-compat = ["dep:tower"]
 
 [dependencies]
 serde = { version = "1.0.216", features = ["derive"] }
@@ -30,8 +30,8 @@ http-body = "1"
 http-body-util = "0.1"
 toni-macros = { path = "../toni-macros" }
 uuid = { version = "1.0", features = ["v4"] }
+http = { version = "1" }
 tower = { version = "0.5", default-features = false, features = ["util"], optional = true }
-http = { version = "1", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1.42.0", features = ["full"] }
