@@ -1,11 +1,20 @@
 mod common;
 
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
+
 use common::TestServer;
 use http::header::{HeaderName, HeaderValue};
 use serde_json::json;
 use serial_test::serial;
+use toni::async_trait;
+use toni::tower_compat::toni_extensions;
+use toni::traits_helpers::middleware::{Middleware, MiddlewareResult, Next};
 use toni::traits_helpers::MiddlewareConsumer;
-use toni::{TowerLayer, controller, get, module, post, Body as ToniBody, HttpRequest};
+use toni::{HttpRequest, TowerLayer, controller, get, module, post, Body as ToniBody};
+use tower::Layer;
+use tower::ServiceBuilder;
 use tower_http::cors::CorsLayer;
 use tower_http::set_header::SetResponseHeaderLayer;
 
@@ -148,4 +157,222 @@ async fn tower_layer_request_body_round_trip() {
 
     let body: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(body, payload, "JSON body should survive the Tower round-trip");
+}
+
+// ── Test 4: toni_extensions helper ────────────────────────────────────────────
+//
+// A toni middleware sets a typed extension. A custom Tower layer reads it via
+// the toni_extensions() helper. Verifies the documented escape hatch works.
+
+#[derive(Clone)]
+struct RequestId(String);
+
+// Custom Tower layer that reads a toni-typed extension and echoes it as a
+// response header. Off-the-shelf layers like TraceLayer cannot do this —
+// only layers that call toni_extensions() explicitly.
+#[derive(Clone)]
+struct EchoExtensionLayer;
+
+#[derive(Clone)]
+struct EchoExtensionService<S> {
+    inner: S,
+}
+
+impl<S> Layer<S> for EchoExtensionLayer {
+    type Service = EchoExtensionService<S>;
+    fn layer(&self, inner: S) -> Self::Service {
+        EchoExtensionService { inner }
+    }
+}
+
+impl<S, B> tower::Service<http::Request<B>> for EchoExtensionService<S>
+where
+    S: tower::Service<http::Request<B>, Response = http::Response<toni::http_helpers::BoxBody>>
+        + Send,
+    S::Future: Send + 'static,
+    S::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    B: Send + 'static,
+{
+    type Response = http::Response<toni::http_helpers::BoxBody>;
+    type Error = Box<dyn std::error::Error + Send + Sync>;
+    type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.inner.poll_ready(cx).map_err(Into::into)
+    }
+
+    fn call(&mut self, req: http::Request<B>) -> Self::Future {
+        // Read the RequestId extension set by the preceding toni middleware.
+        let request_id = toni_extensions(&req)
+            .and_then(|ext| ext.get::<RequestId>())
+            .map(|id| id.0.clone())
+            .unwrap_or_else(|| "not-found".to_string());
+
+        let fut = self.inner.call(req);
+        Box::pin(async move {
+            let mut resp = fut.await.map_err(Into::into)?;
+            resp.headers_mut().insert(
+                HeaderName::from_static("x-request-id-echo"),
+                HeaderValue::from_str(&request_id).unwrap(),
+            );
+            Ok(resp)
+        })
+    }
+}
+
+// Toni middleware that stamps a typed RequestId extension before Tower runs.
+struct StampRequestIdMiddleware;
+
+#[async_trait]
+impl Middleware for StampRequestIdMiddleware {
+    async fn handle(&self, mut req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
+        req.extensions_mut().insert(RequestId("req-42".to_string()));
+        next.run(req).await
+    }
+}
+
+#[serial]
+#[tokio_localset_test::localset_test]
+async fn tower_layer_reads_toni_extensions() {
+    #[controller("/", pub struct ExtController {})]
+    impl ExtController {
+        #[get("/ext")]
+        fn ext(&self, _req: HttpRequest) -> ToniBody {
+            ToniBody::text("ok")
+        }
+    }
+
+    #[module(controllers: [ExtController])]
+    impl ExtModule {
+        fn configure_middleware(&self, consumer: &mut MiddlewareConsumer) {
+            // Toni middleware runs first and stamps the extension.
+            consumer
+                .apply(StampRequestIdMiddleware)
+                .for_routes(vec!["/*"]);
+            // Tower layer runs second and reads the extension via toni_extensions().
+            consumer
+                .apply(TowerLayer::new(EchoExtensionLayer))
+                .for_routes(vec!["/*"]);
+        }
+    }
+
+    let server = TestServer::start(ExtModule::module_definition()).await;
+    let resp = server
+        .client()
+        .get(server.url("/ext"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.headers().get("x-request-id-echo").unwrap(),
+        "req-42",
+        "Tower layer should read the RequestId extension set by preceding toni middleware"
+    );
+}
+
+// ── Test 5: ServiceBuilder composition ───────────────────────────────────────
+//
+// Two Tower layers stacked via ServiceBuilder and applied as a single TowerLayer.
+// Verifies the documented "idiomatic way to compose multiple Tower middlewares".
+
+#[serial]
+#[tokio_localset_test::localset_test]
+async fn tower_service_builder_composition() {
+    #[controller("/", pub struct ComposedController {})]
+    impl ComposedController {
+        #[get("/composed")]
+        fn composed(&self, _req: HttpRequest) -> ToniBody {
+            ToniBody::text("composed")
+        }
+    }
+
+    #[module(controllers: [ComposedController])]
+    impl ComposedModule {
+        fn configure_middleware(&self, consumer: &mut MiddlewareConsumer) {
+            let stack = ServiceBuilder::new()
+                .layer(SetResponseHeaderLayer::overriding(
+                    HeaderName::from_static("x-layer-a"),
+                    HeaderValue::from_static("a"),
+                ))
+                .layer(SetResponseHeaderLayer::overriding(
+                    HeaderName::from_static("x-layer-b"),
+                    HeaderValue::from_static("b"),
+                ))
+                .into_inner();
+
+            consumer
+                .apply(TowerLayer::new(stack))
+                .for_routes(vec!["/*"]);
+        }
+    }
+
+    let server = TestServer::start(ComposedModule::module_definition()).await;
+    let resp = server
+        .client()
+        .get(server.url("/composed"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.headers().get("x-layer-a").unwrap(), "a");
+    assert_eq!(resp.headers().get("x-layer-b").unwrap(), "b");
+    assert_eq!(resp.text().await.unwrap(), "composed");
+}
+
+// ── Test 6: Tower layer interleaved with toni middleware ──────────────────────
+//
+// Confirms that toni middleware and Tower layers can be applied in the same
+// configure_middleware and that both run in declaration order.
+
+#[serial]
+#[tokio_localset_test::localset_test]
+async fn tower_and_toni_middleware_interleaved() {
+    struct AddToniHeader;
+
+    #[async_trait]
+    impl Middleware for AddToniHeader {
+        async fn handle(&self, req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
+            let mut resp = next.run(req).await?;
+            resp.headers.push(("x-toni-mw".to_string(), "ran".to_string()));
+            Ok(resp)
+        }
+    }
+
+    #[controller("/", pub struct InterleavedController {})]
+    impl InterleavedController {
+        #[get("/interleaved")]
+        fn interleaved(&self, _req: HttpRequest) -> ToniBody {
+            ToniBody::text("ok")
+        }
+    }
+
+    #[module(controllers: [InterleavedController])]
+    impl InterleavedModule {
+        fn configure_middleware(&self, consumer: &mut MiddlewareConsumer) {
+            consumer
+                .apply(AddToniHeader)
+                .for_routes(vec!["/*"]);
+            consumer
+                .apply(TowerLayer::new(SetResponseHeaderLayer::overriding(
+                    HeaderName::from_static("x-tower-mw"),
+                    HeaderValue::from_static("ran"),
+                )))
+                .for_routes(vec!["/*"]);
+        }
+    }
+
+    let server = TestServer::start(InterleavedModule::module_definition()).await;
+    let resp = server
+        .client()
+        .get(server.url("/interleaved"))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    assert_eq!(resp.headers().get("x-toni-mw").unwrap(), "ran");
+    assert_eq!(resp.headers().get("x-tower-mw").unwrap(), "ran");
 }
