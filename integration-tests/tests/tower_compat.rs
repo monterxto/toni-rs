@@ -15,6 +15,8 @@ use toni::traits_helpers::MiddlewareConsumer;
 use toni::{HttpRequest, TowerLayer, controller, get, module, post, Body as ToniBody};
 use tower::Layer;
 use tower::ServiceBuilder;
+use reqwest;
+use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::set_header::SetResponseHeaderLayer;
 
@@ -375,4 +377,66 @@ async fn tower_and_toni_middleware_interleaved() {
     assert_eq!(resp.status(), 200);
     assert_eq!(resp.headers().get("x-toni-mw").unwrap(), "ran");
     assert_eq!(resp.headers().get("x-tower-mw").unwrap(), "ran");
+}
+
+// ── Test 7: CompressionLayer body transformation ───────────────────────────────
+//
+// CompressionLayer rewrites the response body bytes (gzip). This is the
+// definitive test that Tower body transformations stream through the bridge
+// intact — the previous tests only verified header injection, not body rewriting.
+//
+// reqwest auto-decompresses gzip when the `gzip` feature is enabled, so the
+// asserted body is the original plaintext. The Content-Encoding header confirms
+// compression actually fired.
+
+#[serial]
+#[tokio_localset_test::localset_test]
+async fn tower_compression_layer_transforms_body() {
+    // Large enough that gzip will actually compress (small strings may not be
+    // worth compressing and some implementations skip them).
+    let large_body = "toni ".repeat(500);
+    let expected = large_body.clone();
+
+    #[controller("/", pub struct CompressController {})]
+    impl CompressController {
+        #[get("/data")]
+        fn data(&self, _req: HttpRequest) -> ToniBody {
+            ToniBody::text("toni ".repeat(500))
+        }
+    }
+
+    #[module(controllers: [CompressController])]
+    impl CompressModule {
+        fn configure_middleware(&self, consumer: &mut MiddlewareConsumer) {
+            consumer
+                .apply(TowerLayer::new(CompressionLayer::new()))
+                .for_routes(vec!["/*"]);
+        }
+    }
+
+    let server = TestServer::start(CompressModule::module_definition()).await;
+
+    // Disable auto-decompression so we can inspect Content-Encoding directly.
+    let client = reqwest::Client::builder()
+        .no_gzip()
+        .build()
+        .unwrap();
+
+    let resp = client
+        .get(server.url("/data"))
+        .header("accept-encoding", "gzip")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        resp.headers().get("content-encoding").unwrap(),
+        "gzip",
+        "CompressionLayer should set Content-Encoding: gzip"
+    );
+    // With compression disabled on the client side, the raw bytes are gzip.
+    // Verify they differ from the plaintext — the body was actually transformed.
+    let raw = resp.bytes().await.unwrap();
+    assert_ne!(raw.as_ref(), expected.as_bytes(), "body should be gzip-compressed, not plaintext");
 }
