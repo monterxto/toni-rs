@@ -143,6 +143,12 @@ impl InstanceWrapper {
         match middleware_result {
             Ok(response) => response,
             Err(e) => {
+                // HttpError carries an intended HTTP status — use it directly
+                // rather than collapsing to 500.
+                if let Some(http_err) = e.downcast_ref::<crate::errors::HttpError>() {
+                    return http_err.to_response();
+                }
+
                 let error_msg = e.to_string();
                 for handler in error_handlers_for_middleware.iter().rev() {
                     let error: Box<dyn std::error::Error + Send + Sync> = Box::new(
