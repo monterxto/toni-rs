@@ -481,7 +481,7 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
                         .get(&__lookup_token)
                         .unwrap_or_else(|| panic!("Missing dependency '{}'", __lookup_token));
 
-                    let any_box = provider.execute(vec![], Some(&_req_parts)).await;
+                    let any_box = provider.execute(vec![], ::toni::ProviderContext::Http(&_req_parts)).await;
 
                     *any_box.downcast::<#full_type>()
                         .unwrap_or_else(|_| panic!(
@@ -525,7 +525,7 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
                     // Transient: fresh instance per field
                     #(
                         #field_idents = {
-                            let any_box = provider.execute(vec![], Some(&_req_parts)).await;
+                            let any_box = provider.execute(vec![], ::toni::ProviderContext::Http(&_req_parts)).await;
                             *any_box.downcast::<#full_type>()
                                 .unwrap_or_else(|_| panic!(
                                     "Failed to downcast '{}' to {}",
@@ -537,7 +537,7 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
                 } else {
                     // Singleton/Request: shared instance cloned to all fields
                     let #temp_var: #full_type = {
-                        let any_box = provider.execute(vec![], Some(&_req_parts)).await;
+                        let any_box = provider.execute(vec![], ::toni::ProviderContext::Http(&_req_parts)).await;
                         *any_box.downcast::<#full_type>()
                             .unwrap_or_else(|_| panic!(
                                 "Failed to downcast '{}' to {}",
@@ -1248,7 +1248,7 @@ fn generate_controller_factory_field_resolutions(
                             __lookup_token, #field_name_str
                         ));
 
-                    let any_box = provider.execute(vec![], None).await;
+                    let any_box = provider.execute(vec![], ::toni::ProviderContext::None).await;
 
                     *any_box.downcast::<#full_type>()
                         .unwrap_or_else(|_| panic!(
@@ -1294,7 +1294,7 @@ fn generate_controller_factory_field_resolutions(
                     // Transient: fresh instance per field
                     #(
                         #field_idents = {
-                            let any_box = provider.execute(vec![], None).await;
+                            let any_box = provider.execute(vec![], ::toni::ProviderContext::None).await;
                             *any_box.downcast::<#full_type>()
                                 .unwrap_or_else(|_| panic!(
                                     "Failed to downcast '{}' to {}",
@@ -1306,7 +1306,7 @@ fn generate_controller_factory_field_resolutions(
                 } else {
                     // Singleton/Request: shared instance cloned to all fields
                     let #temp_var: #full_type = {
-                        let any_box = provider.execute(vec![], None).await;
+                        let any_box = provider.execute(vec![], ::toni::ProviderContext::None).await;
                         *any_box.downcast::<#full_type>()
                             .unwrap_or_else(|_| panic!(
                                 "Failed to downcast '{}' to {}",

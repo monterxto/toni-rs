@@ -159,7 +159,7 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
                     let provider = _dependencies
                         .get(&#type_token)
                         .expect(&format!("Dependency not found: {}", #type_token));
-                    let instance = provider.execute(vec![], _req).await;
+                    let instance = provider.execute(vec![], toni::ProviderContext::None).await;
                     *instance
                         .downcast::<#param_type>()
                         .expect(&format!("Failed to downcast {}", #type_token))
@@ -211,7 +211,7 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
                 async fn execute(
                     &self,
                     _params: Vec<Box<dyn std::any::Any + Send>>,
-                    _req: Option<&toni::http_helpers::RequestPart>,
+                    _ctx: toni::ProviderContext<'_>,
                 ) -> Box<dyn std::any::Any + Send> {
                     let _dependencies = &self.deps;
                     let factory = #factory_expr;
@@ -245,7 +245,7 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
                 async fn execute(
                     &self,
                     _params: Vec<Box<dyn std::any::Any + Send>>,
-                    _req: Option<&toni::http_helpers::RequestPart>,
+                    _ctx: toni::ProviderContext<'_>,
                 ) -> Box<dyn std::any::Any + Send> {
                     #execute_body
                 }
@@ -333,7 +333,6 @@ fn generate_caching_support(
         quote! {
             let factory = #factory_expr;
             let instance_raw = async {
-                let _req = None;
                 #(#dep_resolutions)*
                 #factory_call
             }.await;
@@ -347,7 +346,7 @@ fn generate_caching_support(
     };
 
     let execute_body = if lifecycle {
-        quote! { self.instance.execute(_params, _req).await }
+        quote! { self.instance.execute(_params, _ctx).await }
     } else {
         quote! { Box::new((*self.instance).clone()) }
     };

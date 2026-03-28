@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use std::any::Any;
 use std::sync::Arc;
-use toni::traits_helpers::Provider;
+use toni::traits_helpers::{ProviderContext, Provider};
 use toni::{ProviderScope, RequestPart};
 
 /// Injectable GraphQL service that executes GraphQL queries.
@@ -104,7 +104,7 @@ where
     async fn execute(
         &self,
         _params: Vec<Box<dyn Any + Send>>,
-        _req: Option<&toni::http_helpers::RequestPart>,
+        _ctx: ProviderContext<'_>,
     ) -> Box<dyn Any + Send> {
         //Box::new(self.clone())
 

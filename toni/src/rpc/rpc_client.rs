@@ -3,10 +3,9 @@ use std::sync::Arc;
 
 use crate::adapter::RpcClientTransport;
 use crate::async_trait;
-use crate::http_helpers::HttpRequest;
 use crate::provider_scope::ProviderScope;
 use crate::rpc::{RpcClientError, RpcData};
-use crate::traits_helpers::Provider;
+use crate::traits_helpers::{ProviderContext, Provider};
 
 /// Injectable handle for calling remote RPC services.
 ///
@@ -141,7 +140,7 @@ impl Provider for RpcClient {
     async fn execute(
         &self,
         _params: Vec<Box<dyn Any + Send>>,
-        _req: Option<&crate::http_helpers::RequestPart>,
+        _ctx: ProviderContext<'_>,
     ) -> Box<dyn Any + Send> {
         Box::new(self.clone())
     }

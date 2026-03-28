@@ -246,7 +246,7 @@ where
             }
         };
 
-        let service_any = self.graphql_service.execute(vec![], Some(&parts)).await;
+        let service_any = self.graphql_service.execute(vec![], toni::ProviderContext::Http(&parts)).await;
 
         let service = service_any
             .downcast_ref::<GraphQLService<Query, Mutation, Subscription, Ctx, S>>()

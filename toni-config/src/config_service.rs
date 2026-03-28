@@ -4,8 +4,7 @@ use crate::Config;
 use std::any::Any;
 use std::sync::Arc;
 use toni::async_trait;
-use toni::http_helpers::RequestPart;
-use toni::traits_helpers::{Provider, ProviderFactory};
+use toni::traits_helpers::{ProviderContext, Provider, ProviderFactory};
 use toni::FxHashMap;
 
 /// Service that provides access to configuration
@@ -78,7 +77,7 @@ impl<T: Config> Provider for ConfigService<T> {
     async fn execute(
         &self,
         _params: Vec<Box<dyn Any + Send>>,
-        _req: Option<&RequestPart>,
+        _ctx: ProviderContext<'_>,
     ) -> Box<dyn Any + Send> {
         // Return a clone of self for injection
         Box::new(self.clone())

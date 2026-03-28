@@ -30,7 +30,7 @@ use crate::async_trait;
 use crate::extractors::FromRequestParts;
 use crate::http_helpers::{PathParams, RequestPart};
 use crate::provider_scope::ProviderScope;
-use crate::traits_helpers::{Provider, ProviderFactory};
+use crate::traits_helpers::{ProviderContext, Provider, ProviderFactory};
 
 /// Built-in request-scoped provider for accessing HTTP request metadata.
 ///
@@ -53,9 +53,11 @@ impl Provider for Request {
     async fn execute(
         &self,
         _params: Vec<Box<dyn Any + Send>>,
-        req: Option<&RequestPart>,
+        ctx: ProviderContext<'_>,
     ) -> Box<dyn Any + Send> {
-        let parts = req.expect("Request provider requires a request-scoped context");
+        let ProviderContext::Http(parts) = ctx else {
+            panic!("Request provider requires an HTTP execution context");
+        };
         Box::new(Request::from_request_parts(parts).expect("infallible"))
     }
 

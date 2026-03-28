@@ -3,8 +3,8 @@ use std::{any::Any, sync::Arc};
 use async_trait::async_trait;
 use rustc_hash::FxHashMap;
 
-use super::{ErrorHandler, Guard, Interceptor, Pipe, middleware::Middleware};
-use crate::{ProviderScope, http_helpers::RequestPart};
+use super::{ErrorHandler, ProviderContext, Guard, Interceptor, Pipe, middleware::Middleware};
+use crate::ProviderScope;
 
 #[async_trait]
 pub trait Provider: Send + Sync {
@@ -12,7 +12,7 @@ pub trait Provider: Send + Sync {
     async fn execute(
         &self,
         params: Vec<Box<dyn Any + Send>>,
-        req: Option<&RequestPart>,
+        ctx: ProviderContext<'_>,
     ) -> Box<dyn Any + Send>;
     fn get_token_factory(&self) -> String;
     fn get_scope(&self) -> ProviderScope {
