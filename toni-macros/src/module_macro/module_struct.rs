@@ -287,10 +287,17 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! {}
     };
 
-    // Emit user's impl block (minus lifecycle attrs) so methods are available on the struct.
-    // Only needed when the user provided an impl block (as opposed to a plain struct).
+    // Emit user's impl block (minus lifecycle attrs and configure_middleware) so methods are
+    // available on the struct. configure_middleware is consumed by the macro and re-emitted as
+    // a ModuleMetadata override, so keeping it here would produce a dead_code warning.
     let user_impl_block = if let ModuleInput::Impl(impl_block) = &input {
-        let cleaned = strip_lifecycle_attrs(impl_block);
+        let mut cleaned = strip_lifecycle_attrs(impl_block);
+        cleaned
+            .items
+            .retain(|item| match item {
+                syn::ImplItem::Fn(method) => method.sig.ident != "configure_middleware",
+                _ => true,
+            });
         quote! { #cleaned }
     } else {
         quote! {}
