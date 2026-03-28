@@ -2,6 +2,9 @@ pub mod middleware;
 mod module_metadata;
 pub use self::module_metadata::{MiddlewareConsumer, ModuleMetadata};
 
+mod provider_context;
+pub use self::provider_context::ProviderContext;
+
 mod provider;
 pub use self::provider::{Provider, ProviderFactory};
 

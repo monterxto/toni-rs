@@ -205,9 +205,9 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                     async fn execute(
                         &self,
                         _params: Vec<Box<dyn std::any::Any + Send>>,
-                        _req: Option<&toni::http_helpers::RequestPart>,
+                        _ctx: toni::ProviderContext<'_>,
                     ) -> Box<dyn std::any::Any + Send> {
-                        self.instance.execute(_params, _req).await
+                        self.instance.execute(_params, _ctx).await
                     }
 
                     async fn on_module_init(&self) {
@@ -293,9 +293,8 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                     async fn execute(
                         &self,
                         _params: Vec<Box<dyn std::any::Any + Send>>,
-                        _req: Option<&toni::http_helpers::RequestPart>,
+                        _ctx: toni::ProviderContext<'_>,
                     ) -> Box<dyn std::any::Any + Send> {
-                        // Clone the concrete type directly - no type erasure!
                         Box::new((*self.instance).clone())
                     }
 
@@ -356,7 +355,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                             async fn execute(
                                 &self,
                                 _params: Vec<Box<dyn std::any::Any + Send>>,
-                                _req: Option<&toni::http_helpers::RequestPart>,
+                                _ctx: toni::ProviderContext<'_>,
                             ) -> Box<dyn std::any::Any + Send> {
                                 Box::new((*self.instance).clone())
                             }
@@ -413,7 +412,7 @@ pub fn handle_provider_value(input: TokenStream) -> Result<TokenStream> {
                             async fn execute(
                                 &self,
                                 _params: Vec<Box<dyn std::any::Any + Send>>,
-                                _req: Option<&toni::http_helpers::RequestPart>,
+                                _ctx: toni::ProviderContext<'_>,
                             ) -> Box<dyn std::any::Any + Send> {
                                 (self.get_value)()
                             }

@@ -111,9 +111,9 @@ pub fn handle_provider_token(input: TokenStream) -> Result<TokenStream> {
                         async fn execute(
                             &self,
                             params: Vec<Box<dyn std::any::Any + Send>>,
-                            req: Option<&toni::http_helpers::RequestPart>,
+                            ctx: toni::ProviderContext<'_>,
                         ) -> Box<dyn std::any::Any + Send> {
-                            self.inner_provider.execute(params, req).await
+                            self.inner_provider.execute(params, ctx).await
                         }
 
                         fn as_guard(&self) -> Option<std::sync::Arc<dyn toni::traits_helpers::Guard>> {

@@ -362,7 +362,7 @@ fn generate_singleton_provider(
             async fn execute(
                 &self,
                 _params: Vec<Box<dyn ::std::any::Any + Send>>,
-                _req: Option<&::toni::http_helpers::RequestPart>,
+                _ctx: ::toni::ProviderContext<'_>,
             ) -> Box<dyn ::std::any::Any + Send> {
                 Box::new((*self.instance).clone())
             }
@@ -413,14 +413,14 @@ fn generate_request_provider(
                 // No dependencies, just HttpRequest
                 quote! {
                     #struct_name::#init_ident(
-                        _req.expect("from_request requires HttpRequest")
+                        match &_ctx { ::toni::ProviderContext::Http(req) => *req, _ => panic!("from_request requires an HTTP execution context") }
                     )
                 }
             } else {
                 // Has dependencies + HttpRequest
                 quote! {
                     #struct_name::#init_ident(
-                        _req.expect("from_request requires HttpRequest"),
+                        match &_ctx { ::toni::ProviderContext::Http(req) => *req, _ => panic!("from_request requires an HTTP execution context") },
                         #(#field_names),*
                     )
                 }
@@ -472,7 +472,7 @@ fn generate_request_provider(
             async fn execute(
                 &self,
                 _params: Vec<Box<dyn ::std::any::Any + Send>>,
-                _req: Option<&::toni::http_helpers::RequestPart>,
+                _ctx: ::toni::ProviderContext<'_>,
             ) -> Box<dyn ::std::any::Any + Send> {
                 #(#field_resolutions)*
 
@@ -558,7 +558,7 @@ fn generate_transient_provider(
             async fn execute(
                 &self,
                 _params: Vec<Box<dyn ::std::any::Any + Send>>,
-                _req: Option<&::toni::http_helpers::RequestPart>,
+                _ctx: ::toni::ProviderContext<'_>,
             ) -> Box<dyn ::std::any::Any + Send> {
                 #(#field_resolutions)*
 
@@ -628,7 +628,7 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
                             __lookup_token, #field_name_str
                         ));
 
-                    let any_box = provider.execute(vec![], _req).await;
+                    let any_box = provider.execute(vec![], _ctx).await;
 
                     *any_box.downcast::<#full_type>()
                         .unwrap_or_else(|_| panic!(
@@ -672,7 +672,7 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
                 if matches!(provider.get_scope(), ::toni::ProviderScope::Transient) {
                     #(
                         #field_idents = {
-                            let any_box = provider.execute(vec![], _req).await;
+                            let any_box = provider.execute(vec![], _ctx).await;
                             *any_box.downcast::<#full_type>()
                                 .unwrap_or_else(|_| panic!(
                                     "Failed to downcast '{}' to {}",
@@ -683,7 +683,7 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
                     )*
                 } else {
                     let #temp_var: #full_type = {
-                        let any_box = provider.execute(vec![], _req).await;
+                        let any_box = provider.execute(vec![], _ctx).await;
                         *any_box.downcast::<#full_type>()
                             .unwrap_or_else(|_| panic!(
                                 "Failed to downcast '{}' to {}",
@@ -752,7 +752,7 @@ fn generate_factory_field_resolutions(
                             __lookup_token, #field_name_str
                         ));
 
-                    let any_box = provider.execute(vec![], None).await;
+                    let any_box = provider.execute(vec![], ::toni::ProviderContext::None).await;
 
                     *any_box.downcast::<#full_type>()
                         .unwrap_or_else(|_| panic!(
@@ -796,7 +796,7 @@ fn generate_factory_field_resolutions(
                 if matches!(provider.get_scope(), ::toni::ProviderScope::Transient) {
                     #(
                         #field_idents = {
-                            let any_box = provider.execute(vec![], None).await;
+                            let any_box = provider.execute(vec![], ::toni::ProviderContext::None).await;
                             *any_box.downcast::<#full_type>()
                                 .unwrap_or_else(|_| panic!(
                                     "Failed to downcast '{}' to {}",
@@ -807,7 +807,7 @@ fn generate_factory_field_resolutions(
                     )*
                 } else {
                     let #temp_var: #full_type = {
-                        let any_box = provider.execute(vec![], None).await;
+                        let any_box = provider.execute(vec![], ::toni::ProviderContext::None).await;
                         *any_box.downcast::<#full_type>()
                             .unwrap_or_else(|_| panic!(
                                 "Failed to downcast '{}' to {}",

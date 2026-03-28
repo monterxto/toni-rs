@@ -3,9 +3,8 @@ use std::sync::Arc;
 
 use crate::FxHashMap;
 use crate::async_trait;
-use crate::http_helpers::HttpRequest;
 use crate::provider_scope::ProviderScope;
-use crate::traits_helpers::{Provider, ProviderFactory};
+use crate::traits_helpers::{ProviderContext, Provider, ProviderFactory};
 
 use super::BroadcastService;
 
@@ -23,7 +22,7 @@ impl Provider for BroadcastServiceProvider {
     async fn execute(
         &self,
         _params: Vec<Box<dyn Any + Send>>,
-        _req: Option<&crate::http_helpers::RequestPart>,
+        _ctx: ProviderContext<'_>,
     ) -> Box<dyn Any + Send> {
         Box::new(self.instance.clone())
     }

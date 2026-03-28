@@ -79,10 +79,9 @@ pub fn handle_provider_alias(input: TokenStream) -> Result<TokenStream> {
                 async fn execute(
                     &self,
                     params: Vec<Box<dyn std::any::Any + Send>>,
-                    req: Option<&toni::http_helpers::RequestPart>,
+                    ctx: toni::ProviderContext<'_>,
                 ) -> Box<dyn std::any::Any + Send> {
-                    // Delegate to the target provider
-                    self.target_provider.execute(params, req).await
+                    self.target_provider.execute(params, ctx).await
                 }
 
                 // Delegate enhancer methods to target provider

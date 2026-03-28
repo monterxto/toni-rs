@@ -55,6 +55,8 @@ pub use rustc_hash::FxHashMap;
 // Re-export provider scope
 pub use provider_scope::ProviderScope;
 
+pub use traits_helpers::ProviderContext;
+
 pub use errors::HttpError;
 
 // Re-export trait so users wont have to import manually

@@ -162,7 +162,7 @@ impl<'a, T: 'static> ModuleRefQuery<'a, T> {
 
         // Execute the provider to get the instance
         provider_instance
-            .execute(vec![], None)
+            .execute(vec![], crate::traits_helpers::ProviderContext::None)
             .await
             .downcast::<T>()
             .map(|boxed| *boxed)

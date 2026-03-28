@@ -7,7 +7,7 @@ use juniper::{
 use serde_json::Value;
 use std::fmt;
 use std::sync::Arc;
-use toni::traits_helpers::Provider;
+use toni::traits_helpers::{ProviderContext, Provider};
 use toni::RequestPart;
 
 /// Injectable GraphQL service.
@@ -238,7 +238,7 @@ where
     async fn execute(
         &self,
         _deps: Vec<Box<dyn std::any::Any + Send>>,
-        _req: Option<&toni::http_helpers::RequestPart>,
+        _ctx: ProviderContext<'_>,
     ) -> Box<dyn std::any::Any + Send> {
         let service: GraphQLService<Query, Mutation, Subscription, Ctx, S> = GraphQLService {
             schema: self.schema.clone(),
