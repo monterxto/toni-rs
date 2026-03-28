@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::{
     http_helpers::{HttpRequest, HttpResponse},
-    traits_helpers::middleware::{Middleware, MiddlewareResult, Next},
+    traits_helpers::middleware::{Middleware, MiddlewareResult, NextHandle, NextInternal},
 };
 
 pub struct FinalHandler {
@@ -35,8 +35,8 @@ impl FinalHandler {
 }
 
 #[async_trait]
-impl Next for FinalHandler {
-    async fn run(self: Box<Self>, req: HttpRequest) -> MiddlewareResult {
+impl NextInternal for FinalHandler {
+    async fn run_internal(self: Box<Self>, req: HttpRequest) -> MiddlewareResult {
         let response = (self.handler)(req).await;
         Ok(response)
     }
@@ -44,19 +44,20 @@ impl Next for FinalHandler {
 
 pub struct ChainLink {
     middleware: Arc<dyn Middleware>,
-    next: Box<dyn Next>,
+    next: Box<dyn NextInternal>,
 }
 
 impl ChainLink {
-    pub fn new(middleware: Arc<dyn Middleware>, next: Box<dyn Next>) -> Self {
+    pub fn new(middleware: Arc<dyn Middleware>, next: Box<dyn NextInternal>) -> Self {
         Self { middleware, next }
     }
 }
 
 #[async_trait]
-impl Next for ChainLink {
-    async fn run(self: Box<Self>, req: HttpRequest) -> MiddlewareResult {
-        self.middleware.handle(req, self.next).await
+impl NextInternal for ChainLink {
+    async fn run_internal(self: Box<Self>, req: HttpRequest) -> MiddlewareResult {
+        let next_handle = NextHandle::new(req, self.next);
+        self.middleware.handle(next_handle).await
     }
 }
 
@@ -85,13 +86,13 @@ impl MiddlewareChain {
             + Sync
             + 'static,
     {
-        let mut next: Box<dyn Next> = Box::new(FinalHandler::new(final_handler));
+        let mut inner: Box<dyn NextInternal> = Box::new(FinalHandler::new(final_handler));
 
         for middleware in self.middleware_stack.iter().rev() {
-            next = Box::new(ChainLink::new(middleware.clone(), next));
+            inner = Box::new(ChainLink::new(middleware.clone(), inner));
         }
 
-        next.run(req).await
+        inner.run_internal(req).await
     }
 
     pub fn len(&self) -> usize {

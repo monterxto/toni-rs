@@ -2,6 +2,7 @@ mod common;
 
 use std::sync::{Arc, Mutex, OnceLock};
 use toni::async_trait;
+use toni::di::{APP_GUARD, APP_INTERCEPTOR};
 use toni::enhancer::{guard, interceptor};
 use toni::injector::Context;
 use toni::traits_helpers::{Guard, Interceptor, InterceptorNext};
@@ -9,7 +10,6 @@ use toni::{
     controller, get, injectable, module, provider_token, provider_value, Body as ToniBody,
     HttpRequest,
 };
-use toni::di::{APP_GUARD, APP_INTERCEPTOR};
 
 use common::TestServer;
 use serial_test::serial;
@@ -116,7 +116,7 @@ impl TestController {
     }
 
     #[get("/test")]
-    fn test_endpoint(&self, _req: HttpRequest) -> ToniBody {
+    fn test_endpoint(&self) -> ToniBody {
         self.tracker.track("controller:handler");
         ToniBody::text("OK".to_string())
     }
@@ -154,11 +154,15 @@ async fn app_token_enhancers_with_di() {
 
     let events = tracker.get_events();
     assert!(
-        events.iter().any(|e| e.contains("guard:app_token:MockService")),
+        events
+            .iter()
+            .any(|e| e.contains("guard:app_token:MockService")),
         "APP_GUARD must run and its injected MockService must be accessible"
     );
     assert!(
-        events.iter().any(|e| e.contains("interceptor:app_token:MockService:before")),
+        events
+            .iter()
+            .any(|e| e.contains("interceptor:app_token:MockService:before")),
         "APP_INTERCEPTOR before must run"
     );
     assert!(
@@ -166,12 +170,20 @@ async fn app_token_enhancers_with_di() {
         "controller must run after guards and before interceptor after"
     );
     assert!(
-        events.iter().any(|e| e.contains("interceptor:app_token:MockService:after")),
+        events
+            .iter()
+            .any(|e| e.contains("interceptor:app_token:MockService:after")),
         "APP_INTERCEPTOR after must run"
     );
 
     // guard runs before controller
-    let guard_pos = events.iter().position(|e| e.contains("guard:app_token")).unwrap();
-    let ctrl_pos = events.iter().position(|e| e == "controller:handler").unwrap();
+    let guard_pos = events
+        .iter()
+        .position(|e| e.contains("guard:app_token"))
+        .unwrap();
+    let ctrl_pos = events
+        .iter()
+        .position(|e| e == "controller:handler")
+        .unwrap();
     assert!(guard_pos < ctrl_pos);
 }

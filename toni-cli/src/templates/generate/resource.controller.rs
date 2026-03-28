@@ -10,13 +10,13 @@ use toni_macros::{controller, delete, get, post, put};
 )]
 impl _RESOURCE_NAME_CONTROLLER {
     #[post("")]
-    fn _create(&self, _req: HttpRequest) -> Body {
+    fn _create(&self) -> Body {
         let create: String = self.resource_name_service.create();
         Body::text(create)
     }
 
     #[get("")]
-    fn _find_all(&self, _req: HttpRequest) -> Body {
+    fn _find_all(&self) -> Body {
         let find_all: String = self.resource_name_service.find_all();
         Body::text(find_all)
     }
@@ -29,13 +29,13 @@ impl _RESOURCE_NAME_CONTROLLER {
     }
 
     #[put("")]
-    fn _update(&self, _req: HttpRequest) -> Body {
+    fn _update(&self) -> Body {
         let update: String = self.resource_name_service.update();
         Body::text(update)
     }
 
     #[delete("")]
-    fn _delete(&self, _req: HttpRequest) -> Body {
+    fn _delete(&self) -> Body {
         let delete: String = self.resource_name_service.delete();
         Body::text(delete)
     }

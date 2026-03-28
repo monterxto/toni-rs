@@ -4,11 +4,11 @@ use common::{ExecutionOrder, TestServer};
 use serial_test::serial;
 use toni::async_trait;
 use toni::injector::Context;
-use toni::traits_helpers::middleware::{Middleware, MiddlewareResult, Next};
+use toni::traits_helpers::middleware::{Middleware, MiddlewareResult, NextHandle};
 use toni::traits_helpers::{Guard, Interceptor, InterceptorNext, MiddlewareConsumer, Pipe};
 use toni::{
     controller, get, injectable, module, post, provider_factory, provider_token, provider_value,
-    use_guards, use_interceptors, use_pipes, Body as ToniBody, HttpRequest, HttpResponse,
+    use_guards, use_interceptors, use_pipes, Body as ToniBody, HttpResponse,
 };
 
 pub struct OrderTrackerMiddleware {
@@ -27,13 +27,13 @@ impl OrderTrackerMiddleware {
 
 #[async_trait]
 impl Middleware for OrderTrackerMiddleware {
-    async fn handle(&self, mut req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
+    async fn handle(&self, mut next: NextHandle) -> MiddlewareResult {
         self.tracker.track(format!("middleware:{}", self.name));
-        req.headers_mut().insert(
+        next.request_mut().headers_mut().insert(
             http::header::HeaderName::from_bytes(b"x-middleware-order").unwrap(),
             http::header::HeaderValue::from_str(&self.name).unwrap(),
         );
-        let mut response = next.run(req).await?;
+        let mut response = next.run().await?;
         response.headers.push((
             "X-Middleware-Modified".to_string(),
             format!("processed-by-{}", self.name),
@@ -58,9 +58,9 @@ impl HeaderCheckMiddleware {
 
 #[async_trait]
 impl Middleware for HeaderCheckMiddleware {
-    async fn handle(&self, req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
+    async fn handle(&self, next: NextHandle) -> MiddlewareResult {
         self.tracker.track("middleware:header_check");
-        if !req.headers().contains_key(self.required_header.as_str()) {
+        if !next.request().headers().contains_key(self.required_header.as_str()) {
             let mut response = HttpResponse::new();
             response.status = 400;
             response.body = Some(ToniBody::text(format!(
@@ -69,7 +69,7 @@ impl Middleware for HeaderCheckMiddleware {
             )));
             return Ok(response);
         }
-        next.run(req).await
+        next.run().await
     }
 }
 
@@ -223,14 +223,14 @@ async fn enhancers_execution_order() {
         #[use_interceptors(LoggingInterceptor::new("method", get_tracker()))]
         #[use_pipes(ValidationPipe::new(get_tracker()), TransformPipe::new(get_tracker()))]
         #[get("/protected")]
-        fn protected_endpoint(&self, _req: HttpRequest) -> ToniBody {
+        fn protected_endpoint(&self) -> ToniBody {
             self.tracker.track("controller:protected");
             ToniBody::text("Protected resource".to_string())
         }
 
         #[use_guards(AuthGuard::new(get_tracker()))]
         #[get("/auth-only")]
-        fn auth_only_endpoint(&self, _req: HttpRequest) -> ToniBody {
+        fn auth_only_endpoint(&self) -> ToniBody {
             self.tracker.track("controller:auth_only");
             ToniBody::text("Authenticated resource".to_string())
         }
@@ -238,14 +238,14 @@ async fn enhancers_execution_order() {
         #[use_interceptors(LoggingInterceptor::new("validate", get_tracker()))]
         #[use_pipes(ValidationPipe::new(get_tracker()), TransformPipe::new(get_tracker()))]
         #[post("/validate")]
-        fn validate_endpoint(&self, _req: HttpRequest) -> ToniBody {
+        fn validate_endpoint(&self) -> ToniBody {
             self.tracker.track("controller:validate");
             let result = self.service.process("data");
             ToniBody::text(result)
         }
 
         #[get("/public")]
-        fn public_endpoint(&self, _req: HttpRequest) -> ToniBody {
+        fn public_endpoint(&self) -> ToniBody {
             self.tracker.track("controller:public");
             ToniBody::text("Public resource".to_string())
         }
@@ -342,7 +342,7 @@ async fn guard_authorization() {
     impl TestController {
         #[use_guards("AUTH_GUARD")]
         #[get("/auth-only")]
-        fn auth_only(&self, _req: HttpRequest) -> ToniBody {
+        fn auth_only(&self) -> ToniBody {
             self.tracker.track("controller:auth_only");
             ToniBody::text("Authenticated resource".to_string())
         }
@@ -420,7 +420,7 @@ async fn di_in_enhancers() {
     #[controller("/api", pub struct TestController {})]
     impl TestController {
         #[get("/test")]
-        fn test(&self, _req: HttpRequest) -> ToniBody {
+        fn test(&self) -> ToniBody {
             ToniBody::text("ok".to_string())
         }
     }
@@ -473,7 +473,7 @@ async fn app_token_global_enhancers() {
     })]
     impl TestController {
         #[get("/test")]
-        fn test(&self, _req: HttpRequest) -> ToniBody {
+        fn test(&self) -> ToniBody {
             self.tracker.track("controller:test");
             ToniBody::text("ok".to_string())
         }

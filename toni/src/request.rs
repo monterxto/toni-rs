@@ -13,7 +13,7 @@
 //! })]
 //! impl UserController {
 //!     #[get("/me")]
-//!     fn get_current_user(&self, _req: HttpRequest) -> ToniBody {
+//!     fn get_current_user(&self) -> ToniBody {
 //!         let method = self.request.method();
 //!         let uri = self.request.uri();
 //!         ToniBody::text(format!("Method: {}, URI: {}", method, uri))

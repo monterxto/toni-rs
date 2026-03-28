@@ -9,9 +9,9 @@ use http::header::{HeaderName, HeaderValue};
 use serde_json::json;
 use serial_test::serial;
 use toni::async_trait;
-use toni::traits_helpers::middleware::{Middleware, MiddlewareResult, Next};
+use toni::traits_helpers::middleware::{Middleware, MiddlewareResult, NextHandle};
 use toni::traits_helpers::MiddlewareConsumer;
-use toni::{HttpRequest, TowerLayer, controller, get, module, post, Body as ToniBody};
+use toni::{TowerLayer, controller, get, module, post, Body as ToniBody};
 use tower::Layer;
 use tower::ServiceBuilder;
 use reqwest;
@@ -30,7 +30,7 @@ async fn tower_layer_adds_response_header() {
     #[controller("/", pub struct PingController {})]
     impl PingController {
         #[get("/ping")]
-        fn ping(&self, _req: HttpRequest) -> ToniBody {
+        fn ping(&self) -> ToniBody {
             ToniBody::text("pong")
         }
     }
@@ -76,7 +76,7 @@ async fn tower_layer_cors_permissive() {
     #[controller("/api", pub struct ApiController {})]
     impl ApiController {
         #[get("/data")]
-        fn get_data(&self, _req: HttpRequest) -> ToniBody {
+        fn get_data(&self) -> ToniBody {
             ToniBody::text("ok")
         }
     }
@@ -228,9 +228,9 @@ struct StampRequestIdMiddleware;
 
 #[async_trait]
 impl Middleware for StampRequestIdMiddleware {
-    async fn handle(&self, mut req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
-        req.extensions_mut().insert(RequestId("req-42".to_string()));
-        next.run(req).await
+    async fn handle(&self, mut next: NextHandle) -> MiddlewareResult {
+        next.request_mut().extensions_mut().insert(RequestId("req-42".to_string()));
+        next.run().await
     }
 }
 
@@ -240,7 +240,7 @@ async fn tower_layer_reads_toni_extensions() {
     #[controller("/", pub struct ExtController {})]
     impl ExtController {
         #[get("/ext")]
-        fn ext(&self, _req: HttpRequest) -> ToniBody {
+        fn ext(&self) -> ToniBody {
             ToniBody::text("ok")
         }
     }
@@ -286,7 +286,7 @@ async fn tower_service_builder_composition() {
     #[controller("/", pub struct ComposedController {})]
     impl ComposedController {
         #[get("/composed")]
-        fn composed(&self, _req: HttpRequest) -> ToniBody {
+        fn composed(&self) -> ToniBody {
             ToniBody::text("composed")
         }
     }
@@ -337,8 +337,8 @@ async fn tower_and_toni_middleware_interleaved() {
 
     #[async_trait]
     impl Middleware for AddToniHeader {
-        async fn handle(&self, req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
-            let mut resp = next.run(req).await?;
+        async fn handle(&self, next: NextHandle) -> MiddlewareResult {
+            let mut resp = next.run().await?;
             resp.headers.push(("x-toni-mw".to_string(), "ran".to_string()));
             Ok(resp)
         }
@@ -347,7 +347,7 @@ async fn tower_and_toni_middleware_interleaved() {
     #[controller("/", pub struct InterleavedController {})]
     impl InterleavedController {
         #[get("/interleaved")]
-        fn interleaved(&self, _req: HttpRequest) -> ToniBody {
+        fn interleaved(&self) -> ToniBody {
             ToniBody::text("ok")
         }
     }
@@ -401,7 +401,7 @@ async fn tower_compression_layer_transforms_body() {
     #[controller("/", pub struct CompressController {})]
     impl CompressController {
         #[get("/data")]
-        fn data(&self, _req: HttpRequest) -> ToniBody {
+        fn data(&self) -> ToniBody {
             ToniBody::text("toni ".repeat(500))
         }
     }

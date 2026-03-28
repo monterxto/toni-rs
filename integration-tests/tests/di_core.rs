@@ -30,7 +30,7 @@ async fn singleton_providers_created_once_across_requests() {
     #[controller("/", pub struct TestController { #[inject] service: SingletonService })]
     impl TestController {
         #[get("/test")]
-        fn test(&self, _req: HttpRequest) -> ToniBody {
+        fn test(&self) -> ToniBody {
             ToniBody::text(format!("{}", SINGLETON_COUNTER.load(Ordering::SeqCst)))
         }
     }
@@ -84,7 +84,7 @@ async fn transient_providers_create_unique_instances_per_injection() {
     #[controller("/", pub struct TestController { #[inject] service: MultiService })]
     impl TestController {
         #[get("/test")]
-        fn test(&self, _req: HttpRequest) -> ToniBody {
+        fn test(&self) -> ToniBody {
             let (id1, id2) = self.service.ids();
             ToniBody::text(format!("{}|{}", id1, id2))
         }
@@ -137,7 +137,7 @@ async fn field_injection_with_inject_attribute() {
     #[controller("/", pub struct TestController { #[inject] service: ServiceWithDeps })]
     impl TestController {
         #[get("/test")]
-        fn test(&self, _req: HttpRequest) -> ToniBody {
+        fn test(&self) -> ToniBody {
             ToniBody::text(format!("{}", self.service.get_value()))
         }
     }
@@ -172,7 +172,7 @@ async fn field_injection_with_default_fallback() {
     #[controller("/", pub struct TestController { #[inject] service: ServiceWithDefault })]
     impl TestController {
         #[get("/test")]
-        fn test(&self, _req: HttpRequest) -> ToniBody {
+        fn test(&self) -> ToniBody {
             ToniBody::text(format!("{}", self.service.get_value()))
         }
     }
@@ -207,7 +207,7 @@ async fn config_service_injection_in_providers() {
     #[controller("/", pub struct TestController { #[inject] service: ServiceWithConfig })]
     impl TestController {
         #[get("/test")]
-        fn test(&self, _req: HttpRequest) -> ToniBody {
+        fn test(&self) -> ToniBody {
             ToniBody::text(self.service.get_value())
         }
     }
@@ -245,7 +245,7 @@ async fn new_attribute_syntax() {
     #[controller("/", pub struct TestController { #[inject] service: NewSyntaxService })]
     impl TestController {
         #[get("/test")]
-        fn test(&self, _req: HttpRequest) -> ToniBody {
+        fn test(&self) -> ToniBody {
             ToniBody::text("ok".to_string())
         }
     }

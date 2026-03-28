@@ -18,9 +18,9 @@ use syn::{Error, ItemImpl, ItemStruct, Result, parse2};
 ///         Self { config }
 ///     }
 ///
-///     async fn handle(&self, req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
+///     async fn handle(&self, next: NextHandle) -> MiddlewareResult {
 ///         // middleware logic
-///         next.run(req).await
+///         next.run().await
 ///     }
 /// }
 /// ```
@@ -51,7 +51,7 @@ pub fn handle_middleware_struct(attr: TokenStream, item: TokenStream) -> Result<
         .ok_or_else(|| {
             Error::new_spanned(
                 &impl_block,
-                "Middleware must have a 'handle' method with signature: async fn handle(&self, req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult"
+                "Middleware must have a 'handle' method with signature: async fn handle(&self, next: NextHandle) -> MiddlewareResult"
             )
         })?;
 
@@ -59,10 +59,10 @@ pub fn handle_middleware_struct(attr: TokenStream, item: TokenStream) -> Result<
     let handle_body = &handle_method.block;
 
     // Validate the method signature (basic check)
-    if handle_method.sig.inputs.len() != 3 {
+    if handle_method.sig.inputs.len() != 2 {
         return Err(Error::new_spanned(
             &handle_method.sig,
-            "handle method must have exactly 3 parameters: &self, req: HttpRequest, next: Box<dyn Next>",
+            "handle method must have exactly 2 parameters: &self, next: NextHandle",
         ));
     }
 
@@ -81,8 +81,7 @@ pub fn handle_middleware_struct(attr: TokenStream, item: TokenStream) -> Result<
         impl ::toni::traits_helpers::middleware::Middleware for #struct_name {
             async fn handle(
                 &self,
-                req: ::toni::http_helpers::HttpRequest,
-                next: Box<dyn ::toni::traits_helpers::middleware::Next>,
+                next: ::toni::traits_helpers::middleware::NextHandle,
             ) -> ::toni::traits_helpers::middleware::MiddlewareResult {
                 #handle_body
             }

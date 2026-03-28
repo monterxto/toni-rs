@@ -18,8 +18,8 @@
 use serde_json::json;
 use toni::{
     async_trait,
-    http_helpers::{Body, HttpRequest, HttpResponse},
-    middleware::{Middleware, MiddlewareResult, Next},
+    http_helpers::{Body, HttpResponse},
+    middleware::{Middleware, MiddlewareResult, NextHandle},
     traits_helpers::MiddlewareConsumer,
     *,
 };
@@ -39,15 +39,16 @@ impl AuthMiddleware {
 
 #[async_trait]
 impl Middleware for AuthMiddleware {
-    async fn handle(&self, req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
-        let token = req
+    async fn handle(&self, next: NextHandle) -> MiddlewareResult {
+        let token = next
+            .request()
             .headers()
             .get("authorization")
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.strip_prefix("Bearer "));
 
         if token == Some(self.valid_token.as_str()) {
-            return next.run(req).await;
+            return next.run().await;
         }
 
         let mut response = HttpResponse::new();

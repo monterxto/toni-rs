@@ -8,5 +8,6 @@ pub use module_middleware::MiddlewareManager;
 
 // Re-export core traits
 pub use crate::traits_helpers::middleware::{
-    FunctionalMiddleware, Middleware, MiddlewareConfiguration, MiddlewareFn, MiddlewareResult, Next,
+    FunctionalMiddleware, Middleware, MiddlewareConfiguration, MiddlewareFn, MiddlewareResult,
+    NextHandle,
 };

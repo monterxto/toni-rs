@@ -243,7 +243,7 @@ async fn json_body_and_request_extraction() {
 #[tokio_localset_test::localset_test]
 async fn request_extensions_pattern() {
     use toni::async_trait;
-    use toni::traits_helpers::middleware::{Middleware, MiddlewareResult, Next};
+    use toni::traits_helpers::middleware::{Middleware, MiddlewareResult, NextHandle};
     use toni::traits_helpers::MiddlewareConsumer;
 
     #[derive(Clone)]
@@ -253,9 +253,9 @@ async fn request_extensions_pattern() {
 
     #[async_trait]
     impl Middleware for AuthMiddleware {
-        async fn handle(&self, mut req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
-            req.extensions_mut().insert(UserId("user123".to_string()));
-            next.run(req).await
+        async fn handle(&self, mut next: NextHandle) -> MiddlewareResult {
+            next.request_mut().extensions_mut().insert(UserId("user123".to_string()));
+            next.run().await
         }
     }
 

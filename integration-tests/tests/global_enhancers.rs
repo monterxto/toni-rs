@@ -226,14 +226,14 @@ impl TestController {
     #[use_interceptors(MethodInterceptor{})]
     #[use_pipes(MethodPipe{})]
     #[get("/three-level")]
-    fn three_level_endpoint(&self, _req: HttpRequest) -> ToniBody {
+    fn three_level_endpoint(&self) -> ToniBody {
         get_tracker().track("controller:three_level");
         ToniBody::text("Three-level test".to_string())
     }
 
     /// Endpoint with only global + controller levels (no method-level)
     #[get("/two-level")]
-    fn two_level_endpoint(&self, _req: HttpRequest) -> ToniBody {
+    fn two_level_endpoint(&self) -> ToniBody {
         get_tracker().track("controller:two_level");
         ToniBody::text("Two-level test".to_string())
     }
@@ -241,7 +241,7 @@ impl TestController {
     /// Endpoint with duplicated guard at all three levels
     #[use_guards(GlobalGuard{})]
     #[get("/duplicate")]
-    fn duplicate_endpoint(&self, _req: HttpRequest) -> ToniBody {
+    fn duplicate_endpoint(&self) -> ToniBody {
         get_tracker().track("controller:duplicate");
         ToniBody::text("Duplicate test".to_string())
     }
@@ -274,7 +274,8 @@ async fn test_three_level_enhancer_hierarchy() {
             .use_global_pipes(Arc::new(GlobalPipe::new()));
 
         let mut app = factory.create_with(TestModule::module_definition()).await;
-        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port)).unwrap();
+        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port))
+            .unwrap();
         app.start().await;
     });
 

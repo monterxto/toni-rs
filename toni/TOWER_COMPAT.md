@@ -9,7 +9,7 @@ This document covers the current state of the `tower-compat` feature, its known 
 `TowerLayer<L>` wraps any `tower::Layer` as a toni `Middleware`, plugging into `configure_middleware` exactly like a hand-written toni middleware. The integration:
 
 - Passes `HttpRequest` to Tower as `http::Request<Bytes>` — no conversion needed because `HttpRequest` is a newtype over `http::Request<Bytes>`.
-- Wraps `Box<dyn Next>` as a `tower::Service<http::Request<Bytes>>` (`ToniNextService`) so Tower can call downstream.
+- Wraps the downstream chain as a `tower::Service<http::Request<Bytes>>` (`ToniNextService`) so Tower can call downstream.
 - Converts `http::Response<B: Body> → HttpResponse` on the way back, wrapping the body as a streaming `BoxBody` without buffering.
 
 The adapter (axum, actix, future) never sees Tower. The `tower_compat.rs` boundary is entirely internal, so the feature works regardless of which adapter is in use.
