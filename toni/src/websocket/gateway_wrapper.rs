@@ -236,19 +236,17 @@ impl GatewayWrapper {
     ) {
         let _ = Self::execute_handler(context, gateway, event, pipes).await;
 
-        // TODO: Implement error handler execution for WebSocket
-        // Currently ErrorHandler trait is HTTP-specific (takes HttpRequest, returns HttpResponse)
-        // Need to either:
-        // 1. Make ErrorHandler protocol-agnostic (breaking change)
-        // 2. Create WsErrorHandler trait
-        // 3. Add handle_ws_error method to ErrorHandler trait
-        //
-        // For now, error_handlers are resolved and stored but not executed.
-        // When a WsError occurs, it's returned directly to the adapter.
-
         if !error_handlers.is_empty() {
-            if let Some(result) = context.get_ws_response() {
-                if result.is_err() {}
+            if let Some(Err(e)) = context.get_ws_response() {
+                let error_msg = e.to_string();
+                for handler in error_handlers.iter().rev() {
+                    let error: Box<dyn std::error::Error + Send> = Box::new(
+                        std::io::Error::new(std::io::ErrorKind::Other, error_msg.clone()),
+                    );
+                    // Return value is None for WS — handlers use ctx.switch_to_ws() to
+                    // act on the client directly. Response management via context is TBD.
+                    let _ = handler.handle_error(error, context).await;
+                }
             }
         }
     }

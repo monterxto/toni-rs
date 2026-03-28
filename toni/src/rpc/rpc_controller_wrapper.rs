@@ -125,7 +125,17 @@ impl RpcControllerWrapper {
     ) {
         if interceptors.is_empty() {
             Self::execute_handler(context, controller, pipes).await;
-            let _ = error_handlers;
+            if !error_handlers.is_empty() {
+                if let Some(Err(e)) = context.get_rpc_response() {
+                    let error_msg = e.to_string();
+                    for handler in error_handlers.iter().rev() {
+                        let error: Box<dyn std::error::Error + Send> = Box::new(
+                            std::io::Error::new(std::io::ErrorKind::Other, error_msg.clone()),
+                        );
+                        let _ = handler.handle_error(error, context).await;
+                    }
+                }
+            }
             return;
         }
 

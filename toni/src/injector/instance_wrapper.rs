@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     async_trait,
-    http_helpers::{HttpMethod, HttpRequest, HttpResponse, RequestPart, RouteMetadata},
+    http_helpers::{HttpMethod, HttpRequest, HttpResponse, RouteMetadata},
     middleware::{Middleware, MiddlewareChain},
     structs_helpers::EnhancerMetadata,
     traits_helpers::{Controller, ErrorHandler, Guard, Interceptor, InterceptorNext, Pipe},
@@ -149,11 +149,12 @@ impl InstanceWrapper {
                 }
 
                 let error_msg = e.to_string();
+                let error_ctx = Context::from_parts(req_parts_for_error);
                 for handler in error_handlers_for_middleware.iter().rev() {
                     let error: Box<dyn std::error::Error + Send + Sync> = Box::new(
                         std::io::Error::new(std::io::ErrorKind::Other, error_msg.clone()),
                     );
-                    if let Some(response) = handler.handle_error(error, &req_parts_for_error).await {
+                    if let Some(response) = handler.handle_error(error, &error_ctx).await {
                         return response;
                     }
                 }
@@ -194,7 +195,7 @@ impl InstanceWrapper {
                     forbidden
                 };
 
-                return Self::handle_error_response(guard_response, &error_handlers, context.take_request()).await;
+                return Self::handle_error_response(guard_response, &error_handlers, &context).await;
             }
         }
 
@@ -217,7 +218,7 @@ impl InstanceWrapper {
     async fn handle_error_response(
         response: HttpResponse,
         error_handlers: &[Arc<dyn ErrorHandler>],
-        request: &RequestPart,
+        ctx: &Context,
     ) -> HttpResponse {
         if response.status >= 400 {
             // Reconstruct HttpError from response to preserve type information
@@ -225,7 +226,7 @@ impl InstanceWrapper {
 
             for handler in error_handlers.iter().rev() {
                 let error: Box<dyn std::error::Error + Send> = Box::new(http_error.clone());
-                if let Some(handled) = handler.handle_error(error, request).await {
+                if let Some(handled) = handler.handle_error(error, ctx).await {
                     return handled;
                 }
             }
@@ -329,7 +330,7 @@ impl InstanceWrapper {
 
                 for handler in error_handlers.iter().rev() {
                     let error: Box<dyn std::error::Error + Send> = Box::new(http_error.clone());
-                    if let Some(handled_response) = handler.handle_error(error, context.take_request()).await {
+                    if let Some(handled_response) = handler.handle_error(error, context).await {
                         context.set_response(handled_response);
                         return;
                     }
