@@ -21,7 +21,7 @@ use toni::{
     injector::Context,
     module,
     toni_factory::ToniFactory,
-    traits_helpers::ErrorHandler,
+    traits_helpers::{ErrorHandler, ErrorResponse},
     Body as ToniBody, HttpRequest, HttpResponse,
 };
 use toni_axum::AxumAdapter;
@@ -37,12 +37,12 @@ impl ErrorHandler for GlobalHandler {
         &self,
         error: Box<dyn std::error::Error + Send>,
         _ctx: &Context,
-    ) -> Option<HttpResponse> {
+    ) -> Option<ErrorResponse> {
         if let Some(e) = error.downcast_ref::<HttpError>() {
             let mut resp = HttpResponse::new();
             resp.status = e.status_code();
             resp.body = Some(ToniBody::text(format!("global:{}", e.message())));
-            return Some(resp);
+            return Some(ErrorResponse::Http(resp));
         }
         None
     }
@@ -56,13 +56,13 @@ impl ErrorHandler for BadRequestHandler {
         &self,
         error: Box<dyn std::error::Error + Send>,
         _ctx: &Context,
-    ) -> Option<HttpResponse> {
+    ) -> Option<ErrorResponse> {
         if let Some(e) = error.downcast_ref::<HttpError>() {
             if e.status_code() == 400 {
                 let mut resp = HttpResponse::new();
                 resp.status = 400;
                 resp.body = Some(ToniBody::text(format!("method:{}", e.message())));
-                return Some(resp);
+                return Some(ErrorResponse::Http(resp));
             }
         }
         None

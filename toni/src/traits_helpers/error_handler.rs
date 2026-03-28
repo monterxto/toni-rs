@@ -2,22 +2,56 @@ use crate::async_trait;
 use crate::errors::HttpError;
 use crate::http_helpers::{Body, HttpResponse};
 use crate::injector::Context;
+use crate::rpc::RpcData;
+use crate::websocket::WsMessage;
 use serde_json::json;
 use std::error::Error;
 
-/// Customize how errors are turned into HTTP responses.
+/// The response an error handler sends back to the client.
+///
+/// Return the variant that matches the active protocol. The framework
+/// routes each variant to the correct send path and ignores variants
+/// that don't match the current context (e.g. `Http` in a WS context).
+pub enum ErrorResponse {
+    /// Send an HTTP response. Use in HTTP contexts.
+    Http(HttpResponse),
+    /// Send a WebSocket message back to the client. Use in WS contexts.
+    Ws(WsMessage),
+    /// Send an RPC reply. Use in RPC contexts.
+    Rpc(RpcData),
+}
+
+impl From<HttpResponse> for ErrorResponse {
+    fn from(r: HttpResponse) -> Self {
+        ErrorResponse::Http(r)
+    }
+}
+
+impl From<WsMessage> for ErrorResponse {
+    fn from(m: WsMessage) -> Self {
+        ErrorResponse::Ws(m)
+    }
+}
+
+impl From<RpcData> for ErrorResponse {
+    fn from(d: RpcData) -> Self {
+        ErrorResponse::Rpc(d)
+    }
+}
+
+/// Customize how errors are turned into responses.
 ///
 /// Handlers are tried in order (method > controller > global) until one returns `Some`.
-/// Return `None` to pass to the next handler; if all return `None`, a 500 is sent.
+/// Return `None` to pass to the next handler; if all return `None`, a default is sent.
 ///
-/// The `ctx` parameter carries the full execution context. Call `ctx.switch_to_http()` to
-/// access HTTP request metadata; `ctx.switch_to_ws()` / `ctx.switch_to_rpc()` for other
-/// protocols. Return `None` for protocols you don't handle.
+/// Call `ctx.switch_to_http()` / `ctx.switch_to_ws()` / `ctx.switch_to_rpc()` to access
+/// protocol-specific data, and return the matching `ErrorResponse` variant.
+/// Return `None` for protocols you don't handle.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use toni::{async_trait, traits_helpers::ErrorHandler, HttpResponse, Body};
+/// use toni::{async_trait, traits_helpers::{ErrorHandler, ErrorResponse}, HttpResponse};
 /// use toni::injector::Context;
 /// use std::error::Error;
 ///
@@ -29,16 +63,16 @@ use std::error::Error;
 ///         &self,
 ///         error: Box<dyn Error + Send>,
 ///         ctx: &Context,
-///     ) -> Option<HttpResponse> {
+///     ) -> Option<ErrorResponse> {
 ///         let (parts, _) = ctx.switch_to_http()?;
-///         Some(HttpResponse {
+///         Some(ErrorResponse::Http(HttpResponse {
 ///             status: 500,
-///             body: Some(Body::json(serde_json::json!({
+///             body: Some(toni::Body::json(serde_json::json!({
 ///                 "error": error.to_string(),
 ///                 "path": parts.uri().to_string(),
 ///             }))),
 ///             headers: vec![],
-///         })
+///         }))
 ///     }
 /// }
 /// ```
@@ -48,7 +82,7 @@ pub trait ErrorHandler: Send + Sync {
         &self,
         error: Box<dyn Error + Send>,
         ctx: &Context,
-    ) -> Option<HttpResponse>;
+    ) -> Option<ErrorResponse>;
 }
 
 pub struct DefaultErrorHandler;
@@ -58,21 +92,44 @@ impl ErrorHandler for DefaultErrorHandler {
     async fn handle_error(
         &self,
         error: Box<dyn Error + Send>,
-        _ctx: &Context,
-    ) -> Option<HttpResponse> {
-        if let Some(http_error) = error.downcast_ref::<HttpError>() {
-            return Some(http_error.to_response());
-        }
+        ctx: &Context,
+    ) -> Option<ErrorResponse> {
+        use crate::injector::ProtocolType;
 
-        Some(HttpResponse {
-            status: 500,
-            body: Some(Body::json(json!({
-                "statusCode": 500,
-                "message": "Internal Server Error",
-                "error": "Internal Server Error",
-            }))),
-            headers: vec![],
-        })
+        match ctx.protocol_type() {
+            ProtocolType::Http => {
+                if let Some(http_error) = error.downcast_ref::<HttpError>() {
+                    return Some(ErrorResponse::Http(http_error.to_response()));
+                }
+                Some(ErrorResponse::Http(HttpResponse {
+                    status: 500,
+                    body: Some(Body::json(json!({
+                        "statusCode": 500,
+                        "message": "Internal Server Error",
+                        "error": "Internal Server Error",
+                    }))),
+                    headers: vec![],
+                }))
+            }
+            ProtocolType::WebSocket => {
+                let message = if let Some(http_error) = error.downcast_ref::<HttpError>() {
+                    http_error.message().to_string()
+                } else {
+                    error.to_string()
+                };
+                Some(ErrorResponse::Ws(WsMessage::text(
+                    json!({ "status": "error", "message": message }).to_string(),
+                )))
+            }
+            ProtocolType::Rpc => {
+                let message = if let Some(http_error) = error.downcast_ref::<HttpError>() {
+                    http_error.message().to_string()
+                } else {
+                    error.to_string()
+                };
+                Some(ErrorResponse::Rpc(RpcData::json(json!({ "status": "error", "message": message }))))
+            }
+        }
     }
 }
 
@@ -93,7 +150,7 @@ impl<H: ErrorHandler> ErrorHandler for LoggingErrorHandler<H> {
         &self,
         error: Box<dyn Error + Send>,
         ctx: &Context,
-    ) -> Option<HttpResponse> {
+    ) -> Option<ErrorResponse> {
         if let Some((parts, _)) = ctx.switch_to_http() {
             eprintln!("[ERROR] {} {} - {}", parts.method, parts.uri, error);
         } else {
@@ -119,12 +176,9 @@ mod tests {
         let error = HttpError::not_found("Resource not found");
         let ctx = create_test_context();
 
-        let response = handler
-            .handle_error(Box::new(error), &ctx)
-            .await
-            .unwrap();
-
-        assert_eq!(response.status, 404);
+        let response = handler.handle_error(Box::new(error), &ctx).await.unwrap();
+        let ErrorResponse::Http(r) = response else { panic!("expected Http") };
+        assert_eq!(r.status, 404);
     }
 
     #[tokio::test]
@@ -133,11 +187,8 @@ mod tests {
         let error = std::io::Error::new(std::io::ErrorKind::Other, "Unknown error");
         let ctx = create_test_context();
 
-        let response = handler
-            .handle_error(Box::new(error), &ctx)
-            .await
-            .unwrap();
-
-        assert_eq!(response.status, 500);
+        let response = handler.handle_error(Box::new(error), &ctx).await.unwrap();
+        let ErrorResponse::Http(r) = response else { panic!("expected Http") };
+        assert_eq!(r.status, 500);
     }
 }
