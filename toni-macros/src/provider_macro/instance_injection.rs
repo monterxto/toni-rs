@@ -362,7 +362,7 @@ fn generate_singleton_provider(
             async fn execute(
                 &self,
                 _params: Vec<Box<dyn ::std::any::Any + Send>>,
-                _req: Option<&::toni::http_helpers::HttpRequest>,
+                _req: Option<&::toni::http_helpers::RequestPart>,
             ) -> Box<dyn ::std::any::Any + Send> {
                 Box::new((*self.instance).clone())
             }
@@ -472,7 +472,7 @@ fn generate_request_provider(
             async fn execute(
                 &self,
                 _params: Vec<Box<dyn ::std::any::Any + Send>>,
-                _req: Option<&::toni::http_helpers::HttpRequest>,
+                _req: Option<&::toni::http_helpers::RequestPart>,
             ) -> Box<dyn ::std::any::Any + Send> {
                 #(#field_resolutions)*
 
@@ -558,7 +558,7 @@ fn generate_transient_provider(
             async fn execute(
                 &self,
                 _params: Vec<Box<dyn ::std::any::Any + Send>>,
-                _req: Option<&::toni::http_helpers::HttpRequest>,
+                _req: Option<&::toni::http_helpers::RequestPart>,
             ) -> Box<dyn ::std::any::Any + Send> {
                 #(#field_resolutions)*
 

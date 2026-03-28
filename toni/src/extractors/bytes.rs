@@ -44,6 +44,7 @@ impl std::ops::DerefMut for Bytes {
 pub enum BytesError {
     UnsupportedContentType(String),
     MissingBody,
+    CollectError(String),
 }
 
 impl std::fmt::Display for BytesError {
@@ -53,6 +54,7 @@ impl std::fmt::Display for BytesError {
                 write!(f, "Unsupported content type for binary data: {}", ct)
             }
             BytesError::MissingBody => write!(f, "No body provided"),
+            BytesError::CollectError(msg) => write!(f, "Failed to read request body: {}", msg),
         }
     }
 }
@@ -62,16 +64,21 @@ impl std::error::Error for BytesError {}
 impl FromRequest for Bytes {
     type Error = BytesError;
 
-    fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        let content_type = req
-            .headers()
+    async fn from_request(req: HttpRequest) -> Result<Self, Self::Error> {
+        let (parts, body) = req.into_parts();
+        let content_type = parts
+            .headers
             .get(http::header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_lowercase())
             .unwrap_or_default();
 
         if content_type.is_empty() || content_type.contains("application/octet-stream") {
-            Ok(Bytes(req.body().to_vec()))
+            let bytes = body
+                .collect()
+                .await
+                .map_err(|e| BytesError::CollectError(e.to_string()))?;
+            Ok(Bytes(bytes.to_vec()))
         } else {
             Err(BytesError::UnsupportedContentType(content_type))
         }

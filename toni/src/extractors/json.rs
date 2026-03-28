@@ -42,6 +42,7 @@ impl<T> std::ops::DerefMut for Json<T> {
 pub enum JsonError {
     NotJson,
     DeserializeError(String),
+    CollectError(String),
 }
 
 impl std::fmt::Display for JsonError {
@@ -51,21 +52,26 @@ impl std::fmt::Display for JsonError {
             JsonError::DeserializeError(msg) => {
                 write!(f, "Failed to deserialize JSON body: {}", msg)
             }
+            JsonError::CollectError(msg) => write!(f, "Failed to read request body: {}", msg),
         }
     }
 }
 
 impl std::error::Error for JsonError {}
 
-impl<T: DeserializeOwned> FromRequest for Json<T> {
+impl<T: DeserializeOwned + Send> FromRequest for Json<T> {
     type Error = JsonError;
 
-    fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        let body = req.body();
-        if body.is_empty() {
+    async fn from_request(req: HttpRequest) -> Result<Self, Self::Error> {
+        let (_, body) = req.into_parts();
+        let bytes = body
+            .collect()
+            .await
+            .map_err(|e| JsonError::CollectError(e.to_string()))?;
+        if bytes.is_empty() {
             return Err(JsonError::NotJson);
         }
-        let value: T = serde_json::from_slice(body)
+        let value: T = serde_json::from_slice(&bytes)
             .map_err(|e| JsonError::DeserializeError(e.to_string()))?;
         Ok(Json(value))
     }

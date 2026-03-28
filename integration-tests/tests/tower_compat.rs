@@ -121,8 +121,8 @@ async fn tower_layer_request_body_round_trip() {
     #[controller("/echo", pub struct EchoController {})]
     impl EchoController {
         #[post("/json")]
-        fn echo_json(&self, req: HttpRequest) -> ToniBody {
-            ToniBody::from(req.body().clone())
+        async fn echo_json(&self, toni::extractors::Json(val): toni::extractors::Json<serde_json::Value>) -> ToniBody {
+            ToniBody::json(val)
         }
     }
 

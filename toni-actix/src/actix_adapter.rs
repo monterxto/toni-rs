@@ -7,7 +7,7 @@ use actix_web::{
     HttpResponse as ActixHttpResponse, HttpServer,
 };
 use toni::{
-    http_helpers::PathParams,
+    http_helpers::{PathParams, RequestBody, RequestPart},
     HttpAdapter, HttpMethod, HttpRequest, HttpResponse, InstanceWrapper,
 };
 
@@ -52,19 +52,18 @@ impl HttpAdapter for ActixAdapter {
         let uri = req.uri().to_string().parse::<http::Uri>()
             .unwrap_or_else(|_| http::Uri::default());
 
-        let mut http_req = http::Request::new(web::Bytes::from(body.to_vec()));
-        *http_req.method_mut() = method;
-        *http_req.uri_mut() = uri;
+        let mut builder = http::Request::builder().method(method).uri(uri);
         for (name, value) in req.headers().iter() {
             if let Ok(val) = http::HeaderValue::from_bytes(value.as_bytes()) {
                 if let Ok(key) = http::HeaderName::from_bytes(name.as_str().as_bytes()) {
-                    http_req.headers_mut().insert(key, val);
+                    builder = builder.header(key, val);
                 }
             }
         }
-        http_req.extensions_mut().insert(PathParams(path_params));
+        let (mut http_parts, _) = builder.body(()).unwrap().into_parts();
+        http_parts.extensions.insert(PathParams(path_params));
 
-        Ok(HttpRequest(http_req))
+        Ok(HttpRequest::from_parts(http_parts, RequestBody::Buffered(web::Bytes::from(body.to_vec()))))
     }
 
     async fn adapt_response(response: HttpResponse) -> Result<Self::Response> {

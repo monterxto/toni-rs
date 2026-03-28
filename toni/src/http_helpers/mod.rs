@@ -10,15 +10,12 @@ pub use self::http_response::{HttpResponse, HttpResponseBuilder, HttpResponseDef
 mod path_params;
 pub use self::path_params::PathParams;
 
+mod request_body;
+pub use self::request_body::{RequestBody, RequestBoxBody};
+
 #[path = "http_request.struct.rs"]
 mod http_request;
-pub use self::http_request::HttpRequest;
-
-/// Type alias for the metadata-only half of a split request.
-///
-/// Middleware that calls `req.into_parts()` receives `(RequestParts, Bytes)`.
-/// Extractors that only need headers/method/URI work on `&RequestParts`.
-pub use http::request::Parts as RequestParts;
+pub use self::http_request::{HttpRequest, RequestPart};
 
 #[path = "http_method.enum.rs"]
 mod http_method;

@@ -8,7 +8,7 @@ use toni::traits_helpers::middleware::{Middleware, MiddlewareResult, Next};
 use toni::traits_helpers::{Guard, Interceptor, InterceptorNext, MiddlewareConsumer};
 use toni::{
     controller, get, injectable, module, provider_value, use_guards, use_interceptors,
-    Body as ToniBody, HttpRequest,
+    Body as ToniBody, HttpRequest, RequestPart,
 };
 
 use common::TestServer;
@@ -59,14 +59,14 @@ impl AuthService {
         Self { tracker }
     }
 
-    pub fn is_admin(&self, req: &HttpRequest) -> bool {
+    pub fn is_admin(&self, req: &RequestPart) -> bool {
         self.tracker.track("service:auth_check");
-        req.headers().contains_key("x-admin-token")
+        req.headers.contains_key("x-admin-token")
     }
 
-    pub fn validate_user(&self, req: &HttpRequest) -> bool {
+    pub fn validate_user(&self, req: &RequestPart) -> bool {
         self.tracker.track("service:user_validation");
-        req.headers().contains_key("x-user-id")
+        req.headers.contains_key("x-user-id")
     }
 }
 

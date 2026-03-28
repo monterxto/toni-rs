@@ -117,17 +117,16 @@ impl<T: Validate> ValidatableExtractor for super::body::Body<T> {
 
 impl<E> FromRequest for Validated<E>
 where
-    E: FromRequest + ValidatableExtractor,
-    E::Error: std::fmt::Display,
+    E: FromRequest + ValidatableExtractor + Send,
+    E::Error: std::fmt::Display + Send + Sync + 'static,
 {
     type Error = ValidationError;
 
-    fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        // First extract the inner value
-        let extracted =
-            E::from_request(req).map_err(|e| ValidationError::ExtractionError(e.to_string()))?;
+    async fn from_request(req: HttpRequest) -> Result<Self, Self::Error> {
+        let extracted = E::from_request(req)
+            .await
+            .map_err(|e| ValidationError::ExtractionError(e.to_string()))?;
 
-        // Then validate it
         extracted
             .get_inner()
             .validate()

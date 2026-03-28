@@ -7,7 +7,7 @@ use tokio::net::TcpListener;
 use tokio::sync::watch;
 
 use axum::{
-    body::{to_bytes, Body},
+    body::Body,
     extract::{ws::WebSocketUpgrade, Path},
     http::{HeaderMap, HeaderName, HeaderValue, Request, Response, StatusCode},
     routing::{connect, delete, get, head, options, patch, post, put, trace},
@@ -19,9 +19,9 @@ use std::str::FromStr;
 use toni::websocket::{WsMessage, WsSink};
 use toni::{
     async_trait,
-    http_helpers::PathParams,
-    HttpAdapter, HttpMethod, HttpRequest, HttpResponse, InstanceWrapper,
-    WebSocketAdapter, WsConnectionCallbacks,
+    http_helpers::{PathParams, RequestBody, RequestPart},
+    HttpAdapter, HttpMethod, HttpRequest, HttpResponse, InstanceWrapper, WebSocketAdapter,
+    WsConnectionCallbacks,
 };
 
 use crate::axum_websocket_adapter::{axum_to_ws_message, extract_headers, ws_message_to_axum};
@@ -116,8 +116,9 @@ impl HttpAdapter for AxumAdapter {
     type Response = Response<Body>;
 
     async fn adapt_request(request: Self::Request) -> Result<HttpRequest> {
+        use http_body_util::BodyExt;
+
         let (mut parts, body) = request.into_parts();
-        let body_bytes = to_bytes(body, usize::MAX).await?;
 
         let Path(path_params) = parts
             .extract::<Path<HashMap<String, String>>>()
@@ -125,11 +126,11 @@ impl HttpAdapter for AxumAdapter {
             .map_err(|e| anyhow!("Failed to extract path parameters: {:?}", e))?;
 
         // Query params and URI are preserved in http::Parts — no separate extraction needed.
-        // PathParams go into extensions so all extractors and middleware can read them.
         parts.extensions.insert(PathParams(path_params));
-
-        let http_req = Request::from_parts(parts, body_bytes);
-        Ok(HttpRequest(http_req))
+        let box_body = body
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
+            .boxed_unsync();
+        Ok(HttpRequest::from_parts(parts, RequestBody::Streaming(box_body)))
     }
 
     async fn adapt_response(response: HttpResponse) -> Result<Self::Response> {

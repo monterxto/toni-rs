@@ -7,6 +7,7 @@ use crate::http_helpers::HttpRequest;
 ///
 /// Supports `application/json` and `application/x-www-form-urlencoded`.
 /// For raw bytes, use the [`Bytes`](super::bytes::Bytes) extractor instead.
+/// For a raw stream, use [`BodyStream`](super::body_stream::BodyStream).
 ///
 /// # Example
 ///
@@ -45,6 +46,7 @@ impl<T> std::ops::DerefMut for Body<T> {
 pub enum BodyError {
     UnsupportedContentType(String),
     DeserializeError(String),
+    CollectError(String),
 }
 
 impl std::fmt::Display for BodyError {
@@ -54,45 +56,46 @@ impl std::fmt::Display for BodyError {
                 write!(f, "Unsupported content type: {}", ct)
             }
             BodyError::DeserializeError(msg) => write!(f, "Failed to deserialize body: {}", msg),
+            BodyError::CollectError(msg) => write!(f, "Failed to read request body: {}", msg),
         }
     }
 }
 
 impl std::error::Error for BodyError {}
 
-impl<T: DeserializeOwned> FromRequest for Body<T> {
+fn parse_bytes<T: DeserializeOwned>(bytes: &[u8], content_type: &str) -> Result<T, BodyError> {
+    if content_type.contains("application/json") {
+        serde_json::from_slice(bytes).map_err(|e| BodyError::DeserializeError(e.to_string()))
+    } else if content_type.contains("application/x-www-form-urlencoded") {
+        serde_urlencoded::from_bytes(bytes).map_err(|e| BodyError::DeserializeError(e.to_string()))
+    } else if content_type.is_empty() {
+        if let Ok(v) = serde_json::from_slice(bytes) {
+            return Ok(v);
+        }
+        serde_urlencoded::from_bytes(bytes).map_err(|e| BodyError::DeserializeError(e.to_string()))
+    } else {
+        Err(BodyError::UnsupportedContentType(content_type.to_string()))
+    }
+}
+
+impl<T: DeserializeOwned + Send> FromRequest for Body<T> {
     type Error = BodyError;
 
-    fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        let body = req.body();
-        if body.is_empty() {
+    async fn from_request(req: HttpRequest) -> Result<Self, Self::Error> {
+        let (parts, body) = req.into_parts();
+        let bytes = body
+            .collect()
+            .await
+            .map_err(|e| BodyError::CollectError(e.to_string()))?;
+        if bytes.is_empty() {
             return Err(BodyError::DeserializeError("Empty body".to_string()));
         }
-
-        let content_type = req
-            .headers()
+        let content_type = parts
+            .headers
             .get(http::header::CONTENT_TYPE)
             .and_then(|v| v.to_str().ok())
             .map(|s| s.to_lowercase())
             .unwrap_or_default();
-
-        if content_type.contains("application/json") {
-            let parsed: T = serde_json::from_slice(body)
-                .map_err(|e| BodyError::DeserializeError(e.to_string()))?;
-            Ok(Body(parsed))
-        } else if content_type.contains("application/x-www-form-urlencoded") {
-            let parsed: T = serde_urlencoded::from_bytes(body)
-                .map_err(|e| BodyError::DeserializeError(e.to_string()))?;
-            Ok(Body(parsed))
-        } else if content_type.is_empty() {
-            if let Ok(parsed) = serde_json::from_slice::<T>(body) {
-                return Ok(Body(parsed));
-            }
-            let parsed: T = serde_urlencoded::from_bytes(body)
-                .map_err(|e| BodyError::DeserializeError(e.to_string()))?;
-            Ok(Body(parsed))
-        } else {
-            Err(BodyError::UnsupportedContentType(content_type))
-        }
+        Ok(Body(parse_bytes(&bytes, &content_type)?))
     }
 }

@@ -64,11 +64,10 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fmt;
-use toni::extractors::FromRequest;
 use toni::extractors::Json;
 use toni::http_helpers::Body as ToniBody;
-use toni::http_helpers::HttpRequest;
-use toni::{controller, get, module, post};
+use toni::http_helpers::RequestPart;
+use toni::{controller, get, module, post, FromRequestParts};
 
 // ============================================================================
 // SECTION 1: AUTHENTICATION EXTRACTORS
@@ -123,12 +122,12 @@ impl fmt::Display for AuthError {
 
 impl std::error::Error for AuthError {}
 
-impl FromRequest for CurrentUser {
+impl FromRequestParts for CurrentUser {
     type Error = AuthError;
 
-    fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        let auth_header = req
-            .headers()
+    fn from_request_parts(parts: &RequestPart) -> Result<Self, Self::Error> {
+        let auth_header = parts
+            .headers
             .get("authorization")
             .and_then(|v| v.to_str().ok())
             .ok_or(AuthError::MissingToken)?;
@@ -198,12 +197,12 @@ impl fmt::Display for TokenError {
 
 impl std::error::Error for TokenError {}
 
-impl FromRequest for BearerToken {
+impl FromRequestParts for BearerToken {
     type Error = TokenError;
 
-    fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        let auth_header = req
-            .headers()
+    fn from_request_parts(parts: &RequestPart) -> Result<Self, Self::Error> {
+        let auth_header = parts
+            .headers
             .get("authorization")
             .and_then(|v| v.to_str().ok())
             .ok_or(TokenError::Missing)?;
@@ -254,12 +253,12 @@ impl fmt::Display for ApiKeyError {
 
 impl std::error::Error for ApiKeyError {}
 
-impl FromRequest for ApiKey {
+impl FromRequestParts for ApiKey {
     type Error = ApiKeyError;
 
-    fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        let key = req
-            .headers()
+    fn from_request_parts(parts: &RequestPart) -> Result<Self, Self::Error> {
+        let key = parts
+            .headers
             .get("x-api-key")
             .and_then(|v| v.to_str().ok())
             .ok_or(ApiKeyError::Missing)?
@@ -307,13 +306,13 @@ impl fmt::Display for IpError {
 
 impl std::error::Error for IpError {}
 
-impl FromRequest for ClientIp {
+impl FromRequestParts for ClientIp {
     type Error = IpError;
 
-    fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
+    fn from_request_parts(parts: &RequestPart) -> Result<Self, Self::Error> {
         // Check X-Forwarded-For first (proxy/load balancer support)
-        if let Some(forwarded) = req
-            .headers()
+        if let Some(forwarded) = parts
+            .headers
             .get("x-forwarded-for")
             .and_then(|v| v.to_str().ok())
         {
@@ -323,8 +322,8 @@ impl FromRequest for ClientIp {
         }
 
         // Check X-Real-IP (nginx)
-        if let Some(real_ip) = req
-            .headers()
+        if let Some(real_ip) = parts
+            .headers
             .get("x-real-ip")
             .and_then(|v| v.to_str().ok())
         {
@@ -364,12 +363,12 @@ impl fmt::Display for UserAgentError {
 
 impl std::error::Error for UserAgentError {}
 
-impl FromRequest for UserAgent {
+impl FromRequestParts for UserAgent {
     type Error = UserAgentError;
 
-    fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        let ua = req
-            .headers()
+    fn from_request_parts(parts: &RequestPart) -> Result<Self, Self::Error> {
+        let ua = parts
+            .headers
             .get("user-agent")
             .and_then(|v| v.to_str().ok())
             .ok_or_else(|| UserAgentError("User-Agent header missing".to_string()))?
@@ -408,13 +407,13 @@ impl fmt::Display for RequestIdError {
 
 impl std::error::Error for RequestIdError {}
 
-impl FromRequest for RequestId {
+impl FromRequestParts for RequestId {
     type Error = RequestIdError;
 
-    fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
+    fn from_request_parts(parts: &RequestPart) -> Result<Self, Self::Error> {
         // Check existing header
-        if let Some(id) = req
-            .headers()
+        if let Some(id) = parts
+            .headers
             .get("x-request-id")
             .and_then(|v| v.to_str().ok())
         {
@@ -467,12 +466,12 @@ impl fmt::Display for CookieError {
 
 impl std::error::Error for CookieError {}
 
-impl FromRequest for Cookies {
+impl FromRequestParts for Cookies {
     type Error = CookieError;
 
-    fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        let cookie_header = req
-            .headers()
+    fn from_request_parts(parts: &RequestPart) -> Result<Self, Self::Error> {
+        let cookie_header = parts
+            .headers
             .get("cookie")
             .and_then(|v| v.to_str().ok())
             .ok_or_else(|| CookieError("No cookies present".to_string()))?;
@@ -513,12 +512,12 @@ impl fmt::Display for SessionCookieError {
 
 impl std::error::Error for SessionCookieError {}
 
-impl FromRequest for SessionCookie {
+impl FromRequestParts for SessionCookie {
     type Error = SessionCookieError;
 
-    fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        let cookie_header = req
-            .headers()
+    fn from_request_parts(parts: &RequestPart) -> Result<Self, Self::Error> {
+        let cookie_header = parts
+            .headers
             .get("cookie")
             .and_then(|v| v.to_str().ok())
             .ok_or_else(|| SessionCookieError("No cookies present".to_string()))?;
@@ -578,17 +577,17 @@ impl fmt::Display for AuthContextError {
 
 impl std::error::Error for AuthContextError {}
 
-impl FromRequest for AuthContext {
+impl FromRequestParts for AuthContext {
     type Error = AuthContextError;
 
-    fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        let CurrentUser(user) = CurrentUser::from_request(req)
+    fn from_request_parts(parts: &RequestPart) -> Result<Self, Self::Error> {
+        let CurrentUser(user) = CurrentUser::from_request_parts(parts)
             .map_err(|e| AuthContextError(format!("User extraction failed: {}", e)))?;
 
-        let ClientIp(ip) = ClientIp::from_request(req)
+        let ClientIp(ip) = ClientIp::from_request_parts(parts)
             .map_err(|e| AuthContextError(format!("IP extraction failed: {}", e)))?;
 
-        let UserAgent(user_agent) = UserAgent::from_request(req)
+        let UserAgent(user_agent) = UserAgent::from_request_parts(parts)
             .map_err(|e| AuthContextError(format!("User-Agent extraction failed: {}", e)))?;
 
         Ok(AuthContext {

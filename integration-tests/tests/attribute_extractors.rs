@@ -3,7 +3,7 @@ mod common;
 use common::TestServer;
 use serde::{Deserialize, Serialize};
 use serial_test::serial;
-use toni::{controller, extractors::Bytes, get, post, Body as ToniBody, HttpRequest};
+use toni::{controller, extractors::Bytes, get, post, Body as ToniBody};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct CreateUserDto {
@@ -70,13 +70,12 @@ impl AttributeController {
         ToniBody::text(format!("Products page {} (size: {})", page, page_size))
     }
 
-    /// Mix multiple attribute extractors: #[param] + #[body] + HttpRequest
+    /// Mix multiple attribute extractors: #[param] + #[body]
     #[post("/users/{id}")]
     fn update_user(
         &self,
         #[param("id")] user_id: i32,
         #[body] dto: CreateUserDto,
-        _req: HttpRequest,
     ) -> ToniBody {
         ToniBody::text(format!(
             "Updated user {}: {} <{}>",

@@ -1,5 +1,5 @@
-use super::FromRequest;
-use crate::http_helpers::{HttpRequest, PathParams};
+use super::FromRequestParts;
+use crate::http_helpers::{PathParams, RequestPart};
 use serde::de::DeserializeOwned;
 use std::str::FromStr;
 
@@ -53,13 +53,13 @@ impl std::fmt::Display for PathError {
 impl std::error::Error for PathError {}
 
 pub fn extract_path_param<T: FromStr>(
-    req: &HttpRequest,
+    parts: &RequestPart,
     name: &str,
 ) -> Result<T, PathError>
 where
     T::Err: std::fmt::Display,
 {
-    let params = req.extensions().get::<PathParams>();
+    let params = parts.extensions.get::<PathParams>();
     let value = params
         .and_then(|p| p.0.get(name))
         .ok_or_else(|| PathError::NotFound(name.to_string()))?;
@@ -69,11 +69,11 @@ where
         .map_err(|e| PathError::ParseError(format!("{}: {}", name, e)))
 }
 
-impl<T: DeserializeOwned> FromRequest for Path<T> {
+impl<T: DeserializeOwned> FromRequestParts for Path<T> {
     type Error = PathError;
 
-    fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        let params = req.extensions().get::<PathParams>();
+    fn from_request_parts(parts: &RequestPart) -> Result<Self, Self::Error> {
+        let params = parts.extensions.get::<PathParams>();
         // Round-trip through serde_json::Value so any T: DeserializeOwned works,
         // including structs with multiple named fields.
         let json_value = match params {

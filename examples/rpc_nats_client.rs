@@ -26,7 +26,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use toni::{
-    controller, extractors::Query, get, injectable, module, post, Body as ToniBody, HttpRequest,
+    controller, extractors::{Json, Query}, get, injectable, module, post, Body as ToniBody,
     RpcClient, ToniFactory,
 };
 use toni_macros::{provider_value, rpc_controller};
@@ -142,9 +142,7 @@ impl OrdersHttpController {
     }
 
     #[post("/ship")]
-    async fn ship_order(&self, req: HttpRequest) -> ToniBody {
-        let payload: serde_json::Value =
-            serde_json::from_slice(req.body()).unwrap_or_else(|_| json!({}));
+    async fn ship_order(&self, Json(payload): Json<serde_json::Value>) -> ToniBody {
 
         let order_id = payload["order_id"].as_u64().unwrap_or(0);
         println!(

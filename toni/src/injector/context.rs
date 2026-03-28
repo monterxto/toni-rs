@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::{
-    http_helpers::{HttpRequest, HttpResponse, RouteMetadata},
+    http_helpers::{HttpRequest, HttpResponse, RequestBody, RequestPart, RouteMetadata},
     rpc::{RpcContext, RpcData, RpcError},
     traits_helpers::validate::Validatable,
     websocket::{WsClient, WsMessage},
@@ -79,16 +79,20 @@ impl Context {
     }
 
     /// HTTP protocol access (returns None for other protocols)
-    pub fn switch_to_http(&self) -> Option<(&HttpRequest, &Option<HttpResponse>)> {
+    pub fn switch_to_http(&self) -> Option<(&RequestPart, &Option<HttpResponse>)> {
         match &self.protocol {
-            Protocol::Http { request, response } => Some((request, response)),
+            Protocol::Http {
+                parts, response, ..
+            } => Some((parts, response)),
             _ => None,
         }
     }
 
-    pub fn switch_to_http_mut(&mut self) -> Option<(&mut HttpRequest, &mut Option<HttpResponse>)> {
+    pub fn switch_to_http_mut(&mut self) -> Option<(&mut RequestPart, &mut Option<HttpResponse>)> {
         match &mut self.protocol {
-            Protocol::Http { request, response } => Some((request, response)),
+            Protocol::Http {
+                parts, response, ..
+            } => Some((parts, response)),
             _ => None,
         }
     }
@@ -203,10 +207,27 @@ impl Context {
     // Backward Compatibility Helpers (HTTP-specific)
     // TODO: Remove these once all code migrates to switch_to_http()
 
+    /// Borrow the request metadata (method, URI, headers, extensions) without body.
+    ///
     /// # Panics
-    /// Panics if context is not HTTP. Use `switch_to_http()` for type-safe access.
-    pub fn take_request(&self) -> &HttpRequest {
+    /// Panics if context is not HTTP.
+    pub fn take_request(&self) -> &RequestPart {
         self.switch_to_http().expect("Expected HTTP context").0
+    }
+
+    /// Reconstruct the full `HttpRequest` (metadata + body) and move it out of
+    /// the context. The body is taken from the internal Mutex; subsequent calls
+    /// return an empty body (body has already been consumed).
+    ///
+    /// # Panics
+    /// Panics if not an HTTP context.
+    pub fn take_request_owned(&mut self) -> HttpRequest {
+        if let Protocol::Http { parts, body, .. } = &mut self.protocol {
+            let b = body.lock().take().unwrap_or_else(RequestBody::empty);
+            HttpRequest::from_parts(parts.clone(), b)
+        } else {
+            panic!("Expected HTTP context");
+        }
     }
 
     /// # Panics
@@ -223,9 +244,7 @@ impl Context {
     /// Panics if context is not HTTP or response not set.
     pub fn get_response(self) -> HttpResponse {
         match self.protocol {
-            Protocol::Http { response, .. } => {
-                response.expect("Response not set in context")
-            }
+            Protocol::Http { response, .. } => response.expect("Response not set in context"),
             Protocol::WebSocket { .. } => {
                 panic!("get_response() only works for HTTP. Use switch_to_ws() for WebSocket.");
             }
