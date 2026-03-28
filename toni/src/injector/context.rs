@@ -43,6 +43,11 @@ impl Context {
         }
     }
 
+    pub fn from_parts(parts: RequestPart) -> Self {
+        use crate::http_helpers::RequestBody;
+        Self::from_request(HttpRequest::from_parts(parts, RequestBody::empty()))
+    }
+
     /// Create WebSocket context
     pub fn from_websocket(
         client: WsClient,

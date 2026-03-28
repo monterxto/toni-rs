@@ -18,6 +18,7 @@ use toni::{
     async_trait,
     controller, get,
     errors::HttpError,
+    injector::Context,
     module,
     toni_factory::ToniFactory,
     traits_helpers::ErrorHandler,
@@ -35,7 +36,7 @@ impl ErrorHandler for GlobalHandler {
     async fn handle_error(
         &self,
         error: Box<dyn std::error::Error + Send>,
-        _request: &toni::RequestPart,
+        _ctx: &Context,
     ) -> Option<HttpResponse> {
         if let Some(e) = error.downcast_ref::<HttpError>() {
             let mut resp = HttpResponse::new();
@@ -54,7 +55,7 @@ impl ErrorHandler for BadRequestHandler {
     async fn handle_error(
         &self,
         error: Box<dyn std::error::Error + Send>,
-        _request: &toni::RequestPart,
+        _ctx: &Context,
     ) -> Option<HttpResponse> {
         if let Some(e) = error.downcast_ref::<HttpError>() {
             if e.status_code() == 400 {
