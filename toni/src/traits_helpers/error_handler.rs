@@ -1,81 +1,53 @@
-//! Error handler trait for customizing error responses
-//!
-//! Error handlers allow you to customize how errors are converted to HTTP responses.
-//! Implement the ErrorHandler trait to add custom error formatting, logging, or transformations.
-//!
-//! # Examples
-//!
-//! ## Custom Error Handler
-//!
-//! ```ignore
-//! use toni::{async_trait, traits_helpers::ErrorHandler, HttpRequest, HttpResponse, Body};
-//! use serde_json::json;
-//! use std::error::Error;
-//!
-//! pub struct CustomErrorHandler;
-//!
-//! #[async_trait]
-//! impl ErrorHandler for CustomErrorHandler {
-//!     async fn handle_error(
-//!         &self,
-//!         error: Box<dyn Error + Send>,
-//!         request: &HttpRequest,
-//!     ) -> HttpResponse {
-//!         // Custom error handling logic
-//!         HttpResponse {
-//!             status: 500,
-//!             body: Some(Body::Json(json!({
-//!                 "error": "Something went wrong",
-//!                 "path": request.uri.clone(),
-//!                 "timestamp": chrono::Utc::now().to_rfc3339(),
-//!             }))),
-//!             headers: vec![],
-//!         }
-//!     }
-//! }
-//! ```
-//!
-//! ## Usage in Application
-//!
-//! ```ignore
-//! // Apply globally
-//! app.use_global_error_handler(CustomErrorHandler);
-//!
-//! // Or apply to specific controller
-//! #[use_error_handler(CustomErrorHandler)]
-//! #[controller("/api")]
-//! pub struct ApiController {}
-//! ```
-
 use crate::async_trait;
 use crate::errors::HttpError;
-use crate::http_helpers::{Body, HttpRequest, HttpResponse};
+use crate::http_helpers::{Body, HttpResponse, RequestPart};
 use serde_json::json;
 use std::error::Error;
 
-/// Trait for handling errors and converting them to HTTP responses
+/// Customize how errors are turned into HTTP responses.
 ///
-/// Implement this trait to customize how errors are converted to responses.
-/// Handlers are called in order (method > controller > global) until one returns Some.
+/// Handlers are tried in order (method > controller > global) until one returns `Some`.
+/// Return `None` to pass to the next handler; if all return `None`, a 500 is sent.
+///
+/// The `request` parameter carries only the request metadata — method, URI, headers,
+/// path params. The body has already been consumed before any error handler is called.
+///
+/// # Example
+///
+/// ```ignore
+/// use toni::{async_trait, traits_helpers::ErrorHandler, HttpResponse, Body};
+/// use toni::http_helpers::RequestPart;
+/// use std::error::Error;
+///
+/// pub struct CustomErrorHandler;
+///
+/// #[async_trait]
+/// impl ErrorHandler for CustomErrorHandler {
+///     async fn handle_error(
+///         &self,
+///         error: Box<dyn Error + Send>,
+///         request: &RequestPart,
+///     ) -> Option<HttpResponse> {
+///         Some(HttpResponse {
+///             status: 500,
+///             body: Some(Body::json(serde_json::json!({
+///                 "error": error.to_string(),
+///                 "path": request.uri().to_string(),
+///             }))),
+///             headers: vec![],
+///         })
+///     }
+/// }
+/// ```
 #[async_trait]
 pub trait ErrorHandler: Send + Sync {
-    /// Try to handle an error and return an HTTP response
-    ///
-    /// Return Some(response) to handle the error, or None to pass to the next handler.
-    /// If all handlers return None, a default 500 error is returned.
     async fn handle_error(
         &self,
         error: Box<dyn Error + Send>,
-        request: &HttpRequest,
+        request: &RequestPart,
     ) -> Option<HttpResponse>;
 }
 
-/// Default error handler implementation
-///
-/// This handler:
-/// - Converts HttpError variants to appropriate HTTP responses
-/// - Returns 500 Internal Server Error for unknown errors
-/// - Includes error message, status code, and error type in response
 pub struct DefaultErrorHandler;
 
 #[async_trait]
@@ -83,7 +55,7 @@ impl ErrorHandler for DefaultErrorHandler {
     async fn handle_error(
         &self,
         error: Box<dyn Error + Send>,
-        _request: &HttpRequest,
+        _request: &RequestPart,
     ) -> Option<HttpResponse> {
         if let Some(http_error) = error.downcast_ref::<HttpError>() {
             return Some(http_error.to_response());
@@ -101,9 +73,7 @@ impl ErrorHandler for DefaultErrorHandler {
     }
 }
 
-/// Error handler that logs errors before converting to responses
-///
-/// This handler wraps another handler and logs all errors.
+/// Wraps another [`ErrorHandler`] and logs each error before delegating.
 pub struct LoggingErrorHandler<H: ErrorHandler> {
     inner: H,
 }
@@ -119,9 +89,9 @@ impl<H: ErrorHandler> ErrorHandler for LoggingErrorHandler<H> {
     async fn handle_error(
         &self,
         error: Box<dyn Error + Send>,
-        request: &HttpRequest,
+        request: &RequestPart,
     ) -> Option<HttpResponse> {
-        eprintln!("[ERROR] {} {} - {}", request.method(), request.uri(), error);
+        eprintln!("[ERROR] {} {} - {}", request.method, request.uri, error);
         self.inner.handle_error(error, request).await
     }
 }
@@ -129,19 +99,20 @@ impl<H: ErrorHandler> ErrorHandler for LoggingErrorHandler<H> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::http_helpers::RequestPart;
 
-    fn create_test_request() -> HttpRequest {
-        HttpRequest(http::Request::new(bytes::Bytes::new()))
+    fn create_test_parts() -> RequestPart {
+        http::Request::builder().body(()).unwrap().into_parts().0
     }
 
     #[tokio::test]
     async fn test_default_handler_with_http_error() {
         let handler = DefaultErrorHandler;
         let error = HttpError::not_found("Resource not found");
-        let request = create_test_request();
+        let parts = create_test_parts();
 
         let response = handler
-            .handle_error(Box::new(error), &request)
+            .handle_error(Box::new(error), &parts)
             .await
             .unwrap();
 
@@ -152,10 +123,10 @@ mod tests {
     async fn test_default_handler_with_unknown_error() {
         let handler = DefaultErrorHandler;
         let error = std::io::Error::new(std::io::ErrorKind::Other, "Unknown error");
-        let request = create_test_request();
+        let parts = create_test_parts();
 
         let response = handler
-            .handle_error(Box::new(error), &request)
+            .handle_error(Box::new(error), &parts)
             .await
             .unwrap();
 

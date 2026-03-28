@@ -23,7 +23,7 @@ impl Provider for BroadcastServiceProvider {
     async fn execute(
         &self,
         _params: Vec<Box<dyn Any + Send>>,
-        _req: Option<&HttpRequest>,
+        _req: Option<&crate::http_helpers::RequestPart>,
     ) -> Box<dyn Any + Send> {
         Box::new(self.instance.clone())
     }

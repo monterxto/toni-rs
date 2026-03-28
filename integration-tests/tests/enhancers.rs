@@ -88,7 +88,7 @@ impl Guard for AdminGuard {
     fn can_activate(&self, context: &Context) -> bool {
         self.tracker.track("guard:admin");
         let req = context.take_request();
-        req.headers()
+        req.headers
             .get("x-admin-token")
             .and_then(|v| v.to_str().ok())
             .map(|value| value == "secret123")
@@ -111,7 +111,7 @@ impl Guard for AuthGuard {
     fn can_activate(&self, context: &Context) -> bool {
         self.tracker.track("guard:auth");
         let req = context.take_request();
-        req.headers().contains_key("authorization")
+        req.headers.contains_key("authorization")
     }
 }
 
@@ -155,7 +155,7 @@ impl Pipe for ValidationPipe {
         self.tracker.track("pipe:validation");
         let req = context.take_request();
         let is_invalid = req
-            .headers()
+            .headers
             .get("x-valid")
             .and_then(|v| v.to_str().ok())
             .map(|value| value == "false")
@@ -409,7 +409,7 @@ async fn di_in_enhancers() {
     impl Guard for DIGuard {
         fn can_activate(&self, context: &Context) -> bool {
             let req = context.take_request();
-            req.headers()
+            req.headers
                 .get("x-token")
                 .and_then(|v| v.to_str().ok())
                 .map(|token| self.auth.validate(token))

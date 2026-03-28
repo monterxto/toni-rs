@@ -38,10 +38,10 @@ impl User {
 /// Authentication service (injectable via Toni DI)
 #[injectable(pub struct _AuthService;)]
 impl _AuthService {
-    fn verify_token(&self, req: &HttpRequest) -> Option<User> {
+    fn verify_token(&self, req: &toni::RequestPart) -> Option<User> {
         // In a real app, verify JWT token from headers
         let auth_value = req
-            .headers()
+            .headers
             .get("authorization")
             .and_then(|v| v.to_str().ok())?;
 
@@ -112,7 +112,7 @@ impl juniper::Context for GraphQLContext {}
 impl ContextBuilder for _GraphQLContextBuilder {
     type Context = GraphQLContext;
 
-    async fn build(&self, req: &HttpRequest) -> Self::Context {
+    async fn build(&self, req: &toni::RequestPart) -> Self::Context {
         GraphQLContext {
             user: self.auth_service.verify_token(req),
             database_service: Arc::new(self.database_service.clone()),

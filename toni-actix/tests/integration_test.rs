@@ -1,6 +1,6 @@
 use toni::{
-    controller, get, http_helpers::Body as ToniBody, injectable, module, post, HttpAdapter,
-    HttpRequest,
+    controller, extractors::Bytes, get, http_helpers::Body as ToniBody, injectable, module, post,
+    HttpAdapter,
 };
 use toni_actix::ActixAdapter;
 
@@ -28,13 +28,13 @@ impl TestService {
 )]
 impl TestController {
     #[get("/hello")]
-    fn hello(&self, _req: HttpRequest) -> ToniBody {
+    fn hello(&self, _req: toni::HttpRequest) -> ToniBody {
         ToniBody::text(self.test_service.get_greeting())
     }
 
     #[post("/echo")]
-    fn echo(&self, req: HttpRequest) -> ToniBody {
-        let message = String::from_utf8_lossy(req.body()).into_owned();
+    async fn echo(&self, Bytes(body): Bytes) -> ToniBody {
+        let message = String::from_utf8_lossy(&body).into_owned();
         ToniBody::text(self.test_service.echo(message))
     }
 }

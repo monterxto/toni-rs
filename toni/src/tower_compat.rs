@@ -1,14 +1,15 @@
+use std::convert::Infallible;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use bytes::Bytes;
 use http_body::Body as HttpBody;
-use http_body_util::BodyExt;
+use http_body_util::{BodyExt, Full};
 use tower::{Layer, Service, ServiceExt};
 
 use crate::async_trait;
-use crate::http_helpers::{Body, HttpRequest, HttpResponse};
+use crate::http_helpers::{Body, BoxBody, HttpRequest, HttpResponse, RequestBody, RequestPart};
 use crate::traits_helpers::middleware::{Middleware, MiddlewareResult, Next};
 
 fn to_toni_response<B>(resp: http::Response<B>) -> HttpResponse
@@ -22,7 +23,10 @@ where
         .headers
         .iter()
         .filter_map(|(name, value)| {
-            value.to_str().ok().map(|v| (name.to_string(), v.to_string()))
+            value
+                .to_str()
+                .ok()
+                .map(|v| (name.to_string(), v.to_string()))
         })
         .collect();
 
@@ -43,11 +47,16 @@ where
     }
 }
 
-/// Bridges toni's [`Next`] chain as a `tower::Service<http::Request<Bytes>>`.
+/// Bridges toni's [`Next`] chain as a `tower::Service<http::Request<Full<Bytes>>>`.
 ///
 /// Single-use by design — Tower layers that call the inner service more than
 /// once (`tower::retry`, `tower::hedge`) will panic. Those are client-side
 /// patterns; server request middleware calls downstream exactly once.
+///
+/// Uses `Full<Bytes>` as the body type (infallible error) to avoid the HRTB
+/// lifetime issue that arises when `async_trait` sees `Box<dyn Error>` in
+/// service bounds. True streaming through Tower layers is deferred to the
+/// `feat/async-trait-free` branch.
 pub struct ToniNextService {
     next: Option<Box<dyn Next>>,
 }
@@ -58,8 +67,8 @@ impl ToniNextService {
     }
 }
 
-impl Service<http::Request<Bytes>> for ToniNextService {
-    type Response = http::Response<crate::http_helpers::BoxBody>;
+impl Service<http::Request<Full<Bytes>>> for ToniNextService {
+    type Response = http::Response<BoxBody>;
     type Error = Box<dyn std::error::Error + Send + Sync>;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
@@ -67,14 +76,20 @@ impl Service<http::Request<Bytes>> for ToniNextService {
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, req: http::Request<Bytes>) -> Self::Future {
+    fn call(&mut self, req: http::Request<Full<Bytes>>) -> Self::Future {
         let next = self
             .next
             .take()
             .expect("ToniNextService called more than once");
 
         Box::pin(async move {
-            let toni_req = HttpRequest(req);
+            let (http_parts, full_body) = req.into_parts();
+            let bytes = full_body
+                .collect()
+                .await
+                .map_err(|never: Infallible| match never {})?
+                .to_bytes();
+            let toni_req = HttpRequest::from_parts(http_parts, RequestBody::Buffered(bytes));
             let toni_resp = next.run(toni_req).await?;
 
             let status = http::StatusCode::from_u16(toni_resp.status)
@@ -82,8 +97,8 @@ impl Service<http::Request<Bytes>> for ToniNextService {
 
             let resp_body = match toni_resp.body {
                 Some(body) => body.into_box_body(),
-                None => http_body_util::Empty::new()
-                    .map_err(|never: std::convert::Infallible| match never {})
+                None => Full::new(Bytes::new())
+                    .map_err(|never: Infallible| match never {})
                     .boxed(),
             };
 
@@ -103,9 +118,13 @@ impl Service<http::Request<Bytes>> for ToniNextService {
 ///
 /// Enables the Tower middleware ecosystem (CORS, tracing, compression, rate
 /// limiting, timeouts, etc.) inside `configure_middleware` without any
-/// per-adapter work. Because toni's `HttpRequest` wraps `http::Request<Bytes>`
-/// directly, the Tower service receives the request as-is — all headers,
-/// extensions, and path params are available without translation.
+/// per-adapter work.
+///
+/// The Tower service receives the request body as a fully-buffered `Full<Bytes>`.
+/// Streaming bodies are collected before entering the Tower layer.
+// TODO: pass the streaming body through Tower
+// rather than collecting it. Requires a conversion layer between
+// RequestBoxBody and Tower's Body type.
 ///
 /// # Known limitations
 ///
@@ -140,17 +159,23 @@ impl<L> TowerLayer<L> {
 #[async_trait]
 impl<L, B> Middleware for TowerLayer<L>
 where
-    L: Layer<ToniNextService> + Send + Sync,
-    L::Service: Service<http::Request<Bytes>, Response = http::Response<B>> + Send,
+    L: Layer<ToniNextService> + Send + Sync + 'static,
+    L::Service: Service<http::Request<Full<Bytes>>, Response = http::Response<B>> + Send + 'static,
     B: HttpBody<Data = Bytes> + Send + Sync + 'static,
     B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
-    <L::Service as Service<http::Request<Bytes>>>::Error:
+    <L::Service as Service<http::Request<Full<Bytes>>>>::Error:
         Into<Box<dyn std::error::Error + Send + Sync>>,
-    <L::Service as Service<http::Request<Bytes>>>::Future: Send,
+    <L::Service as Service<http::Request<Full<Bytes>>>>::Future: Send,
 {
     async fn handle(&self, req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
+        let (parts, body) = req.into_parts();
+        let bytes: Bytes = match body {
+            RequestBody::Buffered(b) => b,
+            RequestBody::Streaming(s) => s.collect().await?.to_bytes(),
+        };
+        let http_req = http::Request::from_parts(parts, Full::new(bytes));
+
         let mut svc = self.0.layer(ToniNextService::new(next));
-        let http_req = req.into_inner();
         let http_resp = svc
             .ready()
             .await

@@ -27,7 +27,7 @@ pub use adapter::{RpcAdapter, RpcClientTransport, RpcMessageCallbacks, WebSocket
 pub use http_adapter::HttpAdapter;
 pub use http_helpers::{
     Body, BoxBody, HttpMethod, HttpRequest, HttpResponse, HttpResponseBuilder, IntoResponse,
-    RouteMetadata,
+    RequestBody, RequestBoxBody, RequestPart, RouteMetadata,
 };
 pub use injector::{InstanceWrapper, Protocol, ProtocolType};
 pub use rpc::{
@@ -58,7 +58,7 @@ pub use provider_scope::ProviderScope;
 pub use errors::HttpError;
 
 // Re-export trait so users wont have to import manually
-pub use extractors::FromRequest;
+pub use extractors::{BodyStream, FromRequest, FromRequestParts};
 
 // Re-export macros
 pub use toni_macros::*;

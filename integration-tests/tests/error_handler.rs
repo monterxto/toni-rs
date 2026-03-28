@@ -35,7 +35,7 @@ impl ErrorHandler for GlobalHandler {
     async fn handle_error(
         &self,
         error: Box<dyn std::error::Error + Send>,
-        _request: &HttpRequest,
+        _request: &toni::RequestPart,
     ) -> Option<HttpResponse> {
         if let Some(e) = error.downcast_ref::<HttpError>() {
             let mut resp = HttpResponse::new();
@@ -54,7 +54,7 @@ impl ErrorHandler for BadRequestHandler {
     async fn handle_error(
         &self,
         error: Box<dyn std::error::Error + Send>,
-        _request: &HttpRequest,
+        _request: &toni::RequestPart,
     ) -> Option<HttpResponse> {
         if let Some(e) = error.downcast_ref::<HttpError>() {
             if e.status_code() == 400 {

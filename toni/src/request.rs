@@ -27,8 +27,8 @@ use std::sync::Arc;
 
 use crate::FxHashMap;
 use crate::async_trait;
-use crate::extractors::FromRequest;
-use crate::http_helpers::{HttpRequest, PathParams};
+use crate::extractors::FromRequestParts;
+use crate::http_helpers::{PathParams, RequestPart};
 use crate::provider_scope::ProviderScope;
 use crate::traits_helpers::{Provider, ProviderFactory};
 
@@ -39,7 +39,7 @@ use crate::traits_helpers::{Provider, ProviderFactory};
 /// `Request` is request-scoped and cannot be injected into singleton providers.
 #[derive(Clone)]
 pub struct Request {
-    inner: Arc<HttpRequest>,
+    inner: Arc<RequestPart>,
     path_params: HashMap<String, String>,
     query_params: HashMap<String, String>,
 }
@@ -53,10 +53,10 @@ impl Provider for Request {
     async fn execute(
         &self,
         _params: Vec<Box<dyn Any + Send>>,
-        req: Option<&HttpRequest>,
+        req: Option<&RequestPart>,
     ) -> Box<dyn Any + Send> {
-        let http_req = req.expect("Request provider requires HttpRequest");
-        Box::new(Request::from_request(http_req).expect("infallible"))
+        let parts = req.expect("Request provider requires a request-scoped context");
+        Box::new(Request::from_request_parts(parts).expect("infallible"))
     }
 
     fn get_token_factory(&self) -> String {
@@ -70,23 +70,23 @@ impl Provider for Request {
 
 impl Request {
     pub fn method(&self) -> &str {
-        self.inner.method().as_str()
+        self.inner.method.as_str()
     }
 
     pub fn uri(&self) -> &http::Uri {
-        self.inner.uri()
+        &self.inner.uri
     }
 
     /// Get a header value by name (case-insensitive).
     pub fn header(&self, name: &str) -> Option<&str> {
         self.inner
-            .headers()
+            .headers
             .get(name)
             .and_then(|v| v.to_str().ok())
     }
 
     pub fn headers(&self) -> &http::HeaderMap {
-        self.inner.headers()
+        &self.inner.headers
     }
 
     pub fn query_params(&self) -> &HashMap<String, String> {
@@ -98,32 +98,32 @@ impl Request {
     }
 
     pub fn extensions(&self) -> &http::Extensions {
-        self.inner.extensions()
+        &self.inner.extensions
     }
 
-    pub fn inner(&self) -> &HttpRequest {
+    pub fn inner(&self) -> &RequestPart {
         &self.inner
     }
 }
 
-impl FromRequest for Request {
+impl FromRequestParts for Request {
     type Error = std::convert::Infallible;
 
-    fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        let path_params = req
-            .extensions()
+    fn from_request_parts(parts: &RequestPart) -> Result<Self, Self::Error> {
+        let path_params = parts
+            .extensions
             .get::<PathParams>()
             .map(|p| p.0.clone())
             .unwrap_or_default();
 
-        let query_params = req
-            .uri()
+        let query_params = parts
+            .uri
             .query()
             .and_then(|q| serde_urlencoded::from_str(q).ok())
             .unwrap_or_default();
 
         Ok(Self {
-            inner: Arc::new(req.clone()),
+            inner: Arc::new(parts.clone()),
             path_params,
             query_params,
         })
@@ -142,9 +142,8 @@ impl ProviderFactory for RequestFactory {
         &self,
         _deps: FxHashMap<String, Arc<Box<dyn Provider>>>,
     ) -> Arc<Box<dyn Provider>> {
-        let provider =
-            Request::from_request(&HttpRequest(http::Request::new(bytes::Bytes::new())))
-                .expect("infallible");
+        let (parts, ()) = http::Request::builder().body(()).unwrap().into_parts();
+        let provider = Request::from_request_parts(&parts).expect("infallible");
         Arc::new(Box::new(provider) as Box<dyn Provider>)
     }
 }

@@ -1,7 +1,7 @@
 //! Extractor parameter detection and code generation
 //!
 //! Detects extractor types like Path<T>, Query<T>, Json<T>, Validated<T>
-//! and generates FromRequest extraction code.
+//! and generates FromRequestParts or FromRequest extraction code accordingly.
 
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -28,23 +28,25 @@ pub struct ExtractorParam {
 }
 
 /// The kind of extractor
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone)]
 pub enum ExtractorKind {
-    /// Path<T> extractor
+    /// Path<T> extractor — parts-only
     Path,
-    /// Query<T> extractor
+    /// Query<T> extractor — parts-only
     Query,
-    /// Json<T> extractor
+    /// Json<T> extractor — body-consuming
     Json,
-    /// Body<T> extractor (auto-detects content type)
+    /// Body<T> extractor (auto-detects content type) — body-consuming
     Body,
-    /// Bytes extractor (raw binary data)
+    /// Bytes extractor (raw binary data) — body-consuming
     Bytes,
-    /// Validated<T> extractor
+    /// BodyStream extractor (streaming body) — body-consuming
+    BodyStream,
+    /// Validated<T> extractor — body-consuming
     Validated,
-    /// HttpRequest (not an extractor, just passed through)
+    /// HttpRequest (not an extractor, just passed through — body-consuming)
     HttpRequest,
-    /// Request extractor (optional parameter)
+    /// Request extractor — parts-only
     Request,
     /// Option<T> wrapped extractor (optional extraction)
     Optional {
@@ -53,8 +55,25 @@ pub enum ExtractorKind {
         /// The inner type T from Option<T>
         inner_type: Type,
     },
-    /// Unknown type - will be passed as-is
+    /// Unknown type — treated as body-consuming (FromRequest)
     Unknown,
+}
+
+impl ExtractorKind {
+    /// Whether this extractor consumes the body (and therefore `req` itself).
+    /// Body-consuming extractors must be generated after all parts extractors.
+    pub fn is_body_consuming(&self) -> bool {
+        matches!(
+            self,
+            ExtractorKind::Json
+                | ExtractorKind::Body
+                | ExtractorKind::Bytes
+                | ExtractorKind::BodyStream
+                | ExtractorKind::Validated
+                | ExtractorKind::HttpRequest
+                | ExtractorKind::Unknown
+        )
+    }
 }
 
 /// Recursively extract parameter name from potentially nested patterns
@@ -124,7 +143,6 @@ fn detect_extractor_kind(ty: &Type) -> ExtractorKind {
             if type_name == "Option" {
                 if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
                     if let Some(syn::GenericArgument::Type(inner_type)) = args.args.first() {
-                        // Recursively detect the inner extractor kind
                         let inner_kind = detect_extractor_kind(inner_type);
                         return ExtractorKind::Optional {
                             inner_kind: Box::new(inner_kind),
@@ -132,7 +150,7 @@ fn detect_extractor_kind(ty: &Type) -> ExtractorKind {
                         };
                     }
                 }
-                // If we can't extract the inner type, treat as Unknown
+                // Can't extract the inner type — treat as Unknown.
                 return ExtractorKind::Unknown;
             }
 
@@ -142,6 +160,7 @@ fn detect_extractor_kind(ty: &Type) -> ExtractorKind {
                 "Json" => ExtractorKind::Json,
                 "Body" => ExtractorKind::Body,
                 "Bytes" => ExtractorKind::Bytes,
+                "BodyStream" => ExtractorKind::BodyStream,
                 "Validated" => ExtractorKind::Validated,
                 "HttpRequest" => ExtractorKind::HttpRequest,
                 "Request" => ExtractorKind::Request,
@@ -152,38 +171,86 @@ fn detect_extractor_kind(ty: &Type) -> ExtractorKind {
     ExtractorKind::Unknown
 }
 
-/// Generate extraction code for extractor parameters
+/// Generate extraction code for extractor parameters.
+///
+/// Parts extractors (Path, Query, Request) are emitted first using
+/// `FromRequestParts::from_request_parts(&req.parts)` — they borrow parts without
+/// consuming `req`. Body extractors (Json, Body, Bytes, BodyStream, Validated) are
+/// emitted last using `FromRequest::from_request(req).await` — they consume `req`.
+/// This ordering ensures the borrow of `req.parts` completes before `req` is moved.
 pub fn generate_extractor_extractions(
     params: &[ExtractorParam],
 ) -> Result<(Vec<TokenStream>, Vec<TokenStream>)> {
-    let mut extractions = Vec::new();
-    let mut call_args = Vec::new();
+    // Extractions must run parts-first so parts borrows end before the body is moved.
+    // Call args must match the original method signature order — these orderings are independent.
+    //
+    // The execute template always emits `let (_req_parts, _req_body) = __req.0.into_parts();`
+    // before these extractions. Parts extractors borrow `_req_parts`; body extractors
+    // reconstruct `HttpRequest::from_parts(_req_parts, _req_body)` and consume them.
+    let mut ordered: Vec<&ExtractorParam> = params.iter().collect();
+    ordered.sort_by_key(|p| p.kind.is_body_consuming() as u8);
 
-    for param in params {
+    let mut extractions = Vec::new();
+
+    for param in &ordered {
         let param_name = &param.param_name;
         let param_type = &param.param_type;
 
         match &param.kind {
-            ExtractorKind::HttpRequest => {
-                call_args.push(quote! { req.clone() });
-            }
-            ExtractorKind::Optional { inner_type, .. } => {
-                // Returns None on extraction failure instead of 400 error
-                let extraction = quote! {
-                    let #param_name = <#inner_type as ::toni::FromRequest>::from_request(&req).ok();
+            ExtractorKind::HttpRequest => {}
+
+            // Returns None on extraction failure instead of a 400 response.
+            ExtractorKind::Optional { inner_type, inner_kind } => {
+                let extraction = match inner_kind.as_ref() {
+                    ExtractorKind::Unknown => quote! {
+                        let #param_name = <#inner_type as ::toni::FromRequest>::from_request(
+                            ::toni::http_helpers::HttpRequest::from_parts(
+                                _req_parts.clone(),
+                                ::toni::http_helpers::RequestBody::empty(),
+                            )
+                        ).await.ok();
+                    },
+                    k if k.is_body_consuming() => quote! {
+                        let #param_name = <#inner_type as ::toni::FromRequest>::from_request(
+                            ::toni::http_helpers::HttpRequest::from_parts(_req_parts, _req_body)
+                        ).await.ok();
+                    },
+                    _ => quote! {
+                        let #param_name = <#inner_type as ::toni::FromRequestParts>::from_request_parts(&_req_parts).ok();
+                    },
                 };
                 extractions.push(extraction);
-                call_args.push(quote! { #param_name });
             }
-            ExtractorKind::Path
-            | ExtractorKind::Query
-            | ExtractorKind::Json
+
+            ExtractorKind::Path | ExtractorKind::Query | ExtractorKind::Request => {
+                let extraction = quote! {
+                    let #param_name = match <#param_type as ::toni::FromRequestParts>::from_request_parts(&_req_parts) {
+                        Ok(value) => value,
+                        Err(e) => {
+                            let error_body = ::serde_json::json!({
+                                "error": "Extraction failed",
+                                "details": e.to_string()
+                            });
+                            return ::toni::http_helpers::HttpResponse {
+                                body: Some(::toni::http_helpers::Body::json(error_body)),
+                                status: 400,
+                                headers: vec![],
+                            };
+                        }
+                    };
+                };
+                extractions.push(extraction);
+            }
+
+            ExtractorKind::Json
             | ExtractorKind::Body
             | ExtractorKind::Bytes
-            | ExtractorKind::Validated
-            | ExtractorKind::Request => {
+            | ExtractorKind::BodyStream
+            | ExtractorKind::Validated => {
                 let extraction = quote! {
-                    let #param_name = match <#param_type as ::toni::FromRequest>::from_request(&req) {
+                    let #param_name = match <#param_type as ::toni::FromRequest>::from_request(
+                        ::toni::http_helpers::HttpRequest::from_parts(_req_parts, _req_body)
+                    ).await {
                         Ok(value) => value,
                         Err(e) => {
                             let error_body = ::serde_json::json!({
@@ -199,12 +266,18 @@ pub fn generate_extractor_extractions(
                     };
                 };
                 extractions.push(extraction);
-                call_args.push(quote! { #param_name });
             }
+
+            // Unknown types implement FromRequest with a parts-only (empty body) request,
+            // allowing multiple custom extractors without consuming the streaming body.
             ExtractorKind::Unknown => {
-                // Unknown type - try to extract it anyway
                 let extraction = quote! {
-                    let #param_name = match <#param_type as ::toni::FromRequest>::from_request(&req) {
+                    let #param_name = match <#param_type as ::toni::FromRequest>::from_request(
+                        ::toni::http_helpers::HttpRequest::from_parts(
+                            _req_parts.clone(),
+                            ::toni::http_helpers::RequestBody::empty(),
+                        )
+                    ).await {
                         Ok(value) => value,
                         Err(e) => {
                             let error_body = ::serde_json::json!({
@@ -220,10 +293,23 @@ pub fn generate_extractor_extractions(
                     };
                 };
                 extractions.push(extraction);
-                call_args.push(quote! { #param_name });
             }
         }
     }
+
+    // Call args follow the original signature order, not the extraction order.
+    let call_args: Vec<TokenStream> = params
+        .iter()
+        .map(|p| {
+            let name = &p.param_name;
+            match &p.kind {
+                ExtractorKind::HttpRequest => quote! {
+                    ::toni::http_helpers::HttpRequest::from_parts(_req_parts, _req_body)
+                },
+                _ => quote! { #name },
+            }
+        })
+        .collect();
 
     Ok((extractions, call_args))
 }

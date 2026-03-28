@@ -16,7 +16,9 @@ pub fn extract_body_from_param(marker_param: &MarkerParam) -> Result<TokenStream
 
     // Generate: Body<T> extractor call
     let extract_token_stream = quote! {
-        let #param_name = match <::toni::extractors::Body<#param_type> as ::toni::FromRequest>::from_request(&req) {
+        let #param_name = match <::toni::extractors::Body<#param_type> as ::toni::FromRequest>::from_request(
+            ::toni::http_helpers::HttpRequest::from_parts(_req_parts, _req_body)
+        ).await {
             Ok(::toni::extractors::Body(value)) => value,
             Err(e) => {
                 let error_body = ::serde_json::json!({
@@ -46,7 +48,7 @@ pub fn extract_query_from_param(marker_param: &MarkerParam) -> Result<TokenStrea
     // If no argument provided, extract as struct using Query<T>
     let Some(marker_arg) = &marker_param.marker_arg else {
         let extract_token_stream = quote! {
-            let #param_name = match <::toni::extractors::Query<#param_type> as ::toni::FromRequest>::from_request(&req) {
+            let #param_name = match <::toni::extractors::Query<#param_type> as ::toni::FromRequestParts>::from_request_parts(&_req_parts) {
                 Ok(::toni::extractors::Query(value)) => value,
                 Err(e) => {
                     let error_body = ::serde_json::json!({
@@ -77,7 +79,7 @@ pub fn extract_query_from_param(marker_param: &MarkerParam) -> Result<TokenStrea
                 let #param_name: #param_type = {
                     let __qp: std::collections::HashMap<String, String> =
                         <::toni::extractors::Query<std::collections::HashMap<String, String>>
-                            as ::toni::FromRequest>::from_request(&req)
+                            as ::toni::FromRequestParts>::from_request_parts(&_req_parts)
                         .map(|q| q.0)
                         .unwrap_or_default();
                     __qp.get(#marker_arg)
@@ -90,7 +92,7 @@ pub fn extract_query_from_param(marker_param: &MarkerParam) -> Result<TokenStrea
                 let #param_name: #param_type = {
                     let __qp: std::collections::HashMap<String, String> =
                         <::toni::extractors::Query<std::collections::HashMap<String, String>>
-                            as ::toni::FromRequest>::from_request(&req)
+                            as ::toni::FromRequestParts>::from_request_parts(&_req_parts)
                         .map(|q| q.0)
                         .unwrap_or_default();
                     match __qp.get(#marker_arg) {
@@ -118,7 +120,7 @@ pub fn extract_query_from_param(marker_param: &MarkerParam) -> Result<TokenStrea
                 let #param_name: #param_type = {
                     let __qp: std::collections::HashMap<String, String> =
                         <::toni::extractors::Query<std::collections::HashMap<String, String>>
-                            as ::toni::FromRequest>::from_request(&req)
+                            as ::toni::FromRequestParts>::from_request_parts(&_req_parts)
                         .map(|q| q.0)
                         .unwrap_or_default();
                     match __qp.get(#marker_arg) {
@@ -155,7 +157,7 @@ pub fn extract_query_from_param(marker_param: &MarkerParam) -> Result<TokenStrea
     } else {
         // For complex types, use Query<T> extractor
         quote! {
-            let #param_name = match <::toni::Query<#param_type> as ::toni::FromRequest>::from_request(&req) {
+            let #param_name = match <::toni::Query<#param_type> as ::toni::FromRequestParts>::from_request_parts(&_req_parts) {
                 Ok(::toni::Query(value)) => value,
                 Err(e) => {
                     let error_body = ::serde_json::json!({
@@ -184,7 +186,7 @@ pub fn extract_path_param_from_param(marker_param: &MarkerParam) -> Result<Token
     })?;
 
     let extract_token_stream = quote! {
-        let #param_name: #param_type = match req.extensions()
+        let #param_name: #param_type = match (&_req_parts.extensions)
             .get::<::toni::http_helpers::PathParams>()
             .and_then(|p| p.get(#marker_arg))
         {

@@ -7,6 +7,7 @@
 
 use toni::{
     controller, get, injectable, module, toni_factory::ToniFactory, Body as ToniBody, HttpRequest,
+    http_helpers::RequestPart,
 };
 
 // ===== 1. Define types to store in extensions =====
@@ -27,16 +28,16 @@ pub struct RequestContext {
 }
 
 impl RequestContext {
-    /// Special method called by framework with HttpRequest
-    pub fn from_request(req: &HttpRequest) -> Self {
+    /// Special method called by framework with the request parts.
+    pub fn from_request(req: &RequestPart) -> Self {
         let user_id = req
-            .extensions()
+            .extensions
             .get::<UserId>()
             .map(|u| u.0.clone())
             .unwrap_or_else(|| "anonymous".to_string());
 
         let request_id = req
-            .extensions()
+            .extensions
             .get::<RequestId>()
             .map(|r| r.0.clone())
             .unwrap_or_else(|| "no-request-id".to_string());
@@ -128,17 +129,15 @@ mod tests {
 
     #[test]
     fn test_request_context_construction() {
-        let mut req = HttpRequest(
-            http::Request::builder()
-                .method("GET")
-                .uri("/test")
-                .body(toni::http_helpers::Bytes::new())
-                .unwrap(),
-        );
+        let (mut req, ()) = http::Request::builder()
+            .method("GET")
+            .uri("/test")
+            .body(())
+            .unwrap()
+            .into_parts();
 
-        req.extensions_mut().insert(UserId("alice".to_string()));
-        req.extensions_mut()
-            .insert(RequestId("req-123".to_string()));
+        req.extensions.insert(UserId("alice".to_string()));
+        req.extensions.insert(RequestId("req-123".to_string()));
 
         // Call from_request
         let context = RequestContext::from_request(&req);
@@ -151,13 +150,12 @@ mod tests {
 
     #[test]
     fn test_request_context_anonymous() {
-        let req = HttpRequest(
-            http::Request::builder()
-                .method("GET")
-                .uri("/test")
-                .body(toni::http_helpers::Bytes::new())
-                .unwrap(),
-        );
+        let (req, ()) = http::Request::builder()
+            .method("GET")
+            .uri("/test")
+            .body(())
+            .unwrap()
+            .into_parts();
 
         let context = RequestContext::from_request(&req);
 

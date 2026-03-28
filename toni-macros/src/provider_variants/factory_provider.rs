@@ -211,7 +211,7 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
                 async fn execute(
                     &self,
                     _params: Vec<Box<dyn std::any::Any + Send>>,
-                    _req: Option<&toni::HttpRequest>,
+                    _req: Option<&toni::http_helpers::RequestPart>,
                 ) -> Box<dyn std::any::Any + Send> {
                     let _dependencies = &self.deps;
                     let factory = #factory_expr;
@@ -245,7 +245,7 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
                 async fn execute(
                     &self,
                     _params: Vec<Box<dyn std::any::Any + Send>>,
-                    _req: Option<&toni::HttpRequest>,
+                    _req: Option<&toni::http_helpers::RequestPart>,
                 ) -> Box<dyn std::any::Any + Send> {
                     #execute_body
                 }

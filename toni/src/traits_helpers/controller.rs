@@ -3,7 +3,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use rustc_hash::FxHashMap;
 
-use crate::http_helpers::{HttpMethod, HttpRequest, HttpResponse, RouteMetadata};
+use crate::http_helpers::{HttpMethod, HttpRequest, HttpResponse, RequestPart, RouteMetadata};
 
 use super::{ErrorHandler, Guard, Interceptor, Pipe, provider::Provider, validate::Validatable};
 
@@ -52,7 +52,7 @@ pub trait Controller: Send + Sync {
         Arc::new(RouteMetadata::new())
     }
 
-    fn get_body_dto(&self, req: &HttpRequest) -> Option<Box<dyn Validatable>>;
+    fn get_body_dto(&self, _req: &RequestPart) -> Option<Box<dyn Validatable>>;
 
     // Lifecycle Hooks
 

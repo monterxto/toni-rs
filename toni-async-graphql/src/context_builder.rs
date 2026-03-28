@@ -1,6 +1,6 @@
 use async_graphql::Data;
 use async_trait::async_trait;
-use toni::HttpRequest;
+use toni::RequestPart;
 
 /// Trait for building GraphQL context from HTTP requests.
 ///
@@ -13,14 +13,14 @@ use toni::HttpRequest;
 ///
 /// ```rust
 /// use toni_async_graphql::{ContextBuilder, async_graphql::Data};
-/// use toni::HttpRequest;
+/// use toni::RequestPart;
 /// use async_trait::async_trait;
 ///
 /// struct SimpleContext;
 ///
 /// #[async_trait]
 /// impl ContextBuilder for SimpleContext {
-///     async fn build(&self, _req: &HttpRequest) -> Data {
+///     async fn build(&self, _req: &RequestPart) -> Data {
 ///         Data::default()
 ///     }
 /// }
@@ -30,7 +30,7 @@ use toni::HttpRequest;
 ///
 /// ```ignore
 /// use toni_async_graphql::{ContextBuilder, async_graphql::Data};
-/// use toni::{HttpRequest, injectable};
+/// use toni::{RequestPart, injectable};
 /// use async_trait::async_trait;
 ///
 /// #[injectable(
@@ -41,7 +41,7 @@ use toni::HttpRequest;
 /// )]
 /// #[async_trait]
 /// impl ContextBuilder for MyContextBuilder {
-///     async fn build(&self, req: &HttpRequest) -> Data {
+///     async fn build(&self, req: &RequestPart) -> Data {
 ///         let mut data = Data::default();
 ///
 ///         // Add HTTP request
@@ -74,7 +74,7 @@ pub trait ContextBuilder: Send + Sync + 'static {
     /// # Returns
     ///
     /// An `async_graphql::Data` container with your context data.
-    async fn build(&self, req: &HttpRequest) -> Data;
+    async fn build(&self, req: &RequestPart) -> Data;
 }
 
 /// Default context builder that creates an empty context.
@@ -85,7 +85,7 @@ pub struct DefaultContextBuilder;
 
 #[async_trait]
 impl ContextBuilder for DefaultContextBuilder {
-    async fn build(&self, _req: &HttpRequest) -> Data {
+    async fn build(&self, _req: &RequestPart) -> Data {
         Data::default()
     }
 }

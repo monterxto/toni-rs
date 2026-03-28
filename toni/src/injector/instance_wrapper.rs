@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     async_trait,
-    http_helpers::{HttpMethod, HttpRequest, HttpResponse, RouteMetadata},
+    http_helpers::{HttpMethod, HttpRequest, HttpResponse, RequestPart, RouteMetadata},
     middleware::{Middleware, MiddlewareChain},
     structs_helpers::EnhancerMetadata,
     traits_helpers::{Controller, ErrorHandler, Guard, Interceptor, InterceptorNext, Pipe},
@@ -109,11 +109,10 @@ impl InstanceWrapper {
         let error_handlers_for_middleware = self.error_handlers.clone();
         let route_metadata = self.route_metadata.clone();
 
-        // Store request reference for middleware error handling
-        // We need to clone here because middleware.execute takes ownership
-        let req_clone = req.clone();
+        let (parts, body) = req.into_parts();
+        let req_parts_for_error = parts.clone();
+        let req = HttpRequest::from_parts(parts, body);
 
-        // Execute middleware chain with controller as the final handler
         let middleware_result = self
             .middleware_chain
             .execute(req, move |req| {
@@ -154,7 +153,7 @@ impl InstanceWrapper {
                     let error: Box<dyn std::error::Error + Send + Sync> = Box::new(
                         std::io::Error::new(std::io::ErrorKind::Other, error_msg.clone()),
                     );
-                    if let Some(response) = handler.handle_error(error, &req_clone).await {
+                    if let Some(response) = handler.handle_error(error, &req_parts_for_error).await {
                         return response;
                     }
                 }
@@ -195,10 +194,7 @@ impl InstanceWrapper {
                     forbidden
                 };
 
-                // Extract request from context for error handler
-                let request = context.take_request();
-                // Route through ErrorHandler if available
-                return Self::handle_error_response(guard_response, &error_handlers, request).await;
+                return Self::handle_error_response(guard_response, &error_handlers, context.take_request()).await;
             }
         }
 
@@ -221,7 +217,7 @@ impl InstanceWrapper {
     async fn handle_error_response(
         response: HttpResponse,
         error_handlers: &[Arc<dyn ErrorHandler>],
-        request: &HttpRequest,
+        request: &RequestPart,
     ) -> HttpResponse {
         if response.status >= 400 {
             // Reconstruct HttpError from response to preserve type information
@@ -307,8 +303,7 @@ impl InstanceWrapper {
             }
         }
 
-        // Execute controller
-        let req = context.take_request().clone();
+        let req = context.take_request_owned();
         let controller_response = instance.execute(req).await;
         context.set_response(controller_response);
     }
@@ -330,12 +325,11 @@ impl InstanceWrapper {
 
             if needs_error_handling {
                 let http_response = std::mem::take(context.get_response_mut());
-                let request = context.take_request();
                 let http_error = Self::response_to_http_error(&http_response);
 
                 for handler in error_handlers.iter().rev() {
                     let error: Box<dyn std::error::Error + Send> = Box::new(http_error.clone());
-                    if let Some(handled_response) = handler.handle_error(error, request).await {
+                    if let Some(handled_response) = handler.handle_error(error, context.take_request()).await {
                         context.set_response(handled_response);
                         return;
                     }

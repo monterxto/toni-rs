@@ -5,7 +5,7 @@ use serde_json::Value;
 use std::any::Any;
 use std::sync::Arc;
 use toni::traits_helpers::Provider;
-use toni::{HttpRequest, ProviderScope};
+use toni::{ProviderScope, RequestPart};
 
 /// Injectable GraphQL service that executes GraphQL queries.
 ///
@@ -60,9 +60,8 @@ where
         query: String,
         operation_name: Option<String>,
         variables: Option<Value>,
-        http_req: &HttpRequest,
+        http_req: &RequestPart,
     ) -> async_graphql::Response {
-        // Build context from HTTP request
         let context_data = self.context_builder.build(http_req).await;
 
         // Build GraphQL request
@@ -105,7 +104,7 @@ where
     async fn execute(
         &self,
         _params: Vec<Box<dyn Any + Send>>,
-        _req: Option<&HttpRequest>,
+        _req: Option<&toni::http_helpers::RequestPart>,
     ) -> Box<dyn Any + Send> {
         //Box::new(self.clone())
 

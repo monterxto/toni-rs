@@ -7,7 +7,7 @@
 //! Run with:  cargo run --example multi_protocol_context
 
 use std::collections::HashMap;
-use toni::http_helpers::Bytes;
+use toni::http_helpers::RequestBody;
 use toni::websocket::WsHandshake;
 use toni::{Context, HttpRequest, ProtocolType, RpcContext, RpcData, WsClient, WsMessage};
 
@@ -25,7 +25,7 @@ impl UniversalAuthGuard {
             ProtocolType::Http => {
                 let (request, _) = context.switch_to_http().expect("HTTP context");
                 request
-                    .headers()
+                    .headers
                     .get("authorization")
                     .and_then(|v| v.to_str().ok())
                     .and_then(|h| h.strip_prefix("Bearer "))
@@ -55,9 +55,9 @@ impl LoggingInterceptor {
                 let (req, _) = context.switch_to_http().unwrap();
                 println!(
                     "[HTTP]      {} {} (agent: {:?})",
-                    req.method(),
-                    req.uri(),
-                    req.headers()
+                    req.method,
+                    req.uri,
+                    req.headers
                         .get("user-agent")
                         .and_then(|v| v.to_str().ok())
                 );
@@ -85,15 +85,15 @@ fn main() {
 
     // HTTP — valid token in Authorization header
     println!("--- HTTP ---");
-    let http_ctx = Context::from_request(
-        HttpRequest::builder()
-            .method("GET")
-            .uri("/api/orders")
-            .header("authorization", "Bearer valid-secret")
-            .header("user-agent", "example/1.0")
-            .body(Bytes::new())
-            .unwrap(),
-    );
+    let (http_parts, ()) = HttpRequest::builder()
+        .method("GET")
+        .uri("/api/orders")
+        .header("authorization", "Bearer valid-secret")
+        .header("user-agent", "example/1.0")
+        .body(())
+        .unwrap()
+        .into_parts();
+    let http_ctx = Context::from_request(HttpRequest::from_parts(http_parts, RequestBody::empty()));
     logger.log_request(&http_ctx);
     println!("auth: {}\n", guard.can_activate(&http_ctx));
 

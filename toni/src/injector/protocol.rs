@@ -1,17 +1,17 @@
-//! Protocol abstraction for execution context
-//!
-//! Enables guards, interceptors, and error handlers to work across HTTP, WebSocket,
-//! and RPC protocols through a unified context interface.
-
-use crate::http_helpers::{HttpRequest, HttpResponse};
+use crate::http_helpers::{HttpRequest, HttpResponse, RequestBody, RequestPart};
 use crate::rpc::{RpcContext, RpcData, RpcError};
 use crate::websocket::{WsClient, WsMessage};
+use parking_lot::Mutex;
 
 /// Protocol-specific data for execution context
 #[derive(Debug)]
 pub enum Protocol {
     Http {
-        request: HttpRequest,
+        // Parts are always present; body is taken once by the handler via
+        // Context::take_request_owned(). Storing the body in a Mutex makes
+        // Protocol: Sync even though RequestBody may contain a !Sync stream.
+        parts: RequestPart,
+        body: Mutex<Option<RequestBody>>,
         response: Option<HttpResponse>,
     },
 
@@ -39,8 +39,10 @@ pub enum ProtocolType {
 
 impl Protocol {
     pub fn http(request: HttpRequest) -> Self {
+        let (parts, body) = request.into_parts();
         Self::Http {
-            request,
+            parts,
+            body: Mutex::new(Some(body)),
             response: None,
         }
     }

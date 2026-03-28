@@ -1,7 +1,7 @@
 use serde::de::DeserializeOwned;
 
-use super::FromRequest;
-use crate::http_helpers::HttpRequest;
+use super::FromRequestParts;
+use crate::http_helpers::RequestPart;
 
 /// Extracts typed query parameters from the URL.
 ///
@@ -58,11 +58,11 @@ impl std::fmt::Display for QueryError {
 
 impl std::error::Error for QueryError {}
 
-impl<T: DeserializeOwned> FromRequest for Query<T> {
+impl<T: DeserializeOwned> FromRequestParts for Query<T> {
     type Error = QueryError;
 
-    fn from_request(req: &HttpRequest) -> Result<Self, Self::Error> {
-        let query = req.uri().query().unwrap_or("");
+    fn from_request_parts(parts: &RequestPart) -> Result<Self, Self::Error> {
+        let query = parts.uri.query().unwrap_or("");
         let value: T = serde_urlencoded::from_str(query)
             .map_err(|e| QueryError::DeserializeError(e.to_string()))?;
         Ok(Query(value))

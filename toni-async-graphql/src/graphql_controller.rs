@@ -130,8 +130,22 @@ where
         &self,
         req: HttpRequest,
     ) -> HttpResponse {
+        let (parts, body) = req.into_parts();
+        let body_bytes = match body.collect().await {
+            Ok(b) => b,
+            Err(e) => {
+                return HttpResponse {
+                    status: 400,
+                    body: Some(Body::json(serde_json::json!({
+                        "errors": [{"message": format!("Failed to read request body: {}", e)}]
+                    }))),
+                    headers: vec![],
+                };
+            }
+        };
+
         // Parse GraphQL request from body
-        let gql_request: GraphQLRequest = match serde_json::from_slice(req.body()) {
+        let gql_request: GraphQLRequest = match serde_json::from_slice(&body_bytes) {
             Ok(req) => req,
             Err(e) => {
                 return HttpResponse {
@@ -144,20 +158,18 @@ where
             }
         };
 
-        // Get the GraphQLService
-        let service_any = self.graphql_service.execute(vec![], Some(&req)).await;
+        let service_any = self.graphql_service.execute(vec![], Some(&parts)).await;
 
         let service = service_any
             .downcast_ref::<GraphQLService<Query, Mutation, Subscription, Ctx>>()
             .expect("Failed to downcast to GraphQLService");
 
-        // Execute the query
         let response = service
             .execute(
                 gql_request.query,
                 gql_request.operation_name,
                 gql_request.variables,
-                &req,
+                &parts,
             )
             .await;
 
@@ -193,7 +205,7 @@ where
 
     fn get_body_dto(
         &self,
-        _req: &HttpRequest,
+        _req: &toni::RequestPart,
     ) -> Option<Box<dyn toni::traits_helpers::validate::Validatable>> {
         None // GraphQL doesn't use DTO validation (uses GraphQL schema validation)
     }
@@ -244,7 +256,7 @@ impl Controller for GraphQLPlaygroundController {
 
     fn get_body_dto(
         &self,
-        _req: &HttpRequest,
+        _req: &toni::RequestPart,
     ) -> Option<Box<dyn toni::traits_helpers::validate::Validatable>> {
         None // Playground doesn't use DTO validation
     }

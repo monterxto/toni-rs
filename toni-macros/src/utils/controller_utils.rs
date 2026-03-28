@@ -35,13 +35,7 @@ pub fn attr_to_string(attr: &Attribute) -> Result<String, ()> {
 }
 
 pub fn create_extract_body_dto_token_stream(
-    body_dto: &Ident,
+    _body_dto: &Ident,
 ) -> syn::Result<proc_macro2::TokenStream> {
-    let get_body_dto_block = quote! {
-        let body: ::serde_json::Value = ::serde_json::from_slice(&req.body)
-            .unwrap_or_else(|_| ::serde_json::json!({}));
-        let body_json: #body_dto = ::serde_json::from_value(body).unwrap();
-        Some(Box::new(body_json))
-    };
-    Ok(get_body_dto_block)
+    Ok(quote! { None })
 }

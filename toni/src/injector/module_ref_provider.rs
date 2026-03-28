@@ -49,7 +49,7 @@ impl Provider for ModuleRefProvider {
     async fn execute(
         &self,
         _params: Vec<Box<dyn Any + Send>>,
-        _req: Option<&HttpRequest>,
+        _req: Option<&crate::http_helpers::RequestPart>,
     ) -> Box<dyn Any + Send> {
         // Create ModuleRef with just the module token
         // The container will be accessed via thread-local when needed

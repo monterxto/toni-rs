@@ -382,7 +382,7 @@ fn generate_controller_wrapper(
     let extractor_params = get_extractor_params(method)?;
     let has_extractors = extractor_params
         .iter()
-        .any(|p| p.kind != ExtractorKind::HttpRequest && p.kind != ExtractorKind::Unknown);
+        .any(|p| !matches!(p.kind, ExtractorKind::HttpRequest | ExtractorKind::Unknown));
 
     // Use extractor-based approach if:
     // 1. There are any actual extractors (Path, Query, Json, Body, Validated, Request), OR
@@ -481,7 +481,7 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
                         .get(&__lookup_token)
                         .unwrap_or_else(|| panic!("Missing dependency '{}'", __lookup_token));
 
-                    let any_box = provider.execute(vec![], Some(&req)).await;
+                    let any_box = provider.execute(vec![], Some(&_req_parts)).await;
 
                     *any_box.downcast::<#full_type>()
                         .unwrap_or_else(|_| panic!(
@@ -525,7 +525,7 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
                     // Transient: fresh instance per field
                     #(
                         #field_idents = {
-                            let any_box = provider.execute(vec![], Some(&req)).await;
+                            let any_box = provider.execute(vec![], Some(&_req_parts)).await;
                             *any_box.downcast::<#full_type>()
                                 .unwrap_or_else(|_| panic!(
                                     "Failed to downcast '{}' to {}",
@@ -537,7 +537,7 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
                 } else {
                     // Singleton/Request: shared instance cloned to all fields
                     let #temp_var: #full_type = {
-                        let any_box = provider.execute(vec![], Some(&req)).await;
+                        let any_box = provider.execute(vec![], Some(&_req_parts)).await;
                         *any_box.downcast::<#full_type>()
                             .unwrap_or_else(|_| panic!(
                                 "Failed to downcast '{}' to {}",
@@ -597,7 +597,7 @@ fn generate_method_call(
                     if let syn::Type::Path(type_path) = &*pat_type.ty {
                         if let Some(segment) = type_path.path.segments.last() {
                             if segment.ident == "HttpRequest" {
-                                call_args.push(quote! { req });
+                                call_args.push(quote! { __req });
                             } else {
                                 // Unknown non-marker parameter
                                 call_args.push(quote! { #param_name });
@@ -884,8 +884,10 @@ fn generate_singleton_controller_wrapper(
         impl ::toni::traits_helpers::Controller for #controller_name {
             async fn execute(
                 &self,
-                req: ::toni::http_helpers::HttpRequest,
+                __req: ::toni::http_helpers::HttpRequest,
             ) -> ::toni::http_helpers::HttpResponse {
+                let (_req_parts, _req_body) = __req.0.into_parts();
+
                 #(#marker_params_extraction)*
 
                 #instance_downcast
@@ -945,7 +947,7 @@ fn generate_singleton_controller_wrapper(
                 ::std::sync::Arc::new(metadata)
             }
 
-            fn get_body_dto(&self, _req: &::toni::http_helpers::HttpRequest) -> Option<Box<dyn ::toni::traits_helpers::validate::Validatable>> {
+            fn get_body_dto(&self, _req: &::toni::http_helpers::RequestPart) -> Option<Box<dyn ::toni::traits_helpers::validate::Validatable>> {
                 #body_dto_stream
             }
 
@@ -1084,8 +1086,10 @@ fn generate_request_controller_wrapper(
         impl ::toni::traits_helpers::Controller for #controller_name {
             async fn execute(
                 &self,
-                req: ::toni::http_helpers::HttpRequest,
+                __req: ::toni::http_helpers::HttpRequest,
             ) -> ::toni::http_helpers::HttpResponse {
+                let (_req_parts, _req_body) = __req.0.into_parts();
+
                 #(#field_resolutions)*
                 #(#marker_params_extraction)*
                 #struct_instantiation
@@ -1150,7 +1154,7 @@ fn generate_request_controller_wrapper(
                 ::std::sync::Arc::new(metadata)
             }
 
-            fn get_body_dto(&self, _req: &::toni::http_helpers::HttpRequest) -> Option<Box<dyn ::toni::traits_helpers::validate::Validatable>> {
+            fn get_body_dto(&self, _req: &::toni::http_helpers::RequestPart) -> Option<Box<dyn ::toni::traits_helpers::validate::Validatable>> {
                 #body_dto_stream
             }
         }
