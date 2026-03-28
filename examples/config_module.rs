@@ -52,7 +52,7 @@ impl AppService {
 })]
 impl ConfigController {
     #[get("/")]
-    fn get_config(&self, _req: HttpRequest) -> Body {
+    fn get_config(&self) -> Body {
         let cfg = self.service.get_config();
         Body::json(json!({
             "name":            cfg.name,

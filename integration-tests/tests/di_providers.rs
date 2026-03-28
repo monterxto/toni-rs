@@ -14,7 +14,7 @@ async fn provider_value_injects_constant() {
     #[controller(pub struct TestController {})]
     impl TestController {
         #[get("/port")]
-        fn get_port(&self, _req: HttpRequest) -> ToniBody {
+        fn get_port(&self) -> ToniBody {
             ToniBody::text("3000".to_string())
         }
     }
@@ -45,7 +45,7 @@ async fn provider_factory_sync_without_deps() {
     #[controller("", pub struct TestController {})]
     impl TestController {
         #[get("/test")]
-        fn test(&self, _req: HttpRequest) -> ToniBody {
+        fn test(&self) -> ToniBody {
             ToniBody::text("ok".to_string())
         }
     }
@@ -94,7 +94,7 @@ async fn provider_factory_sync_with_deps() {
     #[controller("", pub struct TestController {})]
     impl TestController {
         #[get("/test")]
-        fn test(&self, _req: HttpRequest) -> ToniBody {
+        fn test(&self) -> ToniBody {
             ToniBody::text("ok".to_string())
         }
     }
@@ -141,7 +141,7 @@ async fn provider_factory_async_with_deps() {
     #[controller("", pub struct TestController {})]
     impl TestController {
         #[get("/test")]
-        fn test(&self, _req: HttpRequest) -> ToniBody {
+        fn test(&self) -> ToniBody {
             ToniBody::text("ok".to_string())
         }
     }
@@ -203,7 +203,7 @@ async fn provider_alias_creates_alternate_token() {
     })]
     impl TestController {
         #[get("/test")]
-        fn test(&self, _req: HttpRequest) -> ToniBody {
+        fn test(&self) -> ToniBody {
             ToniBody::text(self.verify.report())
         }
     }
@@ -261,7 +261,7 @@ async fn provider_token_for_custom_types() {
     })]
     impl TestController {
         #[get("/test")]
-        fn test(&self, _req: HttpRequest) -> ToniBody {
+        fn test(&self) -> ToniBody {
             ToniBody::text(self.app.get_info())
         }
     }
@@ -339,7 +339,7 @@ async fn all_provider_variants_work_together() {
     })]
     impl TestController {
         #[get("/test")]
-        fn test(&self, _req: HttpRequest) -> ToniBody {
+        fn test(&self) -> ToniBody {
             ToniBody::text(self.consumer.report())
         }
     }

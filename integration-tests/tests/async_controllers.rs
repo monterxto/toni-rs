@@ -23,22 +23,22 @@ impl AsyncService {
 })]
 impl AsyncController {
     #[get("/data")]
-    async fn get_data(&self, _req: HttpRequest) -> ToniBody {
+    async fn get_data(&self) -> ToniBody {
         ToniBody::text(self.service.fetch_data().await)
     }
 
     #[get("/compute")]
-    async fn compute(&self, _req: HttpRequest) -> ToniBody {
+    async fn compute(&self) -> ToniBody {
         ToniBody::text(format!("Result: {}", self.service.compute(42).await))
     }
 
     #[get("/sync")]
-    fn sync_method(&self, _req: HttpRequest) -> ToniBody {
+    fn sync_method(&self) -> ToniBody {
         ToniBody::text("sync response".to_string())
     }
 
     #[get("/multi")]
-    async fn multi_await(&self, _req: HttpRequest) -> ToniBody {
+    async fn multi_await(&self) -> ToniBody {
         let data = self.service.fetch_data().await;
         let result = self.service.compute(10).await;
         ToniBody::text(format!("{} - {}", data, result))

@@ -150,10 +150,7 @@ impl Default for MiddlewareManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        http_helpers::HttpRequest,
-        traits_helpers::middleware::{Middleware, MiddlewareResult, Next},
-    };
+    use crate::traits_helpers::middleware::{Middleware, MiddlewareResult, NextHandle};
     use async_trait::async_trait;
 
     // Dummy middleware for testing
@@ -171,9 +168,9 @@ mod tests {
 
     #[async_trait]
     impl Middleware for DummyMiddleware {
-        async fn handle(&self, req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
+        async fn handle(&self, next: NextHandle) -> MiddlewareResult {
             println!("DummyMiddleware {} executed", self.name);
-            next.run(req).await
+            next.run().await
         }
     }
 

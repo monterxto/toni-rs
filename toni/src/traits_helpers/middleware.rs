@@ -7,24 +7,61 @@ use crate::middleware::RoutePattern;
 /// Result type for middleware chain execution
 pub type MiddlewareResult = Result<HttpResponse, Box<dyn std::error::Error + Send + Sync>>;
 
-/// Next function in the middleware chain
+/// Internal continuation passed through the middleware chain.
+///
+/// Not part of the public API — use [`NextHandle`] in `Middleware::handle`.
 #[async_trait]
-pub trait Next: Send + Sync {
-    async fn run(self: Box<Self>, req: HttpRequest) -> MiddlewareResult;
+pub(crate) trait NextInternal: Send + Sync {
+    async fn run_internal(self: Box<Self>, req: HttpRequest) -> MiddlewareResult;
+}
+
+/// The continuation of the middleware chain, carrying the in-flight request.
+///
+/// Passed to [`Middleware::handle`]. Call [`run`][NextHandle::run] to pass
+/// the request downstream unchanged, or [`run_with`][NextHandle::run_with]
+/// to replace it (e.g. after adding extensions or rewriting headers).
+/// Read the request without consuming `next` via [`request`][NextHandle::request].
+pub struct NextHandle {
+    req: HttpRequest,
+    inner: Box<dyn NextInternal>,
+}
+
+impl NextHandle {
+    pub(crate) fn new(req: HttpRequest, inner: Box<dyn NextInternal>) -> Self {
+        Self { req, inner }
+    }
+
+    pub fn request(&self) -> &HttpRequest {
+        &self.req
+    }
+
+    pub fn request_mut(&mut self) -> &mut HttpRequest {
+        &mut self.req
+    }
+
+    pub(crate) fn into_parts(self) -> (HttpRequest, Box<dyn NextInternal>) {
+        (self.req, self.inner)
+    }
+
+    pub async fn run(self) -> MiddlewareResult {
+        self.inner.run_internal(self.req).await
+    }
+
+    pub async fn run_with(self, req: HttpRequest) -> MiddlewareResult {
+        self.inner.run_internal(req).await
+    }
 }
 
 /// Core middleware trait
 #[async_trait]
 pub trait Middleware: Send + Sync {
-    /// Process the request and optionally call next
-    async fn handle(&self, req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult;
+    async fn handle(&self, next: NextHandle) -> MiddlewareResult;
 }
 
 /// Functional middleware - simpler alternative using closures
 pub type MiddlewareFn = Arc<
     dyn Fn(
-            HttpRequest,
-            Box<dyn Next>,
+            NextHandle,
         ) -> std::pin::Pin<Box<dyn std::future::Future<Output = MiddlewareResult> + Send>>
         + Send
         + Sync,
@@ -43,8 +80,8 @@ impl FunctionalMiddleware {
 
 #[async_trait]
 impl Middleware for FunctionalMiddleware {
-    async fn handle(&self, req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
-        (self.handler)(req, next).await
+    async fn handle(&self, next: NextHandle) -> MiddlewareResult {
+        (self.handler)(next).await
     }
 }
 

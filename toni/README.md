@@ -103,12 +103,12 @@ pub struct AppModule;
 #[controller("/app", pub struct _AppController { app_service: _AppService })]
 impl _AppController {
     #[post("")]
-    fn create(&self, _req: HttpRequest) -> Body {
+    fn create(&self) -> Body {
         Body::text(self.app_service.create())
     }
 
     #[get("")]
-    fn find_all(&self, _req: HttpRequest) -> Body {
+    fn find_all(&self) -> Body {
         Body::text(self.app_service.find_all())
     }
 }

@@ -58,17 +58,17 @@ impl AppService {
 )]
 impl AppController {
     #[get("/info")]
-    fn get_info(&self, _req: HttpRequest) -> ToniBody {
+    fn get_info(&self) -> ToniBody {
         ToniBody::text(self.service.get_app_info())
     }
 
     #[get("/database")]
-    fn get_database(&self, _req: HttpRequest) -> ToniBody {
+    fn get_database(&self) -> ToniBody {
         ToniBody::text(self.service.get_database_info())
     }
 
     #[get("/config")]
-    fn get_config(&self, _req: HttpRequest) -> ToniBody {
+    fn get_config(&self) -> ToniBody {
         let config = self.service.get_full_config();
         let json = serde_json::json!({
             "app_name": config.app_name,

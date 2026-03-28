@@ -4,11 +4,11 @@ use std::sync::{Arc, Mutex, OnceLock};
 use toni::async_trait;
 use toni::enhancer::{guard, interceptor, middleware};
 use toni::injector::Context;
-use toni::traits_helpers::middleware::{Middleware, MiddlewareResult, Next};
+use toni::traits_helpers::middleware::{Middleware, MiddlewareResult, NextHandle};
 use toni::traits_helpers::{Guard, Interceptor, InterceptorNext, MiddlewareConsumer};
 use toni::{
     controller, get, injectable, module, provider_value, use_guards, use_interceptors,
-    Body as ToniBody, HttpRequest, RequestPart,
+    Body as ToniBody, RequestPart,
 };
 
 use common::TestServer;
@@ -84,9 +84,9 @@ impl RequestTrackingMiddleware {
 
 #[async_trait]
 impl Middleware for RequestTrackingMiddleware {
-    async fn handle(&self, req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
+    async fn handle(&self, next: NextHandle) -> MiddlewareResult {
         self.tracker.track("middleware:request_tracking");
-        let mut response = next.run(req).await?;
+        let mut response = next.run().await?;
         response
             .headers
             .push(("X-Middleware".to_string(), "RequestTracking".to_string()));
@@ -106,17 +106,17 @@ impl HeaderValidationMiddleware {
 
 #[async_trait]
 impl Middleware for HeaderValidationMiddleware {
-    async fn handle(&self, req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
+    async fn handle(&self, next: NextHandle) -> MiddlewareResult {
         self.auth_service
             .tracker
             .track("middleware:header_validation");
-        if !req.headers().contains_key("x-request-id") {
+        if !next.request().headers().contains_key("x-request-id") {
             let mut response = toni::HttpResponse::new();
             response.status = 400;
             response.body = Some(ToniBody::text("Missing X-Request-ID header".to_string()));
             return Ok(response);
         }
-        next.run(req).await
+        next.run().await
     }
 }
 
@@ -209,7 +209,7 @@ impl EnhancerTestController {
     #[get("/admin")]
     #[use_guards(AdminGuard)]
     #[use_interceptors(LoggingInterceptor)]
-    fn admin_endpoint(&self, _req: HttpRequest) -> ToniBody {
+    fn admin_endpoint(&self) -> ToniBody {
         self.tracker.track("controller:admin");
         ToniBody::text("Admin access granted".to_string())
     }
@@ -217,13 +217,13 @@ impl EnhancerTestController {
     #[get("/user")]
     #[use_guards(UserGuard)]
     #[use_interceptors(TimingInterceptor, LoggingInterceptor)]
-    fn user_endpoint(&self, _req: HttpRequest) -> ToniBody {
+    fn user_endpoint(&self) -> ToniBody {
         self.tracker.track("controller:user");
         ToniBody::text("User access granted".to_string())
     }
 
     #[get("/public")]
-    fn public_endpoint(&self, _req: HttpRequest) -> ToniBody {
+    fn public_endpoint(&self) -> ToniBody {
         self.tracker.track("controller:public");
         ToniBody::text("Public access".to_string())
     }

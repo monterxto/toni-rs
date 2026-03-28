@@ -75,7 +75,7 @@ async fn global_error_handler_intercepts_http_error() {
     #[controller("/api", pub struct TestController {})]
     impl TestController {
         #[get("/missing")]
-        fn missing(&self, _req: HttpRequest) -> Result<ToniBody, HttpError> {
+        fn missing(&self) -> Result<ToniBody, HttpError> {
             Err(HttpError::not_found("resource not found"))
         }
     }
@@ -110,13 +110,13 @@ async fn method_error_handler_runs_before_global() {
     impl TestController {
         #[get("/bad")]
         #[use_error_handlers(BadRequestHandler {})]
-        fn bad(&self, _req: HttpRequest) -> Result<ToniBody, HttpError> {
+        fn bad(&self) -> Result<ToniBody, HttpError> {
             Err(HttpError::bad_request("invalid input"))
         }
 
         #[get("/gone")]
         #[use_error_handlers(BadRequestHandler {})]
-        fn gone(&self, _req: HttpRequest) -> Result<ToniBody, HttpError> {
+        fn gone(&self) -> Result<ToniBody, HttpError> {
             Err(HttpError::not_found("not found"))
         }
     }

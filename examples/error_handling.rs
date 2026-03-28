@@ -267,14 +267,14 @@ impl UserService {
 #[controller("/api", pub struct ApiController {})]
 impl ApiController {
     #[get("/hello")]
-    fn hello(&self, _req: HttpRequest) -> HttpResponse {
+    fn hello(&self) -> HttpResponse {
         HttpResponse::ok()
             .json(json!({"message": "Hello, World!"}))
             .build()
     }
 
     #[get("/with-headers")]
-    fn with_headers(&self, _req: HttpRequest) -> HttpResponse {
+    fn with_headers(&self) -> HttpResponse {
         HttpResponse::ok()
             .header("X-Custom-Header", "CustomValue")
             .header("X-Request-ID", "12345")
@@ -283,7 +283,7 @@ impl ApiController {
     }
 
     #[post("/create")]
-    fn create(&self, _req: HttpRequest) -> HttpResponse {
+    fn create(&self) -> HttpResponse {
         HttpResponse::created()
             .header("Location", "/api/resource/123")
             .json(json!({
@@ -295,17 +295,17 @@ impl ApiController {
 
     #[get("/protected")]
     #[use_guards(AuthGuard{})]
-    fn protected(&self, _req: HttpRequest) -> ToniBody {
+    fn protected(&self) -> ToniBody {
         ToniBody::json(json!({"message": "Access granted"}))
     }
 
     #[get("/not-found")]
-    fn not_found(&self, _req: HttpRequest) -> Result<ToniBody, HttpError> {
+    fn not_found(&self) -> Result<ToniBody, HttpError> {
         Err(HttpError::not_found("Resource not found"))
     }
 
     #[get("/server-error")]
-    fn server_error(&self, _req: HttpRequest) -> Result<ToniBody, HttpError> {
+    fn server_error(&self) -> Result<ToniBody, HttpError> {
         Err(HttpError::internal_server_error("Something went wrong"))
     }
 }
@@ -361,7 +361,7 @@ impl UserController {
     }
 
     #[get("/special")]
-    fn special(&self, _req: HttpRequest) -> Result<ToniBody, HttpError> {
+    fn special(&self) -> Result<ToniBody, HttpError> {
         Err(HttpError::custom(418, "I'm a teapot"))
     }
 }
@@ -390,7 +390,7 @@ impl ProductController {
     }
 
     #[get("/")]
-    fn list_products(&self, _req: HttpRequest) -> ToniBody {
+    fn list_products(&self) -> ToniBody {
         ToniBody::json(json!([
             {"id": "1", "name": "Widget", "price": 19.99}
         ]))

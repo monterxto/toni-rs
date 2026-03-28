@@ -38,7 +38,7 @@ async fn global_modules_attribute_syntax() {
     })]
     impl TestController {
         #[get("/test")]
-        fn test(&self, _req: HttpRequest) -> ToniBody {
+        fn test(&self) -> ToniBody {
             ToniBody::text(self.service.get_message())
         }
     }
@@ -77,7 +77,7 @@ async fn module_ref_runtime_provider_access() {
     })]
     impl TestController {
         #[get("/test")]
-        async fn test(&self, _req: HttpRequest) -> ToniBody {
+        async fn test(&self) -> ToniBody {
             let service = self.module_ref.get::<RuntimeService>().await;
             ToniBody::text(format!("{}", service.unwrap().value()))
         }
@@ -139,7 +139,7 @@ async fn nested_module_imports() {
     })]
     impl TestController {
         #[get("/test")]
-        fn test(&self, _req: HttpRequest) -> ToniBody {
+        fn test(&self) -> ToniBody {
             ToniBody::text(self.feature.get_data())
         }
     }
@@ -196,7 +196,7 @@ async fn module_exports_selective_providers() {
     })]
     impl TestController {
         #[get("/test")]
-        fn test(&self, _req: HttpRequest) -> ToniBody {
+        fn test(&self) -> ToniBody {
             ToniBody::text(self.consumer.get_data())
         }
     }
@@ -235,7 +235,7 @@ async fn module_struct_syntax() {
     })]
     impl TestController {
         #[get("/test")]
-        fn test(&self, _req: HttpRequest) -> ToniBody {
+        fn test(&self) -> ToniBody {
             ToniBody::text(self.service.message())
         }
     }

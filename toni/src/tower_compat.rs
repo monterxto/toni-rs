@@ -10,7 +10,7 @@ use tower::{Layer, Service, ServiceExt};
 
 use crate::async_trait;
 use crate::http_helpers::{Body, BoxBody, HttpRequest, HttpResponse, RequestBody, RequestPart};
-use crate::traits_helpers::middleware::{Middleware, MiddlewareResult, Next};
+use crate::traits_helpers::middleware::{Middleware, MiddlewareResult, NextHandle, NextInternal};
 
 fn to_toni_response<B>(resp: http::Response<B>) -> HttpResponse
 where
@@ -47,7 +47,7 @@ where
     }
 }
 
-/// Bridges toni's [`Next`] chain as a `tower::Service<http::Request<Full<Bytes>>>`.
+/// Bridges toni's [`NextHandle`] chain as a `tower::Service<http::Request<Full<Bytes>>>`.
 ///
 /// Single-use by design — Tower layers that call the inner service more than
 /// once (`tower::retry`, `tower::hedge`) will panic. Those are client-side
@@ -58,11 +58,11 @@ where
 /// service bounds. True streaming through Tower layers is deferred to the
 /// `feat/async-trait-free` branch.
 pub struct ToniNextService {
-    next: Option<Box<dyn Next>>,
+    next: Option<Box<dyn NextInternal>>,
 }
 
 impl ToniNextService {
-    fn new(next: Box<dyn Next>) -> Self {
+    fn new(next: Box<dyn NextInternal>) -> Self {
         Self { next: Some(next) }
     }
 }
@@ -90,7 +90,7 @@ impl Service<http::Request<Full<Bytes>>> for ToniNextService {
                 .map_err(|never: Infallible| match never {})?
                 .to_bytes();
             let toni_req = HttpRequest::from_parts(http_parts, RequestBody::Buffered(bytes));
-            let toni_resp = next.run(toni_req).await?;
+            let toni_resp = next.run_internal(toni_req).await?;
 
             let status = http::StatusCode::from_u16(toni_resp.status)
                 .unwrap_or(http::StatusCode::INTERNAL_SERVER_ERROR);
@@ -167,7 +167,8 @@ where
         Into<Box<dyn std::error::Error + Send + Sync>>,
     <L::Service as Service<http::Request<Full<Bytes>>>>::Future: Send,
 {
-    async fn handle(&self, req: HttpRequest, next: Box<dyn Next>) -> MiddlewareResult {
+    async fn handle(&self, next: NextHandle) -> MiddlewareResult {
+        let (req, inner) = next.into_parts();
         let (parts, body) = req.into_parts();
         let bytes: Bytes = match body {
             RequestBody::Buffered(b) => b,
@@ -175,7 +176,7 @@ where
         };
         let http_req = http::Request::from_parts(parts, Full::new(bytes));
 
-        let mut svc = self.0.layer(ToniNextService::new(next));
+        let mut svc = self.0.layer(ToniNextService::new(inner));
         let http_resp = svc
             .ready()
             .await

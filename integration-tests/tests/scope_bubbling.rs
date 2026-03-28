@@ -19,7 +19,7 @@ impl SingletonProvider {
 #[controller("/ok", pub struct OkController { #[inject] provider: SingletonProvider })]
 impl OkController {
     #[get("/test")]
-    fn test(&self, _req: HttpRequest) -> ToniBody {
+    fn test(&self) -> ToniBody {
         ToniBody::text(self.provider.get_data())
     }
 }
@@ -42,7 +42,7 @@ impl RequestScopedProvider {
 #[controller("/problematic", pub struct ProblematicController { #[inject] provider: RequestScopedProvider })]
 impl ProblematicController {
     #[get("/test")]
-    fn test(&self, _req: HttpRequest) -> ToniBody {
+    fn test(&self) -> ToniBody {
         ToniBody::text(format!("Request ID: {}", self.provider.get_request_id()))
     }
 }
@@ -62,7 +62,7 @@ impl AnotherRequestProvider {
 #[controller("/correct", scope = "request", pub struct CorrectController { #[inject] provider: AnotherRequestProvider })]
 impl CorrectController {
     #[get("/test")]
-    fn test(&self, _req: HttpRequest) -> ToniBody {
+    fn test(&self) -> ToniBody {
         ToniBody::text(self.provider.get_data())
     }
 }
@@ -92,7 +92,7 @@ impl SessionProvider {
 })]
 impl MixedController {
     #[get("/test")]
-    fn test(&self, _req: HttpRequest) -> ToniBody {
+    fn test(&self) -> ToniBody {
         ToniBody::text(format!(
             "{} + {}",
             self.cache.get_cached(),
@@ -116,7 +116,7 @@ impl ContradictoryRequestProvider {
 #[controller("/explicit", scope = "singleton", pub struct ExplicitSingletonController { #[inject] provider: ContradictoryRequestProvider })]
 impl ExplicitSingletonController {
     #[get("/test")]
-    fn test(&self, _req: HttpRequest) -> ToniBody {
+    fn test(&self) -> ToniBody {
         ToniBody::text(self.provider.get_id())
     }
 }

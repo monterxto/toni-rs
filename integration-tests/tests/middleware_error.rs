@@ -11,8 +11,8 @@ use serial_test::serial;
 use toni::async_trait;
 use toni::errors::HttpError;
 use toni::traits_helpers::MiddlewareConsumer;
-use toni::traits_helpers::middleware::{Middleware, MiddlewareResult, Next};
-use toni::{HttpRequest, controller, get, module, Body as ToniBody};
+use toni::traits_helpers::middleware::{Middleware, MiddlewareResult, NextHandle};
+use toni::{controller, get, module, Body as ToniBody};
 
 // ── Test 1: custom status code ────────────────────────────────────────────────
 
@@ -20,7 +20,7 @@ struct RejectWith(HttpError);
 
 #[async_trait]
 impl Middleware for RejectWith {
-    async fn handle(&self, _req: HttpRequest, _next: Box<dyn Next>) -> MiddlewareResult {
+    async fn handle(&self, _next: NextHandle) -> MiddlewareResult {
         Err(Box::new(self.0.clone()))
     }
 }
@@ -31,7 +31,7 @@ async fn middleware_http_error_preserves_status() {
     #[controller("/", pub struct PingController {})]
     impl PingController {
         #[get("/ping")]
-        fn ping(&self, _req: HttpRequest) -> ToniBody {
+        fn ping(&self) -> ToniBody {
             ToniBody::text("pong")
         }
     }
@@ -67,7 +67,7 @@ async fn middleware_http_error_unauthorized() {
     #[controller("/", pub struct AuthController {})]
     impl AuthController {
         #[get("/secret")]
-        fn secret(&self, _req: HttpRequest) -> ToniBody {
+        fn secret(&self) -> ToniBody {
             ToniBody::text("secret")
         }
     }

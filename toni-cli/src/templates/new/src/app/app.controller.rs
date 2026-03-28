@@ -10,25 +10,25 @@ use toni_macros::{controller, delete, get, post, put};
 )]
 impl _AppController {
     #[post("")]
-    fn _create(&self, _req: HttpRequest) -> Body {
+    fn _create(&self) -> Body {
         let create: String = self.app_service.create();
         Body::text(create)
     }
 
     #[get("")]
-    fn _find_all(&self, _req: HttpRequest) -> Body {
+    fn _find_all(&self) -> Body {
         let find_all: String = self.app_service.find_all();
         Body::text(find_all)
     }
 
     #[put("")]
-    fn _update(&self, _req: HttpRequest) -> Body {
+    fn _update(&self) -> Body {
         let update: String = self.app_service.update();
         Body::text(update)
     }
 
     #[delete("")]
-    fn _delete(&self, _req: HttpRequest) -> Body {
+    fn _delete(&self) -> Body {
         let delete: String = self.app_service.delete();
         Body::text(delete)
     }

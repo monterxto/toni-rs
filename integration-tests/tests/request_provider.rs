@@ -10,14 +10,14 @@ use toni::{controller, get, module, Body as ToniBody, HttpRequest, Request};
 })]
 impl TestController {
     #[get("/info")]
-    fn get_info(&self, _req: HttpRequest) -> ToniBody {
+    fn get_info(&self) -> ToniBody {
         let method = self.request.method();
         let uri = self.request.uri();
         ToniBody::text(format!("Method: {}, URI: {}", method, uri))
     }
 
     #[get("/headers")]
-    fn get_headers(&self, _req: HttpRequest) -> ToniBody {
+    fn get_headers(&self) -> ToniBody {
         let content_type = self.request.header("content-type").unwrap_or("not found");
         ToniBody::text(format!("Content-Type: {}", content_type))
     }

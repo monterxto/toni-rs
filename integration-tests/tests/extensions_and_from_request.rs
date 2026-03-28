@@ -90,7 +90,7 @@ impl UserService {
 })]
 impl UserController {
     #[get("/me")]
-    fn get_current_user(&self, _req: HttpRequest) -> ToniBody {
+    fn get_current_user(&self) -> ToniBody {
         // No manual extraction! Context is already populated
         let user_id = self.context.get_user_id();
         let request_id = self.context.get_request_id();
@@ -104,7 +104,7 @@ impl UserController {
     }
 
     #[get("/protected")]
-    fn protected_route(&self, _req: HttpRequest) -> ToniBody {
+    fn protected_route(&self) -> ToniBody {
         // Easy auth check
         match self.context.require_auth() {
             Ok(user_id) => ToniBody::text(format!("Protected data for user: {}", user_id)),

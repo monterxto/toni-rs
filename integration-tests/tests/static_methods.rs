@@ -57,7 +57,7 @@ impl MixedService {
 })]
 impl MixedController {
     #[get("/instance")]
-    fn instance_method(&self, _req: HttpRequest) -> ToniBody {
+    fn instance_method(&self) -> ToniBody {
         ToniBody::text(self.service.get_instance_message())
     }
 
