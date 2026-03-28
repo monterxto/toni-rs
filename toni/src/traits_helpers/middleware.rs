@@ -52,7 +52,43 @@ impl NextHandle {
     }
 }
 
-/// Core middleware trait
+/// Intercepts a request before it reaches the controller.
+///
+/// Middleware runs after routing is resolved but before guards, interceptors,
+/// and the controller:
+///
+/// ```text
+/// request → middleware chain → guards → interceptors → pipes → controller
+/// ```
+///
+/// ## Body access
+///
+/// The request body arrives as [`RequestBody::Streaming`][crate::http_helpers::RequestBody] —
+/// a one-time consumable stream. If you don't need it, pass the request through unchanged:
+///
+/// ```rust,ignore
+/// async fn handle(&self, next: NextHandle) -> MiddlewareResult {
+///     // read headers, add extensions, etc. — body untouched
+///     next.run().await
+/// }
+/// ```
+///
+/// If you do need to inspect the body, you must buffer it and put it back. The first call
+/// to `collect()` drains the stream — leaving it consumed means the controller receives
+/// nothing. Restore it as [`RequestBody::Buffered`][crate::http_helpers::RequestBody] so
+/// downstream can read the bytes:
+///
+/// ```rust,ignore
+/// async fn handle(&self, mut next: NextHandle) -> MiddlewareResult {
+///     let placeholder = HttpRequest::builder()
+///         .method("GET").uri("/").body(RequestBody::empty()).unwrap();
+///     let (parts, body) = std::mem::replace(next.request_mut(), placeholder).into_parts();
+///     let bytes = body.collect().await?;
+///     // inspect bytes...
+///     let new_req = HttpRequest::from_parts(parts, RequestBody::Buffered(bytes));
+///     next.run_with(new_req).await
+/// }
+/// ```
 #[async_trait]
 pub trait Middleware: Send + Sync {
     async fn handle(&self, next: NextHandle) -> MiddlewareResult;

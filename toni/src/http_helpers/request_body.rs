@@ -21,6 +21,11 @@ pub enum RequestBody {
 
 impl RequestBody {
     /// Buffer the body into [`Bytes`], collecting the stream if needed.
+    ///
+    /// When the body is `Streaming`, this consumes and drains the stream — the first caller
+    /// wins. Any subsequent call on the same body would find nothing left to read. If you
+    /// need to share the bytes with downstream code, store the result and reconstruct the
+    /// request with `Buffered(bytes)` before passing it on.
     pub async fn collect(self) -> Result<Bytes, Box<dyn std::error::Error + Send + Sync>> {
         match self {
             RequestBody::Buffered(b) => Ok(b),

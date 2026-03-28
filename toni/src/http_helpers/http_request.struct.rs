@@ -9,7 +9,9 @@ pub type RequestPart = http::request::Parts;
 /// A full HTTP request — metadata plus a (potentially streaming) body.
 ///
 /// A thin newtype over [`http::Request<RequestBody>`]. Not `Clone` because the body
-/// may be a single-use stream. Use `into_parts()` to decompose into reusable parts.
+/// may be a single-use stream: whoever calls [`RequestBody::collect`] first drains it,
+/// and subsequent readers see nothing. Use `into_parts()` to decompose, collect the bytes,
+/// then reconstruct with `RequestBody::Buffered` if the body needs to be read more than once.
 pub struct HttpRequest(pub http::Request<RequestBody>);
 
 impl HttpRequest {
