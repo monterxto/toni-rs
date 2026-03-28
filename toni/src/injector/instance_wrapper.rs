@@ -5,7 +5,7 @@ use crate::{
     http_helpers::{HttpMethod, HttpRequest, HttpResponse, RouteMetadata},
     middleware::{Middleware, MiddlewareChain},
     structs_helpers::EnhancerMetadata,
-    traits_helpers::{Controller, ErrorHandler, Guard, Interceptor, InterceptorNext, Pipe},
+    traits_helpers::{Controller, ErrorHandler, ErrorResponse, Guard, Interceptor, InterceptorNext, Pipe},
 };
 
 use super::Context;
@@ -154,7 +154,7 @@ impl InstanceWrapper {
                     let error: Box<dyn std::error::Error + Send + Sync> = Box::new(
                         std::io::Error::new(std::io::ErrorKind::Other, error_msg.clone()),
                     );
-                    if let Some(response) = handler.handle_error(error, &error_ctx).await {
+                    if let Some(ErrorResponse::Http(response)) = handler.handle_error(error, &error_ctx).await {
                         return response;
                     }
                 }
@@ -226,7 +226,7 @@ impl InstanceWrapper {
 
             for handler in error_handlers.iter().rev() {
                 let error: Box<dyn std::error::Error + Send> = Box::new(http_error.clone());
-                if let Some(handled) = handler.handle_error(error, ctx).await {
+                if let Some(ErrorResponse::Http(handled)) = handler.handle_error(error, ctx).await {
                     return handled;
                 }
             }
@@ -330,7 +330,7 @@ impl InstanceWrapper {
 
                 for handler in error_handlers.iter().rev() {
                     let error: Box<dyn std::error::Error + Send> = Box::new(http_error.clone());
-                    if let Some(handled_response) = handler.handle_error(error, context).await {
+                    if let Some(ErrorResponse::Http(handled_response)) = handler.handle_error(error, context).await {
                         context.set_response(handled_response);
                         return;
                     }

@@ -24,4 +24,4 @@ mod validator;
 pub use self::validator::validate;
 
 pub mod error_handler;
-pub use self::error_handler::{DefaultErrorHandler, ErrorHandler, LoggingErrorHandler};
+pub use self::error_handler::{DefaultErrorHandler, ErrorHandler, ErrorResponse, LoggingErrorHandler};

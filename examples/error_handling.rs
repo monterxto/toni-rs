@@ -26,7 +26,7 @@ use toni::{
     injector::Context,
     module, post,
     toni_factory::ToniFactory,
-    traits_helpers::{ErrorHandler, Guard},
+    traits_helpers::{ErrorHandler, ErrorResponse, Guard},
     Body as ToniBody, HttpRequest, HttpResponse,
 };
 use toni_axum::AxumAdapter;
@@ -41,15 +41,15 @@ impl ErrorHandler for GlobalErrorHandler {
         &self,
         error: Box<dyn std::error::Error + Send>,
         ctx: &Context,
-    ) -> Option<HttpResponse> {
+    ) -> Option<ErrorResponse> {
         let (parts, _) = ctx.switch_to_http()?;
         eprintln!("[GlobalErrorHandler] {} {}: {}", parts.method, parts.uri, error);
 
         if let Some(http_error) = error.downcast_ref::<HttpError>() {
-            return Some(http_error.to_response());
+            return Some(ErrorResponse::Http(http_error.to_response()));
         }
 
-        Some(
+        Some(ErrorResponse::Http(
             HttpResponse::builder()
                 .status(500)
                 .json(json!({
@@ -61,7 +61,7 @@ impl ErrorHandler for GlobalErrorHandler {
                     "path": parts.uri.to_string(),
                 }))
                 .build(),
-        )
+        ))
     }
 }
 
@@ -74,7 +74,7 @@ impl ErrorHandler for ValidationErrorHandler {
         &self,
         error: Box<dyn std::error::Error + Send>,
         ctx: &Context,
-    ) -> Option<HttpResponse> {
+    ) -> Option<ErrorResponse> {
         let (parts, _) = ctx.switch_to_http()?;
         if let Some(http_error) = error.downcast_ref::<HttpError>() {
             let status = http_error.status_code();
@@ -83,7 +83,7 @@ impl ErrorHandler for ValidationErrorHandler {
                     "[ValidationErrorHandler] Handling validation error on {}: {}",
                     parts.uri, error
                 );
-                return Some(
+                return Some(ErrorResponse::Http(
                     HttpResponse::builder()
                         .status(status)
                         .json(json!({
@@ -95,7 +95,7 @@ impl ErrorHandler for ValidationErrorHandler {
                             "path": parts.uri.to_string(),
                         }))
                         .build(),
-                );
+                ));
             }
         }
         None
@@ -111,7 +111,7 @@ impl ErrorHandler for DatabaseErrorHandler {
         &self,
         error: Box<dyn std::error::Error + Send>,
         ctx: &Context,
-    ) -> Option<HttpResponse> {
+    ) -> Option<ErrorResponse> {
         let (parts, _) = ctx.switch_to_http()?;
         if let Some(http_error) = error.downcast_ref::<HttpError>() {
             if http_error.status_code() == 409 {
@@ -119,7 +119,7 @@ impl ErrorHandler for DatabaseErrorHandler {
                     "[DatabaseErrorHandler] Handling conflict error on {}: {}",
                     parts.uri, error
                 );
-                return Some(
+                return Some(ErrorResponse::Http(
                     HttpResponse::builder()
                         .status(409)
                         .json(json!({
@@ -131,7 +131,7 @@ impl ErrorHandler for DatabaseErrorHandler {
                             "path": parts.uri.to_string(),
                         }))
                         .build(),
-                );
+                ));
             }
         }
         None
@@ -147,7 +147,7 @@ impl ErrorHandler for UserControllerErrorHandler {
         &self,
         error: Box<dyn std::error::Error + Send>,
         ctx: &Context,
-    ) -> Option<HttpResponse> {
+    ) -> Option<ErrorResponse> {
         let (parts, _) = ctx.switch_to_http()?;
         eprintln!(
             "[UserControllerErrorHandler] {} {}: {}",
@@ -155,7 +155,7 @@ impl ErrorHandler for UserControllerErrorHandler {
         );
 
         if let Some(http_error) = error.downcast_ref::<HttpError>() {
-            return Some(
+            return Some(ErrorResponse::Http(
                 HttpResponse::builder()
                     .status(http_error.status_code())
                     .json(json!({
@@ -166,7 +166,7 @@ impl ErrorHandler for UserControllerErrorHandler {
                         "path": parts.uri.to_string(),
                     }))
                     .build(),
-            );
+            ));
         }
 
         None
@@ -188,7 +188,7 @@ impl ErrorHandler for NotFoundErrorHandler {
         &self,
         error: Box<dyn std::error::Error + Send>,
         ctx: &Context,
-    ) -> Option<HttpResponse> {
+    ) -> Option<ErrorResponse> {
         let (parts, _) = ctx.switch_to_http()?;
         if let Some(http_error) = error.downcast_ref::<HttpError>() {
             if http_error.status_code() == 404 {
@@ -196,7 +196,7 @@ impl ErrorHandler for NotFoundErrorHandler {
                     "[NotFoundErrorHandler - DI] Handling 404 on {}: {}",
                     parts.uri, error
                 );
-                return Some(
+                return Some(ErrorResponse::Http(
                     HttpResponse::builder()
                         .status(404)
                         .json(json!({
@@ -208,7 +208,7 @@ impl ErrorHandler for NotFoundErrorHandler {
                             "path": parts.uri.to_string(),
                         }))
                         .build(),
-                );
+                ));
             }
         }
         None

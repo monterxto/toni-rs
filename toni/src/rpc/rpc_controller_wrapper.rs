@@ -132,7 +132,12 @@ impl RpcControllerWrapper {
                         let error: Box<dyn std::error::Error + Send> = Box::new(
                             std::io::Error::new(std::io::ErrorKind::Other, error_msg.clone()),
                         );
-                        let _ = handler.handle_error(error, context).await;
+                        if let Some(crate::traits_helpers::ErrorResponse::Rpc(data)) =
+                            handler.handle_error(error, context).await
+                        {
+                            context.set_rpc_response(Ok(Some(data)));
+                            return;
+                        }
                     }
                 }
             }

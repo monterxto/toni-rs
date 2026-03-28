@@ -243,9 +243,12 @@ impl GatewayWrapper {
                     let error: Box<dyn std::error::Error + Send> = Box::new(
                         std::io::Error::new(std::io::ErrorKind::Other, error_msg.clone()),
                     );
-                    // Return value is None for WS — handlers use ctx.switch_to_ws() to
-                    // act on the client directly. Response management via context is TBD.
-                    let _ = handler.handle_error(error, context).await;
+                    if let Some(crate::traits_helpers::ErrorResponse::Ws(msg)) =
+                        handler.handle_error(error, context).await
+                    {
+                        context.set_ws_response(Ok(Some(msg)));
+                        return;
+                    }
                 }
             }
         }
