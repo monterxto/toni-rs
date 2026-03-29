@@ -83,7 +83,7 @@ async fn main() {
         .create_with(AppModule::module_definition())
         .await;
 
-    app.use_http_adapter(AxumAdapter::new("127.0.0.1", 3000))
+    app.use_http_adapter(AxumAdapter::new(), 3000, "127.0.0.1")
         .unwrap();
 
     app.start().await;

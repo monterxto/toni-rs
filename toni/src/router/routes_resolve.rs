@@ -1,7 +1,10 @@
 use anyhow::Result;
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
-use crate::{http_adapter::ErasedHttpAdapter, injector::ToniContainer};
+use crate::{
+    http_adapter::{ErasedHttpAdapter, HttpRequestCallbacks},
+    injector::ToniContainer,
+};
 
 pub struct RoutesResolver {
     pub(crate) container: Rc<RefCell<ToniContainer>>,
@@ -53,7 +56,12 @@ impl RoutesResolver {
                 wrapper.set_middleware(route_middleware);
             }
 
-            http_adapter.add_route(&route_path, controller.get_method(), controller);
+            let callbacks = Arc::new(HttpRequestCallbacks::new(move |req| {
+                let controller = controller.clone();
+                Box::pin(async move { controller.handle_request(req).await })
+            }));
+
+            http_adapter.bind(route_method, &route_path, callbacks);
         }
 
         Ok(())

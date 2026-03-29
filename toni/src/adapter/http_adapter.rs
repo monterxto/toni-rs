@@ -4,41 +4,39 @@ use anyhow::Result;
 
 use crate::adapter::WsConnectionCallbacks;
 use crate::http_helpers::{HttpMethod, HttpRequest, HttpResponse};
-use crate::injector::InstanceWrapper;
 
-pub trait HttpAdapter: Clone + Send + Sync {
-    type Request;
-    type Response;
+/// Callbacks the framework supplies to an HTTP adapter for one route.
+///
+/// The adapter calls `handle` with the converted `HttpRequest` and gets back an
+/// `HttpResponse` — it never touches controllers, middleware, or guards directly.
+pub struct HttpRequestCallbacks {
+    handle: Arc<dyn Fn(HttpRequest) -> Pin<Box<dyn Future<Output = HttpResponse> + Send>> + Send + Sync>,
+}
 
-    fn adapt_request(request: Self::Request) -> impl Future<Output = Result<HttpRequest>>;
-
-    fn adapt_response(response: HttpResponse) -> impl Future<Output = Result<Self::Response>>;
-
-    /// Framework adapters should not override this — implement `adapt_request` and `adapt_response`.
-    fn handle_request(
-        request: Self::Request,
-        controller: Arc<InstanceWrapper>,
-    ) -> impl Future<Output = Result<Self::Response>> {
-        async move {
-            let http_request = Self::adapt_request(request).await?;
-            let http_response = controller.handle_request(http_request).await;
-            Self::adapt_response(http_response).await
+impl HttpRequestCallbacks {
+    pub(crate) fn new(
+        handle: impl Fn(HttpRequest) -> Pin<Box<dyn Future<Output = HttpResponse> + Send>>
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        Self {
+            handle: Arc::new(handle),
         }
     }
 
-    fn add_route(&mut self, path: &str, method: HttpMethod, handler: Arc<InstanceWrapper>);
-
-    fn port(&self) -> u16;
-
-    fn hostname(&self) -> &str;
-
-    fn listen(self) -> impl Future<Output = Result<()>> + Send;
-
-    fn close(&mut self) -> impl Future<Output = Result<()>> + Send {
-        async { Ok(()) }
+    /// Called by the adapter with the converted request for this route.
+    pub async fn handle(&self, req: HttpRequest) -> HttpResponse {
+        (self.handle)(req).await
     }
+}
 
-    /// Register a WebSocket gateway on the same port as HTTP (upgrade path).
+pub trait HttpAdapter: Send + Sync + 'static {
+    /// Register a route. The adapter stores `callbacks` and calls `callbacks.handle`
+    /// with the converted request on each incoming connection to this path.
+    fn bind(&mut self, method: HttpMethod, path: &str, callbacks: Arc<HttpRequestCallbacks>);
+
+    /// Register a WebSocket upgrade path on the same port as HTTP.
     ///
     /// **Default:** returns error — implement to support WebSocket upgrades on this adapter.
     fn bind_ws(&mut self, path: &str, callbacks: Arc<WsConnectionCallbacks>) -> Result<()> {
@@ -47,44 +45,52 @@ pub trait HttpAdapter: Clone + Send + Sync {
             "This HTTP adapter does not support WebSocket upgrades"
         ))
     }
+
+    /// Seal configuration and return the running server future.
+    ///
+    /// Called once after all `bind` and `bind_ws` calls. The returned future is the
+    /// accept loop — the framework joins it alongside any WS/RPC server futures so no
+    /// top-level spawn is needed in the adapter.
+    fn create(
+        &mut self,
+        port: u16,
+        hostname: &str,
+    ) -> Result<Pin<Box<dyn Future<Output = ()> + Send + 'static>>>;
+
+    fn close(&mut self) -> impl Future<Output = Result<()>> + Send {
+        async { Ok(()) }
+    }
 }
 
 pub(crate) trait ErasedHttpAdapter: Send + Sync {
-    fn add_route(&mut self, path: &str, method: HttpMethod, handler: Arc<InstanceWrapper>);
+    fn bind(&mut self, method: HttpMethod, path: &str, callbacks: Arc<HttpRequestCallbacks>);
     fn bind_ws(&mut self, path: &str, callbacks: Arc<WsConnectionCallbacks>) -> Result<()>;
-    fn port(&self) -> u16;
-    fn hostname(&self) -> &str;
+    fn create(
+        &mut self,
+        port: u16,
+        hostname: &str,
+    ) -> Result<Pin<Box<dyn Future<Output = ()> + Send + 'static>>>;
     fn close(&mut self) -> Pin<Box<dyn Future<Output = Result<()>> + Send + '_>>;
-    fn clone_box(&self) -> Box<dyn ErasedHttpAdapter>;
-    fn listen_boxed(self: Box<Self>) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'static>>;
 }
 
 impl<A: HttpAdapter + 'static> ErasedHttpAdapter for A {
-    fn add_route(&mut self, path: &str, method: HttpMethod, handler: Arc<InstanceWrapper>) {
-        HttpAdapter::add_route(self, path, method, handler);
+    fn bind(&mut self, method: HttpMethod, path: &str, callbacks: Arc<HttpRequestCallbacks>) {
+        HttpAdapter::bind(self, method, path, callbacks);
     }
 
     fn bind_ws(&mut self, path: &str, callbacks: Arc<WsConnectionCallbacks>) -> Result<()> {
         HttpAdapter::bind_ws(self, path, callbacks)
     }
 
-    fn port(&self) -> u16 {
-        HttpAdapter::port(self)
-    }
-
-    fn hostname(&self) -> &str {
-        HttpAdapter::hostname(self)
+    fn create(
+        &mut self,
+        port: u16,
+        hostname: &str,
+    ) -> Result<Pin<Box<dyn Future<Output = ()> + Send + 'static>>> {
+        HttpAdapter::create(self, port, hostname)
     }
 
     fn close(&mut self) -> Pin<Box<dyn Future<Output = Result<()>> + Send + '_>> {
         Box::pin(HttpAdapter::close(self))
-    }
-
-    fn clone_box(&self) -> Box<dyn ErasedHttpAdapter> {
-        Box::new(self.clone())
-    }
-
-    fn listen_boxed(self: Box<Self>) -> Pin<Box<dyn Future<Output = Result<()>> + Send + 'static>> {
-        Box::pin(HttpAdapter::listen(*self))
     }
 }

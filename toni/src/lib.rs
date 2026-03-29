@@ -24,7 +24,7 @@ pub mod websocket;
 
 // Re-exports for adapter crates
 pub use adapter::{RpcAdapter, RpcClientTransport, RpcMessageCallbacks, WebSocketAdapter, WsConnectionCallbacks};
-pub use http_adapter::HttpAdapter;
+pub use http_adapter::{HttpAdapter, HttpRequestCallbacks};
 pub use http_helpers::{
     Body, BoxBody, HttpMethod, HttpRequest, HttpResponse, HttpResponseBuilder, IntoResponse,
     RequestBody, RequestBoxBody, RequestPart, RouteMetadata,

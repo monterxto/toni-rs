@@ -27,6 +27,8 @@ use crate::{
 
 pub struct ToniApplication {
     http_adapter: Option<Box<dyn ErasedHttpAdapter>>,
+    http_port: Option<u16>,
+    http_hostname: Option<String>,
     routes_resolver: RoutesResolver,
     context: ToniApplicationContext,
     ws_gateways: HashMap<String, Arc<GatewayWrapper>>,
@@ -39,6 +41,8 @@ impl ToniApplication {
     pub fn new(container: Rc<RefCell<ToniContainer>>) -> Self {
         Self {
             http_adapter: None,
+            http_port: None,
+            http_hostname: None,
             context: ToniApplicationContext::new(container.clone()),
             routes_resolver: RoutesResolver::new(container),
             ws_gateways: HashMap::new(),
@@ -48,10 +52,17 @@ impl ToniApplication {
         }
     }
 
-    pub fn use_http_adapter<A: HttpAdapter + 'static>(&mut self, adapter: A) -> Result<&mut Self> {
+    pub fn use_http_adapter<A: HttpAdapter + 'static>(
+        &mut self,
+        adapter: A,
+        port: u16,
+        hostname: &str,
+    ) -> Result<&mut Self> {
         let mut boxed = Box::new(adapter) as Box<dyn ErasedHttpAdapter>;
         self.routes_resolver.resolve(boxed.as_mut())?;
         self.http_adapter = Some(boxed);
+        self.http_port = Some(port);
+        self.http_hostname = Some(hostname.to_string());
         println!("✓ HTTP adapter registered");
         Ok(self)
     }
@@ -222,10 +233,8 @@ impl ToniApplication {
             eprintln!("Error discovering RPC controllers: {}", e);
         }
 
-        let http_port = self.http_adapter.as_ref().map(|a| a.port());
-        let hostname = self.http_adapter.as_ref()
-            .map(|a| a.hostname().to_string())
-            .unwrap_or_else(|| "0.0.0.0".to_string());
+        let http_port = self.http_port;
+        let hostname = self.http_hostname.clone().unwrap_or_else(|| "0.0.0.0".to_string());
 
         // One shared WsClientMap + ConnectionManager when BroadcastService is in DI;
         // otherwise a fresh WsClientMap per gateway (no CM needed).
@@ -356,21 +365,18 @@ impl ToniApplication {
             }
         }
 
-        if let Some(http_adapter) = &self.http_adapter {
+        if let Some(http_adapter) = &mut self.http_adapter {
+            let port = self.http_port.unwrap();
             let has_same_port_ws = !same_port.is_empty();
-            let server_type = if has_same_port_ws {
-                "HTTP + WebSocket"
-            } else {
-                "HTTP"
-            };
-            println!("Starting {} server on {}:{}", server_type, hostname, http_adapter.port());
-            let cloned = http_adapter.clone_box();
-            server_futures.push(Box::pin(async move {
-                if let Err(e) = cloned.listen_boxed().await {
-                    eprintln!("Failed to start server: {}", e);
-                    std::process::exit(1);
+            let server_type = if has_same_port_ws { "HTTP + WebSocket" } else { "HTTP" };
+            println!("Starting {} server on {}:{}", server_type, hostname, port);
+            match http_adapter.create(port, &hostname) {
+                Ok(fut) => server_futures.push(fut),
+                Err(e) => {
+                    eprintln!("Failed to create HTTP server: {}", e);
+                    return;
                 }
-            }));
+            }
         } else if server_futures.is_empty() {
             eprintln!("No adapters configured. Register at least one adapter before calling start().");
             return;

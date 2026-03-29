@@ -89,7 +89,7 @@ async fn global_error_handler_intercepts_http_error() {
         let mut factory = ToniFactory::new();
         factory.use_global_error_handler(Arc::new(GlobalHandler));
         let mut app = factory.create_with(TestModule::module_definition()).await;
-        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port))
+        app.use_http_adapter(AxumAdapter::new(), port, "127.0.0.1")
             .unwrap();
         let _ = app.start().await;
     });
@@ -130,7 +130,7 @@ async fn method_error_handler_runs_before_global() {
         let mut factory = ToniFactory::new();
         factory.use_global_error_handler(Arc::new(GlobalHandler));
         let mut app = factory.create_with(TestModule::module_definition()).await;
-        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port))
+        app.use_http_adapter(AxumAdapter::new(), port, "127.0.0.1")
             .unwrap();
         let _ = app.start().await;
     });

@@ -61,7 +61,7 @@ async fn startup_hooks_fire_in_order() {
 
     tokio::task::spawn_local(async move {
         let mut app = ToniFactory::create(HookModule::module_definition()).await;
-        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port))
+        app.use_http_adapter(AxumAdapter::new(), port, "127.0.0.1")
             .unwrap();
         let _ = app.start().await;
     });
