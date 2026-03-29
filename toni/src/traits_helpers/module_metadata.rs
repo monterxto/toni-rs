@@ -323,6 +323,55 @@ impl MiddlewareConsumer {
         MiddlewareConfigProxy { consumer: self }
     }
 
+    /// Apply a [`tower::Layer`] directly as middleware, without wrapping it in [`TowerLayer`].
+    ///
+    /// This is sugar for `.apply(TowerLayer::new(layer))`. Use it when composing
+    /// Tower layers via `ServiceBuilder::into_inner()` or passing a single layer inline.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    /// use tower::ServiceBuilder;
+    /// use tower_http::cors::CorsLayer;
+    /// use tower_http::trace::TraceLayer;
+    ///
+    /// fn configure_middleware(&self, consumer: &mut MiddlewareConsumer) {
+    ///     // single layer
+    ///     consumer
+    ///         .apply_tower(CorsLayer::permissive())
+    ///         .for_routes(vec!["/*"]);
+    ///
+    ///     // composed stack
+    ///     let stack = ServiceBuilder::new()
+    ///         .layer(TraceLayer::new_for_http())
+    ///         .layer(CorsLayer::permissive())
+    ///         .into_inner();
+    ///     consumer
+    ///         .apply_tower(stack)
+    ///         .for_routes(vec!["/*"]);
+    /// }
+    /// ```
+    #[cfg(feature = "tower-compat")]
+    pub fn apply_tower<L, B>(&mut self, layer: L) -> MiddlewareConfigProxy<'_>
+    where
+        L: tower::Layer<crate::tower_compat::ToniNextService> + Send + Sync + 'static,
+        L::Service: tower::Service<
+                http::Request<crate::http_helpers::RequestBoxBody>,
+                Response = http::Response<B>,
+            > + Send
+            + 'static,
+        B: http_body::Body<Data = bytes::Bytes> + Send + Sync + 'static,
+        B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+        <L::Service as tower::Service<
+            http::Request<crate::http_helpers::RequestBoxBody>,
+        >>::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+        <L::Service as tower::Service<
+            http::Request<crate::http_helpers::RequestBoxBody>,
+        >>::Future: Send + 'static,
+    {
+        self.apply(crate::tower_compat::TowerLayer::new(layer))
+    }
+
     fn finalize_current(&mut self) {
         if !self.current_middleware.is_empty() || !self.current_middleware_tokens.is_empty() {
             let config = MiddlewareConfiguration {
@@ -402,6 +451,30 @@ impl<'a> MiddlewareConfigProxy<'a> {
         let token = std::any::type_name::<M>().to_string();
         self.consumer.current_middleware_tokens.push(token);
         self
+    }
+
+    /// Add a [`tower::Layer`] to the same configuration without wrapping it in [`TowerLayer`].
+    ///
+    /// Counterpart to [`MiddlewareConsumer::apply_tower`] for chained configurations.
+    #[cfg(feature = "tower-compat")]
+    pub fn apply_also_tower<L, B>(self, layer: L) -> Self
+    where
+        L: tower::Layer<crate::tower_compat::ToniNextService> + Send + Sync + 'static,
+        L::Service: tower::Service<
+                http::Request<crate::http_helpers::RequestBoxBody>,
+                Response = http::Response<B>,
+            > + Send
+            + 'static,
+        B: http_body::Body<Data = bytes::Bytes> + Send + Sync + 'static,
+        B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+        <L::Service as tower::Service<
+            http::Request<crate::http_helpers::RequestBoxBody>,
+        >>::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+        <L::Service as tower::Service<
+            http::Request<crate::http_helpers::RequestBoxBody>,
+        >>::Future: Send + 'static,
+    {
+        self.apply_also(crate::tower_compat::TowerLayer::new(layer))
     }
 
     /// Specify a single route to apply middleware to
