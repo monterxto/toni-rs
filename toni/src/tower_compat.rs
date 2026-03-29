@@ -6,10 +6,11 @@ use std::task::{Context, Poll};
 use bytes::Bytes;
 use http_body::Body as HttpBody;
 use http_body_util::{BodyExt, Full};
+use http_body_util::combinators::UnsyncBoxBody;
 use tower::{Layer, Service, ServiceExt};
 
 use crate::async_trait;
-use crate::http_helpers::{Body, BoxBody, HttpRequest, HttpResponse, RequestBody, RequestPart};
+use crate::http_helpers::{Body, BoxBody, HttpRequest, HttpResponse, RequestBody, RequestBoxBody, RequestPart};
 use crate::traits_helpers::middleware::{Middleware, MiddlewareResult, NextHandle, NextInternal};
 
 fn to_toni_response<B>(resp: http::Response<B>) -> HttpResponse
@@ -47,16 +48,11 @@ where
     }
 }
 
-/// Bridges toni's [`NextHandle`] chain as a `tower::Service<http::Request<Full<Bytes>>>`.
+/// Bridges toni's [`NextHandle`] chain as a `tower::Service<http::Request<RequestBoxBody>>`.
 ///
 /// Single-use by design — Tower layers that call the inner service more than
 /// once (`tower::retry`, `tower::hedge`) will panic. Those are client-side
 /// patterns; server request middleware calls downstream exactly once.
-///
-/// Uses `Full<Bytes>` as the body type (infallible error) to avoid the HRTB
-/// lifetime issue that arises when `async_trait` sees `Box<dyn Error>` in
-/// service bounds. True streaming through Tower layers is deferred to the
-/// `feat/async-trait-free` branch.
 pub struct ToniNextService {
     next: Option<Box<dyn NextInternal>>,
 }
@@ -67,7 +63,7 @@ impl ToniNextService {
     }
 }
 
-impl Service<http::Request<Full<Bytes>>> for ToniNextService {
+impl Service<http::Request<RequestBoxBody>> for ToniNextService {
     type Response = http::Response<BoxBody>;
     type Error = Box<dyn std::error::Error + Send + Sync>;
     type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
@@ -76,20 +72,15 @@ impl Service<http::Request<Full<Bytes>>> for ToniNextService {
         Poll::Ready(Ok(()))
     }
 
-    fn call(&mut self, req: http::Request<Full<Bytes>>) -> Self::Future {
+    fn call(&mut self, req: http::Request<RequestBoxBody>) -> Self::Future {
         let next = self
             .next
             .take()
             .expect("ToniNextService called more than once");
 
         Box::pin(async move {
-            let (http_parts, full_body) = req.into_parts();
-            let bytes = full_body
-                .collect()
-                .await
-                .map_err(|never: Infallible| match never {})?
-                .to_bytes();
-            let toni_req = HttpRequest::from_parts(http_parts, RequestBody::Buffered(bytes));
+            let (http_parts, body) = req.into_parts();
+            let toni_req = HttpRequest::from_parts(http_parts, RequestBody::Streaming(body));
             let toni_resp = next.run_internal(toni_req).await?;
 
             let status = http::StatusCode::from_u16(toni_resp.status)
@@ -120,11 +111,9 @@ impl Service<http::Request<Full<Bytes>>> for ToniNextService {
 /// limiting, timeouts, etc.) inside `configure_middleware` without any
 /// per-adapter work.
 ///
-/// The Tower service receives the request body as a fully-buffered `Full<Bytes>`.
-/// Streaming bodies are collected before entering the Tower layer.
-// TODO: pass the streaming body through Tower
-// rather than collecting it. Requires a conversion layer between
-// RequestBoxBody and Tower's Body type.
+/// The Tower service receives the request body as a [`RequestBoxBody`] stream.
+/// Buffering only happens if a Tower layer or a downstream extractor actually
+/// reads the body — never unconditionally on entry.
 ///
 /// # Known limitations
 ///
@@ -160,30 +149,51 @@ impl<L> TowerLayer<L> {
 impl<L, B> Middleware for TowerLayer<L>
 where
     L: Layer<ToniNextService> + Send + Sync + 'static,
-    L::Service: Service<http::Request<Full<Bytes>>, Response = http::Response<B>> + Send + 'static,
+    L::Service: Service<http::Request<RequestBoxBody>, Response = http::Response<B>> + Send + 'static,
     B: HttpBody<Data = Bytes> + Send + Sync + 'static,
     B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
-    <L::Service as Service<http::Request<Full<Bytes>>>>::Error:
+    <L::Service as Service<http::Request<RequestBoxBody>>>::Error:
         Into<Box<dyn std::error::Error + Send + Sync>>,
-    <L::Service as Service<http::Request<Full<Bytes>>>>::Future: Send,
+    <L::Service as Service<http::Request<RequestBoxBody>>>::Future: Send + 'static,
 {
     async fn handle(&self, next: NextHandle) -> MiddlewareResult {
         let (req, inner) = next.into_parts();
         let (parts, body) = req.into_parts();
-        let bytes: Bytes = match body {
-            RequestBody::Buffered(b) => b,
-            RequestBody::Streaming(s) => s.collect().await?.to_bytes(),
+        let stream_body: RequestBoxBody = match body {
+            RequestBody::Buffered(b) => {
+                UnsyncBoxBody::new(Full::new(b).map_err(|never: Infallible| match never {}))
+            }
+            RequestBody::Streaming(s) => s,
         };
-        let http_req = http::Request::from_parts(parts, Full::new(bytes));
-
+        let http_req = http::Request::from_parts(parts, stream_body);
         let mut svc = self.0.layer(ToniNextService::new(inner));
-        let http_resp = svc
-            .ready()
-            .await
-            .map_err(|e| e.into())?
-            .call(http_req)
-            .await
-            .map_err(|e| e.into())?;
+        svc.ready().await.map_err(|e| e.into())?;
+        // Must go through dispatch_call rather than calling svc.call(...).await directly.
+        // Inlining the call would leave S::Future at a yield point inside this async block,
+        // causing the compiler to demand `for<'0> S::Future: Send` (over the hidden dyn Error
+        // lifetime in RequestBoxBody) — a bound we cannot satisfy. dispatch_call erases
+        // S::Future to Pin<Box<dyn Future + Send + 'static>> in a non-async context where
+        // only the explicit S::Future: Send + 'static bound is checked.
+        let http_resp = dispatch_call(&mut svc, http_req).await?;
         Ok(to_toni_response(http_resp))
     }
+}
+
+fn dispatch_call<S, B>(
+    svc: &mut S,
+    req: http::Request<RequestBoxBody>,
+) -> Pin<Box<dyn Future<Output = Result<http::Response<B>, Box<dyn std::error::Error + Send + Sync>>> + Send + 'static>>
+where
+    S: Service<http::Request<RequestBoxBody>, Response = http::Response<B>>,
+    S::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
+    S::Future: Send + 'static,
+    B: 'static,
+{
+    // No async block here — async block Send-checking universally quantifies
+    // over the `dyn Error` lifetime in RequestBoxBody, generating a `for<'0>`
+    // HRTB that our `S::Future: Send + 'static` bound cannot satisfy.
+    // map_err is a synchronous combinator, so Box::pin checks Send directly
+    // against the explicit bound without any HRTB.
+    use futures::TryFutureExt;
+    Box::pin(svc.call(req).map_err(|e| e.into()))
 }
