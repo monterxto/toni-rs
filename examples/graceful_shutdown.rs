@@ -86,7 +86,7 @@ async fn main() -> anyhow::Result<()> {
         .create_with(AppModule)
         .await;
 
-    app.use_http_adapter(toni_axum::AxumAdapter::new("127.0.0.1", 3000)).unwrap();
+    app.use_http_adapter(toni_axum::AxumAdapter::new(), 3000, "127.0.0.1").unwrap();
 
     println!("📡 WebSocket server running on ws://localhost:3000/ws");
     println!("📝 Try: wscat -c ws://localhost:3000/ws");

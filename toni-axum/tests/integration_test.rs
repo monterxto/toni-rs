@@ -58,7 +58,7 @@ async fn test_axum_e2e() {
     // Spawn server in background
     local.spawn_local(async move {
         let mut app = ToniFactory::create(TestModule::module_definition()).await;
-        app.use_http_adapter(AxumAdapter::new("127.0.0.1", port))
+        app.use_http_adapter(AxumAdapter::new(), port, "127.0.0.1")
             .unwrap();
         let _ = app.start().await;
     });
