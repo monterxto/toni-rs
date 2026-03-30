@@ -42,8 +42,8 @@ impl ErrorHandler for GlobalErrorHandler {
         error: Box<dyn std::error::Error + Send>,
         ctx: &Context,
     ) -> Option<ErrorResponse> {
-        let (parts, _) = ctx.switch_to_http()?;
-        eprintln!("[GlobalErrorHandler] {} {}: {}", parts.method, parts.uri, error);
+        let http = ctx.switch_to_http()?;
+        eprintln!("[GlobalErrorHandler] {} {}: {}", http.request().method, http.request().uri, error);
 
         if let Some(http_error) = error.downcast_ref::<HttpError>() {
             return Some(ErrorResponse::Http(http_error.to_response()));
@@ -58,7 +58,7 @@ impl ErrorHandler for GlobalErrorHandler {
                     "error": "Internal Server Error",
                     "handler": "GlobalErrorHandler",
                     "timestamp": chrono::Utc::now().to_rfc3339(),
-                    "path": parts.uri.to_string(),
+                    "path": http.request().uri.to_string(),
                 }))
                 .build(),
         ))
@@ -75,13 +75,13 @@ impl ErrorHandler for ValidationErrorHandler {
         error: Box<dyn std::error::Error + Send>,
         ctx: &Context,
     ) -> Option<ErrorResponse> {
-        let (parts, _) = ctx.switch_to_http()?;
+        let http = ctx.switch_to_http()?;
         if let Some(http_error) = error.downcast_ref::<HttpError>() {
             let status = http_error.status_code();
             if matches!(status, 400 | 422) {
                 eprintln!(
                     "[ValidationErrorHandler] Handling validation error on {}: {}",
-                    parts.uri, error
+                    http.request().uri, error
                 );
                 return Some(ErrorResponse::Http(
                     HttpResponse::builder()
@@ -92,7 +92,7 @@ impl ErrorHandler for ValidationErrorHandler {
                             "error": "Validation Error",
                             "handler": "ValidationErrorHandler",
                             "timestamp": chrono::Utc::now().to_rfc3339(),
-                            "path": parts.uri.to_string(),
+                            "path": http.request().uri.to_string(),
                         }))
                         .build(),
                 ));
@@ -112,12 +112,12 @@ impl ErrorHandler for DatabaseErrorHandler {
         error: Box<dyn std::error::Error + Send>,
         ctx: &Context,
     ) -> Option<ErrorResponse> {
-        let (parts, _) = ctx.switch_to_http()?;
+        let http = ctx.switch_to_http()?;
         if let Some(http_error) = error.downcast_ref::<HttpError>() {
             if http_error.status_code() == 409 {
                 eprintln!(
                     "[DatabaseErrorHandler] Handling conflict error on {}: {}",
-                    parts.uri, error
+                    http.request().uri, error
                 );
                 return Some(ErrorResponse::Http(
                     HttpResponse::builder()
@@ -128,7 +128,7 @@ impl ErrorHandler for DatabaseErrorHandler {
                             "error": "Database Conflict",
                             "handler": "DatabaseErrorHandler",
                             "timestamp": chrono::Utc::now().to_rfc3339(),
-                            "path": parts.uri.to_string(),
+                            "path": http.request().uri.to_string(),
                         }))
                         .build(),
                 ));
@@ -148,10 +148,10 @@ impl ErrorHandler for UserControllerErrorHandler {
         error: Box<dyn std::error::Error + Send>,
         ctx: &Context,
     ) -> Option<ErrorResponse> {
-        let (parts, _) = ctx.switch_to_http()?;
+        let http = ctx.switch_to_http()?;
         eprintln!(
             "[UserControllerErrorHandler] {} {}: {}",
-            parts.method, parts.uri, error
+            http.request().method, http.request().uri, error
         );
 
         if let Some(http_error) = error.downcast_ref::<HttpError>() {
@@ -163,7 +163,7 @@ impl ErrorHandler for UserControllerErrorHandler {
                         "message": http_error.message(),
                         "handler": "UserControllerErrorHandler",
                         "timestamp": chrono::Utc::now().to_rfc3339(),
-                        "path": parts.uri.to_string(),
+                        "path": http.request().uri.to_string(),
                     }))
                     .build(),
             ));
@@ -189,12 +189,12 @@ impl ErrorHandler for NotFoundErrorHandler {
         error: Box<dyn std::error::Error + Send>,
         ctx: &Context,
     ) -> Option<ErrorResponse> {
-        let (parts, _) = ctx.switch_to_http()?;
+        let http = ctx.switch_to_http()?;
         if let Some(http_error) = error.downcast_ref::<HttpError>() {
             if http_error.status_code() == 404 {
                 eprintln!(
                     "[NotFoundErrorHandler - DI] Handling 404 on {}: {}",
-                    parts.uri, error
+                    http.request().uri, error
                 );
                 return Some(ErrorResponse::Http(
                     HttpResponse::builder()
@@ -205,7 +205,7 @@ impl ErrorHandler for NotFoundErrorHandler {
                             "error": "Not Found",
                             "handler": "NotFoundErrorHandler (DI-based)",
                             "timestamp": chrono::Utc::now().to_rfc3339(),
-                            "path": parts.uri.to_string(),
+                            "path": http.request().uri.to_string(),
                         }))
                         .build(),
                 ));
@@ -219,7 +219,7 @@ pub struct AuthGuard;
 
 impl Guard for AuthGuard {
     fn can_activate(&self, context: &Context) -> bool {
-        context.take_request().headers.contains_key("x-auth-token")
+        context.switch_to_http().expect("Expected HTTP context").request().headers.contains_key("x-auth-token")
     }
 }
 

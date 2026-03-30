@@ -64,12 +64,12 @@ impl From<RpcData> for ErrorResponse {
 ///         error: Box<dyn Error + Send>,
 ///         ctx: &Context,
 ///     ) -> Option<ErrorResponse> {
-///         let (parts, _) = ctx.switch_to_http()?;
+///         let http = ctx.switch_to_http()?;
 ///         Some(ErrorResponse::Http(HttpResponse {
 ///             status: 500,
 ///             body: Some(toni::Body::json(serde_json::json!({
 ///                 "error": error.to_string(),
-///                 "path": parts.uri().to_string(),
+///                 "path": http.request().uri.to_string(),
 ///             }))),
 ///             headers: vec![],
 ///         }))
@@ -151,8 +151,9 @@ impl<H: ErrorHandler> ErrorHandler for LoggingErrorHandler<H> {
         error: Box<dyn Error + Send>,
         ctx: &Context,
     ) -> Option<ErrorResponse> {
-        if let Some((parts, _)) = ctx.switch_to_http() {
-            eprintln!("[ERROR] {} {} - {}", parts.method, parts.uri, error);
+        if let Some(http) = ctx.switch_to_http() {
+            let req = http.request();
+            eprintln!("[ERROR] {} {} - {}", req.method, req.uri, error);
         } else {
             eprintln!("[ERROR] {:?} - {}", ctx.protocol_type(), error);
         }

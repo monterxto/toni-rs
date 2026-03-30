@@ -23,7 +23,7 @@ impl UniversalAuthGuard {
     fn can_activate(&self, context: &Context) -> bool {
         let token = match context.protocol_type() {
             ProtocolType::Http => {
-                let (request, _) = context.switch_to_http().expect("HTTP context");
+                let request = context.switch_to_http().expect("HTTP context").request();
                 request
                     .headers
                     .get("authorization")
@@ -31,11 +31,13 @@ impl UniversalAuthGuard {
                     .and_then(|h| h.strip_prefix("Bearer "))
             }
             ProtocolType::WebSocket => {
-                let (client, _, _) = context.switch_to_ws().expect("WebSocket context");
+                let ws = context.switch_to_ws().expect("WebSocket context");
+                let client = ws.client();
                 client.handshake.query.get("token").map(|s| s.as_str())
             }
             ProtocolType::Rpc => {
-                let (_, rpc_ctx) = context.switch_to_rpc().expect("RPC context");
+                let rpc_ctx = context.switch_to_rpc().expect("RPC context");
+                let rpc_ctx = rpc_ctx.call_context();
                 rpc_ctx.get_metadata("authorization")
             }
         };
@@ -52,7 +54,7 @@ impl LoggingInterceptor {
     fn log_request(&self, context: &Context) {
         match context.protocol_type() {
             ProtocolType::Http => {
-                let (req, _) = context.switch_to_http().unwrap();
+                let req = context.switch_to_http().unwrap().request();
                 println!(
                     "[HTTP]      {} {} (agent: {:?})",
                     req.method,
@@ -63,15 +65,15 @@ impl LoggingInterceptor {
                 );
             }
             ProtocolType::WebSocket => {
-                let (client, message, event) = context.switch_to_ws().unwrap();
+                let ws = context.switch_to_ws().unwrap();
                 println!(
                     "[WebSocket] event='{}' client={} message={:?}",
-                    event, client.id, message
+                    ws.event(), ws.client().id, ws.message()
                 );
             }
             ProtocolType::Rpc => {
-                let (data, rpc_ctx) = context.switch_to_rpc().unwrap();
-                println!("[RPC]       pattern='{}' data={:?}", rpc_ctx.pattern, data);
+                let rpc = context.switch_to_rpc().unwrap();
+                println!("[RPC]       pattern='{}' data={:?}", rpc.call_context().pattern, rpc.data());
             }
         }
     }

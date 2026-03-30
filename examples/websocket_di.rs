@@ -20,7 +20,8 @@ impl Guard for WsAuthGuard {
     fn can_activate(&self, context: &Context) -> bool {
         println!("[WsAuthGuard] Checking authentication...");
 
-        if let Some((client, _message, _event)) = context.switch_to_ws() {
+        if let Some(ws) = context.switch_to_ws() {
+            let client = ws.client();
             // Headers are stored in lowercase for case-insensitive matching
             if let Some(token) = client.handshake.headers.get("x-auth-token") {
                 println!("[WsAuthGuard] ✅ Auth token found: {}", token);
@@ -42,9 +43,9 @@ impl Interceptor for WsLoggingInterceptor {
     async fn intercept(&self, context: &mut Context, next: Box<dyn InterceptorNext>) {
         println!("[WsLoggingInterceptor] 📥 Incoming message");
 
-        if let Some((client, _message, event)) = context.switch_to_ws() {
-            println!("  Client: {}", client.id);
-            println!("  Event: {}", event);
+        if let Some(ws) = context.switch_to_ws() {
+            println!("  Client: {}", ws.client().id);
+            println!("  Event: {}", ws.event());
         }
 
         next.run(context).await;

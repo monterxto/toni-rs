@@ -10,7 +10,7 @@
 //!
 //! 1. Define metadata types (any Clone + Send + Sync + 'static type)
 //! 2. Attach metadata to routes with `#[set_metadata(YourType { ... })]`
-//! 3. Guards/interceptors read via `context.route_metadata().get::<YourType>()`
+//! 3. Guards/interceptors read via `context.metadata().unwrap().get::<YourType>()`
 
 use toni::{
     controller, get, http_helpers::Body as ToniBody, module, set_metadata, traits_helpers::Guard,
@@ -44,7 +44,7 @@ pub struct RolesGuard;
 
 impl Guard for RolesGuard {
     fn can_activate(&self, context: &Context) -> bool {
-        let metadata = context.route_metadata();
+        let metadata = context.metadata().expect("Route metadata not available");
 
         // Public routes bypass role checks
         if metadata.get::<Public>().is_some() {
@@ -57,7 +57,7 @@ impl Guard for RolesGuard {
         };
 
         // In production: extract user from JWT/session and check roles
-        let req = context.take_request();
+        let req = context.switch_to_http().expect("Expected HTTP context").request();
         let user_role = req
             .headers
             .get("x-user-role")
@@ -72,7 +72,7 @@ pub struct RateLimitGuard;
 
 impl Guard for RateLimitGuard {
     fn can_activate(&self, context: &Context) -> bool {
-        let metadata = context.route_metadata();
+        let metadata = context.metadata().expect("Route metadata not available");
 
         let Some(RateLimit {
             max_requests,

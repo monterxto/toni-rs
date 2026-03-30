@@ -186,14 +186,16 @@ impl InstanceWrapper {
         for guard in &guards {
             if !guard.can_activate(&context) {
                 // Get the guard's response (or create default 403 if not set)
-                let guard_response = if context.get_response_ref().is_some() {
-                    std::mem::take(context.get_response_mut())
-                } else {
-                    let mut forbidden = HttpResponse::new();
-                    forbidden.status = 403;
-                    forbidden.body = Some(crate::Body::text("Forbidden"));
-                    forbidden
-                };
+                let guard_response = context
+                    .switch_to_http_mut()
+                    .expect("Expected HTTP context")
+                    .take_response()
+                    .unwrap_or_else(|| {
+                        let mut forbidden = HttpResponse::new();
+                        forbidden.status = 403;
+                        forbidden.body = Some(crate::Body::text("Forbidden"));
+                        forbidden
+                    });
 
                 return Self::handle_error_response(guard_response, &error_handlers, &context).await;
             }
@@ -210,7 +212,7 @@ impl InstanceWrapper {
         )
         .await;
 
-        context.get_response()
+        context.into_http_response()
     }
 
     /// Helper: Route error responses (status >= 400) through ErrorHandler
@@ -273,7 +275,7 @@ impl InstanceWrapper {
         pipes: &[Arc<dyn Pipe>],
     ) {
         // Get and validate DTO
-        let dto = instance.get_body_dto(context.take_request());
+        let dto = instance.get_body_dto(context.switch_to_http().expect("Expected HTTP context").request());
         if let Some(dto) = dto {
             match dto.validate_dto() {
                 Ok(()) => {
@@ -289,7 +291,7 @@ impl InstanceWrapper {
                         status: 400,
                         headers: vec![],
                     };
-                    context.set_response(response);
+                    context.switch_to_http_mut().expect("Expected HTTP context").set_response(response);
                     context.abort();
                     return;
                 }
@@ -304,9 +306,10 @@ impl InstanceWrapper {
             }
         }
 
-        let req = context.take_request_owned();
+        let mut http = context.switch_to_http_mut().expect("Expected HTTP context");
+        let req = http.take_request();
         let controller_response = instance.execute(req).await;
-        context.set_response(controller_response);
+        context.switch_to_http_mut().expect("Expected HTTP context").set_response(controller_response);
     }
 
     /// Execute handler with error handling support
@@ -320,23 +323,27 @@ impl InstanceWrapper {
 
         if !error_handlers.is_empty() {
             let needs_error_handling = context
-                .get_response_ref()
-                .map(|r| r.status >= 400)
+                .switch_to_http()
+                .and_then(|h| h.response().map(|r| r.status >= 400))
                 .unwrap_or(false);
 
             if needs_error_handling {
-                let http_response = std::mem::take(context.get_response_mut());
+                let http_response = context
+                    .switch_to_http_mut()
+                    .expect("Expected HTTP context")
+                    .take_response()
+                    .expect("Response not set in context");
                 let http_error = Self::response_to_http_error(&http_response);
 
                 for handler in error_handlers.iter().rev() {
                     let error: Box<dyn std::error::Error + Send> = Box::new(http_error.clone());
                     if let Some(ErrorResponse::Http(handled_response)) = handler.handle_error(error, context).await {
-                        context.set_response(handled_response);
+                        context.switch_to_http_mut().expect("Expected HTTP context").set_response(handled_response);
                         return;
                     }
                 }
 
-                context.set_response(http_response);
+                context.switch_to_http_mut().expect("Expected HTTP context").set_response(http_response);
             }
         }
     }
