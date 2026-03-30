@@ -305,7 +305,7 @@ pub fn use_error_handlers(_attr: TokenStream, item: TokenStream) -> TokenStream 
 /// Attaches metadata to a route handler for use by guards, interceptors, or other enhancers.
 ///
 /// Route metadata is stored once at startup and shared across all requests to the route.
-/// Guards and interceptors can read this metadata via `context.route_metadata().get::<T>()`.
+/// Guards and interceptors can read this metadata via `context.metadata().unwrap().get::<T>()`.
 ///
 /// # Usage
 ///
@@ -322,7 +322,7 @@ pub fn use_error_handlers(_attr: TokenStream, item: TokenStream) -> TokenStream 
 /// // Read in guard
 /// impl Guard for RolesGuard {
 ///     fn can_activate(&self, context: &Context) -> bool {
-///         if let Some(Roles(required)) = context.route_metadata().get::<Roles>() {
+///         if let Some(Roles(required)) = context.metadata().unwrap().get::<Roles>() {
 ///             // Check user has required roles
 ///         }
 ///         true

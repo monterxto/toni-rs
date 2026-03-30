@@ -67,18 +67,18 @@ pub trait InterceptorNext: Send {
 /// impl Interceptor for CacheInterceptor {
 ///     async fn intercept(&self, context: &mut Context, next: Box<dyn InterceptorNext>) {
 ///         let key = context.switch_to_http()
-///             .map(|(req, _)| req.uri.clone())
+///             .map(|http| http.request().uri.clone())
 ///             .unwrap_or_default();
 ///
 ///         if let Some(cached) = self.cache.get(&key) {
-///             context.set_response(Box::new(cached));
+///             context.switch_to_http_mut().unwrap().set_response(Box::new(cached));
 ///             // Skip handler execution by NOT calling next.run()!
 ///             return;
 ///         }
 ///
 ///         next.run(context).await;
 ///
-///         if let Some(response) = context.get_response_ref() {
+///         if let Some(response) = context.switch_to_http().and_then(|http| http.response()) {
 ///             self.cache.set(key, response.clone());
 ///         }
 ///     }

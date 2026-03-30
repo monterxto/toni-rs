@@ -14,6 +14,9 @@ pub use self::instance_wrapper::InstanceWrapper;
 mod protocol;
 pub use self::protocol::{Protocol, ProtocolType};
 
+mod protocol_context;
+pub use self::protocol_context::{HttpContext, HttpContextMut, WsContext, WsContextMut, RpcContext, RpcContextMut};
+
 mod context;
 pub use self::context::Context;
 

@@ -5,7 +5,7 @@ use async_lock::RwLock;
 use async_trait::async_trait;
 
 use crate::http_helpers::RouteMetadata;
-use crate::injector::{Context, Protocol};
+use crate::injector::Context;
 use crate::traits_helpers::{ErrorHandler, Guard, Interceptor, InterceptorNext, Pipe};
 
 use super::{DisconnectReason, GatewayTrait, WsClient, WsError, WsMessage};
@@ -177,7 +177,7 @@ impl GatewayWrapper {
         .await;
 
         if context.should_abort() {
-            if let Some(response) = context.get_ws_response() {
+            if let Some(response) = context.switch_to_ws().and_then(|ws| ws.response().cloned()) {
                 return response.clone();
             }
             return Err(WsError::Internal(
@@ -185,15 +185,14 @@ impl GatewayWrapper {
             ));
         }
 
-        if let Some(response) = context.get_ws_response() {
+        if let Some(response) = context.switch_to_ws().and_then(|ws| ws.response().cloned()) {
             response.clone()
         } else {
             Err(WsError::Internal("Handler did not set response".into()))
         }
     }
 
-    /// Stores the result in context rather than returning it directly (mirrors HTTP's pattern);
-    /// retrieve via `context.get_ws_response()` after calling.
+    /// Stores the result in context rather than returning it directly (mirrors HTTP's pattern).
     async fn execute_with_interceptors_impl(
         context: &mut Context,
         interceptors: &[Arc<dyn Interceptor>],
@@ -237,7 +236,7 @@ impl GatewayWrapper {
         let _ = Self::execute_handler(context, gateway, event, pipes).await;
 
         if !error_handlers.is_empty() {
-            if let Some(Err(e)) = context.get_ws_response() {
+            if let Some(Err(e)) = context.switch_to_ws().and_then(|ws| ws.response().cloned()) {
                 let error_msg = e.to_string();
                 for handler in error_handlers.iter().rev() {
                     let error: Box<dyn std::error::Error + Send> = Box::new(
@@ -246,7 +245,7 @@ impl GatewayWrapper {
                     if let Some(crate::traits_helpers::ErrorResponse::Ws(msg)) =
                         handler.handle_error(error, context).await
                     {
-                        context.set_ws_response(Ok(Some(msg)));
+                        context.switch_to_ws_mut().expect("Expected WebSocket context").set_response(Ok(Some(msg)));
                         return;
                     }
                 }
@@ -264,20 +263,19 @@ impl GatewayWrapper {
             pipe.process(context);
             if context.should_abort() {
                 let result = Err(WsError::Internal("Request aborted by pipe".into()));
-                context.set_ws_response(result.clone());
+                context.switch_to_ws_mut().expect("Expected WebSocket context").set_response(result.clone());
                 return result;
             }
         }
 
-        let (client, message, _) = context
+        let ws = context
             .switch_to_ws()
             .ok_or_else(|| WsError::Internal("Expected WebSocket context".into()))?;
+        let (client, message) = (ws.client().clone(), ws.message().clone());
 
-        let result = gateway
-            .handle_event(client.clone(), message.clone(), event)
-            .await;
+        let result = gateway.handle_event(client, message, event).await;
 
-        context.set_ws_response(result.clone());
+        context.switch_to_ws_mut().expect("Expected WebSocket context").set_response(result.clone());
         result
     }
 

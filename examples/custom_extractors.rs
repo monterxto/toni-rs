@@ -28,7 +28,7 @@
 //! adminOnly() { ... }
 //! ```
 //! **Toni Equivalent:** Use `#[set_metadata(YourType { ... })]` on route + custom guards that
-//! read metadata via `context.route_metadata().get::<YourType>()`
+//! read metadata via `context.metadata().unwrap().get::<YourType>()`
 //!
 //! ### 3. **Class Decorators** (Apply to all methods)
 //! ```typescript

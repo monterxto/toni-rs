@@ -2,12 +2,15 @@ use std::sync::Arc;
 
 use crate::{
     http_helpers::{HttpRequest, HttpResponse, RequestBody, RequestPart, RouteMetadata},
-    rpc::{RpcContext, RpcData, RpcError},
+    rpc::{RpcContext as RpcCallContext, RpcData, RpcError},
     traits_helpers::validate::Validatable,
     websocket::{WsClient, WsMessage},
 };
 
-use super::{Protocol, ProtocolType};
+use super::{
+    protocol_context::{HttpContext, HttpContextMut, RpcContext, RpcContextMut, WsContext, WsContextMut},
+    Protocol, ProtocolType,
+};
 
 /// Execution context for all protocols
 ///
@@ -17,9 +20,7 @@ use super::{Protocol, ProtocolType};
 pub struct Context {
     protocol: Protocol,
     route_metadata: Option<Arc<RouteMetadata>>, // None for global handlers (404, error filters)
-    /// Abort flag for short-circuiting execution
     should_abort: bool,
-    /// Validated DTO
     dto: Option<Box<dyn Validatable>>,
 }
 
@@ -44,11 +45,9 @@ impl Context {
     }
 
     pub fn from_parts(parts: RequestPart) -> Self {
-        use crate::http_helpers::RequestBody;
         Self::from_request(HttpRequest::from_parts(parts, RequestBody::empty()))
     }
 
-    /// Create WebSocket context
     pub fn from_websocket(
         client: WsClient,
         message: WsMessage,
@@ -63,10 +62,9 @@ impl Context {
         }
     }
 
-    /// Create RPC context
     pub fn from_rpc(
         data: RpcData,
-        context: RpcContext,
+        context: RpcCallContext,
         route_metadata: Option<Arc<RouteMetadata>>,
     ) -> Self {
         Self {
@@ -77,204 +75,107 @@ impl Context {
         }
     }
 
-    // Protocol Methods
+    // Protocol switching
 
     pub fn protocol_type(&self) -> ProtocolType {
         self.protocol.protocol_type()
     }
 
-    /// HTTP protocol access (returns None for other protocols)
-    pub fn switch_to_http(&self) -> Option<(&RequestPart, &Option<HttpResponse>)> {
+    pub fn switch_to_http(&self) -> Option<HttpContext<'_>> {
         match &self.protocol {
-            Protocol::Http {
-                parts, response, ..
-            } => Some((parts, response)),
+            Protocol::Http { parts, response, .. } => Some(HttpContext { parts, response }),
             _ => None,
         }
     }
 
-    pub fn switch_to_http_mut(&mut self) -> Option<(&mut RequestPart, &mut Option<HttpResponse>)> {
+    pub fn switch_to_http_mut(&mut self) -> Option<HttpContextMut<'_>> {
         match &mut self.protocol {
-            Protocol::Http {
-                parts, response, ..
-            } => Some((parts, response)),
+            Protocol::Http { parts, response, body } => Some(HttpContextMut { parts, response, body }),
             _ => None,
         }
     }
 
-    /// WebSocket protocol access (returns None for other protocols)
-    pub fn switch_to_ws(&self) -> Option<(&WsClient, &WsMessage, &str)> {
+    pub fn switch_to_ws(&self) -> Option<WsContext<'_>> {
         match &self.protocol {
-            Protocol::WebSocket {
+            Protocol::WebSocket { client, message, event, response } => Some(WsContext {
                 client,
                 message,
-                event,
-                ..
-            } => Some((client, message, event.as_str())),
+                event: event.as_str(),
+                response,
+            }),
             _ => None,
         }
     }
 
-    pub fn switch_to_ws_mut(&mut self) -> Option<(&mut WsClient, &mut WsMessage, &str)> {
+    pub fn switch_to_ws_mut(&mut self) -> Option<WsContextMut<'_>> {
         match &mut self.protocol {
-            Protocol::WebSocket {
+            Protocol::WebSocket { client, message, event, response } => Some(WsContextMut {
                 client,
                 message,
-                event,
-                ..
-            } => Some((client, message, event.as_str())),
+                event: event.as_str(),
+                response,
+            }),
             _ => None,
         }
     }
 
-    /// Set WebSocket response
-    pub fn set_ws_response(
-        &mut self,
-        response: Result<Option<WsMessage>, crate::websocket::WsError>,
-    ) {
-        if let Protocol::WebSocket {
-            response: response_slot,
-            ..
-        } = &mut self.protocol
-        {
-            *response_slot = Some(response);
-        } else {
-            panic!("Expected WebSocket context");
-        }
-    }
-
-    /// Get WebSocket response
-    pub fn get_ws_response(&self) -> Option<&Result<Option<WsMessage>, crate::websocket::WsError>> {
+    pub fn switch_to_rpc(&self) -> Option<RpcContext<'_>> {
         match &self.protocol {
-            Protocol::WebSocket { response, .. } => response.as_ref(),
+            Protocol::Rpc { data, context, response } => Some(RpcContext {
+                data,
+                call_context: context,
+                response,
+            }),
             _ => None,
         }
     }
 
-    /// Take WebSocket response (consumes the context)
-    pub fn take_ws_response(self) -> Result<Option<WsMessage>, crate::websocket::WsError> {
+    pub fn switch_to_rpc_mut(&mut self) -> Option<RpcContextMut<'_>> {
+        match &mut self.protocol {
+            Protocol::Rpc { data, context, response } => Some(RpcContextMut {
+                data,
+                call_context: context,
+                response,
+            }),
+            _ => None,
+        }
+    }
+
+    // Consuming extractors
+
+    /// Consume the context and extract the HTTP response.
+    ///
+    /// # Panics
+    /// Panics if not an HTTP context or response was not set.
+    pub fn into_http_response(self) -> HttpResponse {
+        match self.protocol {
+            Protocol::Http { response, .. } => response.expect("Response not set in context"),
+            _ => panic!("Expected HTTP context"),
+        }
+    }
+
+    /// Consume the context and extract the WebSocket response.
+    ///
+    /// # Panics
+    /// Panics if not a WebSocket context or response was not set.
+    pub fn into_ws_response(self) -> Result<Option<WsMessage>, crate::websocket::WsError> {
         match self.protocol {
             Protocol::WebSocket { response, .. } => response.unwrap_or_else(|| {
                 Err(crate::websocket::WsError::Internal(
                     "Response not set in context".into(),
                 ))
             }),
-            _ => panic!("take_ws_response() only works for WebSocket"),
+            _ => panic!("Expected WebSocket context"),
         }
     }
 
-    /// RPC protocol access (returns None for other protocols)
-    pub fn switch_to_rpc(&self) -> Option<(&RpcData, &RpcContext)> {
-        match &self.protocol {
-            Protocol::Rpc { data, context, .. } => Some((data, context)),
-            _ => None,
-        }
-    }
+    // Metadata
 
-    pub fn switch_to_rpc_mut(&mut self) -> Option<(&mut RpcData, &mut RpcContext)> {
-        match &mut self.protocol {
-            Protocol::Rpc { data, context, .. } => Some((data, context)),
-            _ => None,
-        }
-    }
-
-    pub fn set_rpc_response(&mut self, response: Result<Option<RpcData>, RpcError>) {
-        if let Protocol::Rpc {
-            response: response_slot,
-            ..
-        } = &mut self.protocol
-        {
-            *response_slot = Some(response);
-        } else {
-            panic!("Expected RPC context");
-        }
-    }
-
-    pub fn get_rpc_response(&self) -> Option<&Result<Option<RpcData>, RpcError>> {
-        match &self.protocol {
-            Protocol::Rpc { response, .. } => response.as_ref(),
-            _ => None,
-        }
-    }
-
-    // Metadata Methods
-
-    /// Get route metadata
     pub fn metadata(&self) -> Option<&RouteMetadata> {
         self.route_metadata.as_deref()
     }
 
-    #[deprecated(since = "0.1.0", note = "Use `metadata()` instead")]
-    pub fn route_metadata(&self) -> &RouteMetadata {
-        self.metadata().expect("Route metadata not available")
-    }
-
-    // Backward Compatibility Helpers (HTTP-specific)
-    // TODO: Remove these once all code migrates to switch_to_http()
-
-    /// Borrow the request metadata (method, URI, headers, extensions) without body.
-    ///
-    /// # Panics
-    /// Panics if context is not HTTP.
-    pub fn take_request(&self) -> &RequestPart {
-        self.switch_to_http().expect("Expected HTTP context").0
-    }
-
-    /// Reconstruct the full `HttpRequest` (metadata + body) and move it out of
-    /// the context. The body is taken from the internal Mutex; subsequent calls
-    /// return an empty body (body has already been consumed).
-    ///
-    /// # Panics
-    /// Panics if not an HTTP context.
-    pub fn take_request_owned(&mut self) -> HttpRequest {
-        if let Protocol::Http { parts, body, .. } = &mut self.protocol {
-            let b = body.lock().take().unwrap_or_else(RequestBody::empty);
-            HttpRequest::from_parts(parts.clone(), b)
-        } else {
-            panic!("Expected HTTP context");
-        }
-    }
-
-    /// # Panics
-    /// Panics if context is not HTTP. Use `switch_to_http_mut()` for type-safe access.
-    pub fn set_response(&mut self, response: HttpResponse) {
-        if let Some((_, response_slot)) = self.switch_to_http_mut() {
-            *response_slot = Some(response);
-        } else {
-            panic!("Expected HTTP context");
-        }
-    }
-
-    /// # Panics
-    /// Panics if context is not HTTP or response not set.
-    pub fn get_response(self) -> HttpResponse {
-        match self.protocol {
-            Protocol::Http { response, .. } => response.expect("Response not set in context"),
-            Protocol::WebSocket { .. } => {
-                panic!("get_response() only works for HTTP. Use switch_to_ws() for WebSocket.");
-            }
-            Protocol::Rpc { .. } => {
-                panic!("get_response() only works for HTTP. Use switch_to_rpc() for RPC.");
-            }
-        }
-    }
-
-    pub fn get_response_ref(&self) -> Option<&HttpResponse> {
-        self.switch_to_http()
-            .and_then(|(_, response)| response.as_ref())
-    }
-
-    /// # Panics
-    /// Panics if context is not HTTP or response not set.
-    pub fn get_response_mut(&mut self) -> &mut HttpResponse {
-        self.switch_to_http_mut()
-            .expect("Expected HTTP context")
-            .1
-            .as_mut()
-            .expect("Response not set in context")
-    }
-
-    // Universal Methods (work for all protocols)
+    // Universal
 
     /// Short-circuits execution (guards use this to prevent handler from running)
     pub fn abort(&mut self) {

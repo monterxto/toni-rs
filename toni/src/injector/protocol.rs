@@ -8,8 +8,8 @@ use parking_lot::Mutex;
 pub enum Protocol {
     Http {
         // Parts are always present; body is taken once by the handler via
-        // Context::take_request_owned(). Storing the body in a Mutex makes
-        // Protocol: Sync even though RequestBody may contain a !Sync stream.
+        // direct Protocol::Http destructuring. Storing the body in a Mutex
+        // makes Protocol: Sync even though RequestBody may contain a !Sync stream.
         parts: RequestPart,
         body: Mutex<Option<RequestBody>>,
         response: Option<HttpResponse>,
