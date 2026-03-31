@@ -231,6 +231,43 @@ pub fn extract_type_token(ty: &Type) -> Result<TokenStream> {
     ))
 }
 
+/// Returns the inner trait-object type if `ty` is `Vec<Arc<dyn Trait...>>`, otherwise `None`.
+///
+/// Used by injection codegen to detect multi-provider fields and generate the
+/// appropriate double-Arc downcast instead of the regular single-value downcast.
+pub fn extract_vec_arc_dyn_inner(ty: &Type) -> Option<Type> {
+    let Type::Path(syn::TypePath { path, .. }) = ty else {
+        return None;
+    };
+    let seg = path.segments.last()?;
+    if seg.ident != "Vec" {
+        return None;
+    }
+    let syn::PathArguments::AngleBracketed(args) = &seg.arguments else {
+        return None;
+    };
+    let syn::GenericArgument::Type(inner) = args.args.first()? else {
+        return None;
+    };
+    let Type::Path(syn::TypePath {
+        path: arc_path, ..
+    }) = inner
+    else {
+        return None;
+    };
+    let arc_seg = arc_path.segments.last()?;
+    if arc_seg.ident != "Arc" {
+        return None;
+    }
+    let syn::PathArguments::AngleBracketed(arc_args) = &arc_seg.arguments else {
+        return None;
+    };
+    let syn::GenericArgument::Type(dyn_ty) = arc_args.args.first()? else {
+        return None;
+    };
+    matches!(dyn_ty, Type::TraitObject(_)).then(|| dyn_ty.clone())
+}
+
 pub fn extract_params_from_impl_fn(func: &ImplItemFn) -> Vec<(Ident, Type)> {
     let mut params = Vec::new();
 

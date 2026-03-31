@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{
-    Expr, ExprCall, ExprClosure, ExprLit, ExprPath, Result, Token, Type,
+    Expr, ExprCall, ExprClosure, ExprLit, ExprPath, Ident, Result, Token, Type, TypeTraitObject,
     parse::{Parse, ParseStream},
 };
 
@@ -16,6 +16,7 @@ use crate::shared::TokenType;
 /// - `provide!("TOKEN", provider(Type))` - Explicit token provider
 /// - `provide!("TOKEN", value(expr))` - Explicit value provider
 /// - `provide!("TOKEN", factory(closure))` - Explicit factory provider
+/// - `provide!("TOKEN", Type, multi(dyn Trait+Send+Sync))` - Multi-provider contribution
 pub struct ProvideInput {
     pub token: TokenType,
     pub variant: ProviderVariant,
@@ -31,6 +32,11 @@ pub enum ProviderVariant {
     Alias(TokenType),
     /// Token provider - register type under custom token
     TokenProvider(Type),
+    /// Multi-provider contribution — same token, multiple contributors collected into Vec
+    Multi {
+        inner: Box<ProviderVariant>,
+        trait_path: Option<TypeTraitObject>,
+    },
 }
 
 impl Parse for ProvideInput {
@@ -43,7 +49,46 @@ impl Parse for ProvideInput {
         let expr: Expr = input.parse()?;
 
         // Detect the provider variant
-        let variant = detect_provider_variant(expr)?;
+        let mut variant = detect_provider_variant(expr)?;
+
+        // Check for optional trailing `, multi` or `, multi(dyn Trait)`
+        if input.peek(Token![,]) {
+            // peek ahead to see if it's `multi`
+            let fork = input.fork();
+            let _: Token![,] = fork.parse()?;
+            if fork.peek(Ident) {
+                let ident: Ident = fork.parse()?;
+                if ident == "multi" {
+                    // Consume the fork into the real stream
+                    let _: Token![,] = input.parse()?;
+                    let _multi_kw: Ident = input.parse()?;
+
+                    // Optional `(dyn Trait + Send + Sync)`
+                    let trait_path: Option<TypeTraitObject> = if input.peek(syn::token::Paren) {
+                        let content;
+                        syn::parenthesized!(content in input);
+                        // Parse `dyn Trait...` as a trait object type
+                        let ty: Type = content.parse()?;
+                        match ty {
+                            Type::TraitObject(tobj) => Some(tobj),
+                            _ => {
+                                return Err(syn::Error::new_spanned(
+                                    &ty,
+                                    "multi(...) expects a trait object type, e.g. `dyn Plugin + Send + Sync`",
+                                ));
+                            }
+                        }
+                    } else {
+                        None
+                    };
+
+                    variant = ProviderVariant::Multi {
+                        inner: Box::new(variant),
+                        trait_path,
+                    };
+                }
+            }
+        }
 
         Ok(ProvideInput { token, variant })
     }
@@ -226,6 +271,15 @@ pub fn handle_provide(input: TokenStream) -> Result<TokenStream> {
         ProviderVariant::TokenProvider(provider_type) => {
             let reconstructed = quote! { #token_ts, #provider_type };
             crate::provider_variants::handle_provider_token(reconstructed)
+        }
+
+        // Multi-provider contribution
+        ProviderVariant::Multi { inner, trait_path } => {
+            crate::provider_variants::multi_provider::handle_provide_multi(
+                &token,
+                *inner,
+                trait_path,
+            )
         }
     }
 }
