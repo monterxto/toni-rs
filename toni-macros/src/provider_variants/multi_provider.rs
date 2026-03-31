@@ -1,9 +1,20 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::{Expr, ExprPath, Result, Type, TypeTraitObject};
 
 use super::unified_provide::ProviderVariant;
 use crate::shared::TokenType;
+
+// Each provide!(..., multi(...)) call gets a unique numeric suffix so that
+// async_trait's hoisted helper types don't collide across multiple calls in
+// the same module.
+static MULTI_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+fn unique_id() -> u64 {
+    MULTI_COUNTER.fetch_add(1, Ordering::SeqCst)
+}
 
 /// Generate a multi-provider contribution factory.
 ///
@@ -27,6 +38,7 @@ pub fn handle_provide_multi(
     })?;
 
     let base_token_expr = token.to_token_expr();
+    let id = unique_id();
 
     match inner {
         ProviderVariant::Value(expr) => {
@@ -37,7 +49,7 @@ pub fn handle_provide_multi(
                     qself: None,
                     path: path.clone(),
                 });
-                let factory_ident = quote::format_ident!(
+                let factory_ident = format_ident!(
                     "{}ProviderFactory",
                     path.segments
                         .last()
@@ -45,6 +57,7 @@ pub fn handle_provide_multi(
                         .unwrap_or_else(|| "Unknown".to_string())
                 );
                 Ok(generate_type_multi(
+                    id,
                     base_token_expr,
                     &concrete_type,
                     factory_ident,
@@ -52,13 +65,12 @@ pub fn handle_provide_multi(
                 ))
             } else {
                 // Raw-value variant: provide!(TOKEN, some_expr(), multi(dyn Trait))
-                // Evaluates the expression, wraps it in Arc, coerces to the trait.
-                Ok(generate_value_multi(base_token_expr, &expr, &trait_ty))
+                Ok(generate_value_multi(id, base_token_expr, &expr, &trait_ty))
             }
         }
         ProviderVariant::Factory(closure_expr) => {
             // Factory-closure variant: provide!(TOKEN, || PluginB::new(), multi(dyn Trait))
-            Ok(generate_factory_multi(base_token_expr, &closure_expr, &trait_ty))
+            Ok(generate_factory_multi(id, base_token_expr, &closure_expr, &trait_ty))
         }
         ProviderVariant::Alias(_) => Err(syn::Error::new(
             proc_macro2::Span::call_site(),
@@ -76,17 +88,32 @@ pub fn handle_provide_multi(
     }
 }
 
-/// Generate the shared __MultiContrib provider struct + impl (local to each block).
-fn contrib_provider_tokens(trait_ty: &TypeTraitObject) -> TokenStream {
-    quote! {
-        struct __MultiContrib {
+/// Generate per-call unique struct/fn names for contrib + factory.
+fn make_names(id: u64) -> (proc_macro2::Ident, proc_macro2::Ident, proc_macro2::Ident) {
+    let contrib = format_ident!("__ToniMultiContrib_{}", id);
+    let make_item = format_ident!("__toni_make_multi_item_{}", id);
+    let factory = format_ident!("__ToniMultiFactory_{}", id);
+    (contrib, make_item, factory)
+}
+
+/// Generate the contrib provider struct + impl.
+fn contrib_provider_tokens(
+    id: u64,
+    trait_ty: &TypeTraitObject,
+) -> (TokenStream, proc_macro2::Ident, proc_macro2::Ident) {
+    let (contrib_name, make_item_name, _) = make_names(id);
+    let contrib_name2 = contrib_name.clone();
+    let make_item_name2 = make_item_name.clone();
+
+    let tokens = quote! {
+        struct #contrib_name {
             item: ::std::sync::Arc<dyn ::std::any::Any + Send + Sync>,
             synthetic_token: ::std::string::String,
             base_token: ::std::string::String,
         }
 
         #[::toni::async_trait]
-        impl ::toni::traits_helpers::Provider for __MultiContrib {
+        impl ::toni::traits_helpers::Provider for #contrib_name {
             fn get_token(&self) -> ::std::string::String {
                 self.synthetic_token.clone()
             }
@@ -115,33 +142,35 @@ fn contrib_provider_tokens(trait_ty: &TypeTraitObject) -> TokenStream {
             }
         }
 
-        // Coerce helper: builds the double-Arc from an Arc<ConcreteType>
-        #[inline]
-        fn __make_multi_item(
-            trait_arc: ::std::sync::Arc<dyn #trait_ty>,
+        fn #make_item_name(
+            trait_arc: ::std::sync::Arc<#trait_ty>,
         ) -> ::std::sync::Arc<dyn ::std::any::Any + Send + Sync> {
             ::std::sync::Arc::new(trait_arc)
         }
-    }
+    };
+
+    (tokens, contrib_name2, make_item_name2)
 }
 
 /// Type-path case: `provide!(TOKEN, PluginA, multi(dyn Trait))`.
 fn generate_type_multi(
+    id: u64,
     base_token_expr: TokenStream,
     concrete_type: &Type,
     factory_ident: proc_macro2::Ident,
     trait_ty: &TypeTraitObject,
 ) -> TokenStream {
-    let contrib_tokens = contrib_provider_tokens(trait_ty);
+    let (contrib_tokens, contrib_name, make_item_name) = contrib_provider_tokens(id, trait_ty);
+    let (_, _, factory_name) = make_names(id);
 
     quote! {
         {
             #contrib_tokens
 
-            struct __MultiFactory;
+            struct #factory_name;
 
             #[::toni::async_trait]
-            impl ::toni::traits_helpers::ProviderFactory for __MultiFactory {
+            impl ::toni::traits_helpers::ProviderFactory for #factory_name {
                 fn get_token(&self) -> ::std::string::String {
                     format!(
                         "__toni_multi__{}__{}",
@@ -171,15 +200,13 @@ fn generate_type_multi(
                         .await;
                     let concrete = *any_box
                         .downcast::<#concrete_type>()
-                        .unwrap_or_else(|_| {
-                            panic!(
-                                "Multi-provider build: downcast to {} failed",
-                                ::std::any::type_name::<#concrete_type>()
-                            )
-                        });
-                    let trait_arc: ::std::sync::Arc<dyn #trait_ty> =
+                        .unwrap_or_else(|_| panic!(
+                            "Multi-provider build: downcast to {} failed",
+                            ::std::any::type_name::<#concrete_type>()
+                        ));
+                    let trait_arc: ::std::sync::Arc<#trait_ty> =
                         ::std::sync::Arc::new(concrete);
-                    let erased = __make_multi_item(trait_arc);
+                    let erased = #make_item_name(trait_arc);
                     let synthetic_token = format!(
                         "__toni_multi__{}__{}",
                         #base_token_expr,
@@ -187,33 +214,35 @@ fn generate_type_multi(
                     );
                     let base_token = #base_token_expr;
                     ::std::sync::Arc::new(
-                        ::std::boxed::Box::new(__MultiContrib { item: erased, synthetic_token, base_token })
+                        ::std::boxed::Box::new(#contrib_name { item: erased, synthetic_token, base_token })
                             as ::std::boxed::Box<dyn ::toni::traits_helpers::Provider>,
                     )
                 }
             }
 
-            __MultiFactory
+            #factory_name
         }
     }
 }
 
 /// Raw-value case: `provide!(TOKEN, some_expr(), multi(dyn Trait))`.
 fn generate_value_multi(
+    id: u64,
     base_token_expr: TokenStream,
     value_expr: &Expr,
     trait_ty: &TypeTraitObject,
 ) -> TokenStream {
-    let contrib_tokens = contrib_provider_tokens(trait_ty);
+    let (contrib_tokens, contrib_name, make_item_name) = contrib_provider_tokens(id, trait_ty);
+    let (_, _, factory_name) = make_names(id);
 
     quote! {
         {
             #contrib_tokens
 
-            struct __MultiFactory;
+            struct #factory_name;
 
             #[::toni::async_trait]
-            impl ::toni::traits_helpers::ProviderFactory for __MultiFactory {
+            impl ::toni::traits_helpers::ProviderFactory for #factory_name {
                 fn get_token(&self) -> ::std::string::String {
                     format!(
                         "__toni_multi__{}__{}",
@@ -238,9 +267,9 @@ fn generate_value_multi(
                     >,
                 ) -> ::std::sync::Arc<::std::boxed::Box<dyn ::toni::traits_helpers::Provider>> {
                     let value = #value_expr;
-                    let trait_arc: ::std::sync::Arc<dyn #trait_ty> =
+                    let trait_arc: ::std::sync::Arc<#trait_ty> =
                         ::std::sync::Arc::new(value);
-                    let erased = __make_multi_item(trait_arc);
+                    let erased = #make_item_name(trait_arc);
                     let synthetic_token = format!(
                         "__toni_multi__{}__{}",
                         #base_token_expr,
@@ -248,33 +277,35 @@ fn generate_value_multi(
                     );
                     let base_token = #base_token_expr;
                     ::std::sync::Arc::new(
-                        ::std::boxed::Box::new(__MultiContrib { item: erased, synthetic_token, base_token })
+                        ::std::boxed::Box::new(#contrib_name { item: erased, synthetic_token, base_token })
                             as ::std::boxed::Box<dyn ::toni::traits_helpers::Provider>,
                     )
                 }
             }
 
-            __MultiFactory
+            #factory_name
         }
     }
 }
 
 /// Factory-closure case: `provide!(TOKEN, || Impl::new(), multi(dyn Trait))`.
 fn generate_factory_multi(
+    id: u64,
     base_token_expr: TokenStream,
     closure_expr: &Expr,
     trait_ty: &TypeTraitObject,
 ) -> TokenStream {
-    let contrib_tokens = contrib_provider_tokens(trait_ty);
+    let (contrib_tokens, contrib_name, make_item_name) = contrib_provider_tokens(id, trait_ty);
+    let (_, _, factory_name) = make_names(id);
 
     quote! {
         {
             #contrib_tokens
 
-            struct __MultiFactory;
+            struct #factory_name;
 
             #[::toni::async_trait]
-            impl ::toni::traits_helpers::ProviderFactory for __MultiFactory {
+            impl ::toni::traits_helpers::ProviderFactory for #factory_name {
                 fn get_token(&self) -> ::std::string::String {
                     format!(
                         "__toni_multi__{}__{}",
@@ -300,9 +331,9 @@ fn generate_factory_multi(
                 ) -> ::std::sync::Arc<::std::boxed::Box<dyn ::toni::traits_helpers::Provider>> {
                     let factory = #closure_expr;
                     let value = factory();
-                    let trait_arc: ::std::sync::Arc<dyn #trait_ty> =
+                    let trait_arc: ::std::sync::Arc<#trait_ty> =
                         ::std::sync::Arc::new(value);
-                    let erased = __make_multi_item(trait_arc);
+                    let erased = #make_item_name(trait_arc);
                     let synthetic_token = format!(
                         "__toni_multi__{}__{}",
                         #base_token_expr,
@@ -310,13 +341,13 @@ fn generate_factory_multi(
                     );
                     let base_token = #base_token_expr;
                     ::std::sync::Arc::new(
-                        ::std::boxed::Box::new(__MultiContrib { item: erased, synthetic_token, base_token })
+                        ::std::boxed::Box::new(#contrib_name { item: erased, synthetic_token, base_token })
                             as ::std::boxed::Box<dyn ::toni::traits_helpers::Provider>,
                     )
                 }
             }
 
-            __MultiFactory
+            #factory_name
         }
     }
 }

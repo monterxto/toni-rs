@@ -539,11 +539,39 @@ impl ToniInstanceLoader {
                     ));
                 }
             }
-            // Step 3.5: Check multi-collection providers (built after Phase 1)
+            // Step 3.5: Check cached multi-collection providers (assembled in Phase 1.5)
             else if let Some(multi_instance) =
                 container.get_multi_collection_provider(&dependency)
             {
                 resolved_dependencies.insert(dependency, multi_instance);
+            }
+            // Step 3.6: Assemble multi-collection on-demand when contributor and consumer
+            // share the same module — contributors are in the in-progress instances map
+            // before Phase 1.5 has had a chance to cache the collection.
+            else if let Some(contribs) =
+                container.get_multi_providers().get(&dependency).cloned()
+            {
+                let mut items: Vec<std::sync::Arc<dyn std::any::Any + Send + Sync>> = Vec::new();
+                for (contrib_module_token, provider_token) in &contribs {
+                    // Prefer in-progress instances (same-module build), fall back to
+                    // already-saved container instances (cross-module contributions).
+                    let item = providers_instances
+                        .and_then(|m| m.get(provider_token))
+                        .and_then(|p| p.as_multi_item());
+                    if let Some(item) = item {
+                        items.push(item);
+                    } else if let Ok(saved) = container.get_providers_instance(contrib_module_token) {
+                        if let Some(item) = saved.get(provider_token).and_then(|p| p.as_multi_item()) {
+                            items.push(item);
+                        }
+                    }
+                }
+                let collection: Arc<Box<dyn Provider>> =
+                    Arc::new(Box::new(MultiCollectionProvider {
+                        token: dependency.clone(),
+                        items,
+                    }));
+                resolved_dependencies.insert(dependency, collection);
             }
             // Step 4: Not found anywhere
             else {
