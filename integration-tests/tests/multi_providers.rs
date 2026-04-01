@@ -414,3 +414,69 @@ async fn multi_existing_string_token_with_explicit_type() {
     parts.sort();
     assert_eq!(parts, vec!["delta", "gamma"]);
 }
+
+// ── Test 8: provider(Type) variant — useClass + multi ───────────────────────
+
+#[serial]
+#[tokio_localset_test::localset_test]
+async fn multi_provider_useclass_collects_contributions() {
+    #[injectable(pub struct Echo {})]
+    impl Echo {}
+
+    impl Plugin for Echo {
+        fn name(&self) -> &'static str {
+            "echo"
+        }
+    }
+
+    #[injectable(pub struct Foxtrot {})]
+    impl Foxtrot {}
+
+    impl Plugin for Foxtrot {
+        fn name(&self) -> &'static str {
+            "foxtrot"
+        }
+    }
+
+    #[injectable(pub struct UseClassRegistry {
+        #[inject("UC_PLUGINS")]
+        plugins: Vec<Arc<dyn Plugin + Send + Sync>>,
+    })]
+    impl UseClassRegistry {}
+
+    #[controller(pub struct TestController {
+        #[inject]
+        registry: UseClassRegistry,
+    })]
+    impl TestController {
+        #[get("/uc")]
+        fn list(&self) -> ToniBody {
+            let mut names: Vec<&str> = self.registry.plugins.iter().map(|p| p.name()).collect();
+            names.sort();
+            ToniBody::text(names.join(","))
+        }
+    }
+
+    #[module(
+        providers: [
+            provide!("UC_PLUGINS", provider(Echo), multi(dyn Plugin + Send + Sync)),
+            provide!("UC_PLUGINS", provider(Foxtrot), multi(dyn Plugin + Send + Sync)),
+            UseClassRegistry,
+        ],
+        controllers: [TestController]
+    )]
+    impl TestModule {}
+
+    let server = TestServer::start(TestModule::module_definition()).await;
+    let resp = server
+        .client()
+        .get(server.url("/uc"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body = resp.text().await.unwrap();
+    let mut parts: Vec<&str> = body.leak().split(',').collect();
+    parts.sort();
+    assert_eq!(parts, vec!["echo", "foxtrot"]);
+}

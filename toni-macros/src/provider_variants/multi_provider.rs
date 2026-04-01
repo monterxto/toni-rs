@@ -102,10 +102,9 @@ pub fn handle_provide_multi(
                 &trait_ty,
             ))
         }
-        ProviderVariant::TokenProvider(_) => Err(syn::Error::new(
-            proc_macro2::Span::call_site(),
-            "`provider(...)` cannot be combined with `multi`",
-        )),
+        ProviderVariant::TokenProvider(provider_type) => {
+            Ok(generate_token_provider_multi(id, base_token_expr, &provider_type, &trait_ty))
+        }
         ProviderVariant::Multi { .. } => Err(syn::Error::new(
             proc_macro2::Span::call_site(),
             "nested `multi` is not supported",
@@ -446,6 +445,81 @@ fn generate_alias_multi(
                         "__toni_multi__{}__{}",
                         #base_token_expr,
                         #existing_token_expr
+                    );
+                    let base_token = #base_token_expr;
+                    ::std::sync::Arc::new(
+                        ::std::boxed::Box::new(#contrib_name { item: erased, synthetic_token, base_token })
+                            as ::std::boxed::Box<dyn ::toni::traits_helpers::Provider>,
+                    )
+                }
+            }
+
+            #factory_name
+        }
+    }
+}
+
+/// provider(Type) case: `provide!(TOKEN, provider(PluginA), multi(dyn Trait))`.
+///
+/// useClass equivalent with multi — registers a fresh instance of PluginA as a
+/// contribution under TOKEN, analogous to NestJS `{ provide: TOKEN, useClass: PluginA, multi: true }`.
+fn generate_token_provider_multi(
+    id: u64,
+    base_token_expr: TokenStream,
+    concrete_type: &Type,
+    trait_ty: &TypeTraitObject,
+) -> TokenStream {
+    let (contrib_tokens, contrib_name, make_item_name) = contrib_provider_tokens(id, trait_ty);
+    let (_, _, factory_name) = make_names(id);
+
+    quote! {
+        {
+            #contrib_tokens
+
+            struct #factory_name;
+
+            #[::toni::async_trait]
+            impl ::toni::traits_helpers::ProviderFactory for #factory_name {
+                fn get_token(&self) -> ::std::string::String {
+                    format!(
+                        "__toni_multi__{}__{}",
+                        #base_token_expr,
+                        ::std::any::type_name::<#concrete_type>()
+                    )
+                }
+
+                fn get_multi_base_token(&self) -> ::std::option::Option<::std::string::String> {
+                    ::std::option::Option::Some(#base_token_expr)
+                }
+
+                fn get_dependencies(&self) -> ::std::vec::Vec<::std::string::String> {
+                    #concrete_type::__toni_provider_factory().get_dependencies()
+                }
+
+                async fn build(
+                    &self,
+                    deps: ::toni::FxHashMap<
+                        ::std::string::String,
+                        ::std::sync::Arc<::std::boxed::Box<dyn ::toni::traits_helpers::Provider>>,
+                    >,
+                ) -> ::std::sync::Arc<::std::boxed::Box<dyn ::toni::traits_helpers::Provider>> {
+                    let inner_provider = #concrete_type::__toni_provider_factory().build(deps).await;
+                    let any_box = inner_provider
+                        .execute(vec![], ::toni::ProviderContext::None)
+                        .await;
+                    let concrete = *any_box
+                        .downcast::<#concrete_type>()
+                        .unwrap_or_else(|_| panic!(
+                            "Multi provider(Type) build: downcast to {} failed",
+                            ::std::any::type_name::<#concrete_type>()
+                        ));
+                    let trait_arc: ::std::sync::Arc<#trait_ty> =
+                        ::std::sync::Arc::new(concrete);
+                    let erased = #make_item_name(trait_arc);
+                    let synthetic_token = format!(
+                        "__toni_multi__{}__{}",
+                        #base_token_expr,
+                        ::std::any::type_name::<#concrete_type>()
                     );
                     let base_token = #base_token_expr;
                     ::std::sync::Arc::new(
