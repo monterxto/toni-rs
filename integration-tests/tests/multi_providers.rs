@@ -220,3 +220,129 @@ async fn multi_single_contribution_is_vec_of_one() {
     assert_eq!(resp.status(), 200);
     assert_eq!(resp.text().await.unwrap(), "count=1,name=solo");
 }
+
+// ── Test 5: raw-value variant (expression, not closure) ─────────────────────
+
+#[serial]
+#[tokio_localset_test::localset_test]
+async fn multi_raw_value_contributes_to_collection() {
+    struct Named {
+        label: &'static str,
+    }
+    impl Plugin for Named {
+        fn name(&self) -> &'static str {
+            self.label
+        }
+    }
+
+    #[injectable(pub struct NamedRegistry {
+        #[inject("NAMED")]
+        plugins: Vec<Arc<dyn Plugin + Send + Sync>>,
+    })]
+    impl NamedRegistry {}
+
+    #[controller(pub struct TestController {
+        #[inject]
+        registry: NamedRegistry,
+    })]
+    impl TestController {
+        #[get("/named")]
+        fn list(&self) -> ToniBody {
+            let mut names: Vec<&str> = self.registry.plugins.iter().map(|p| p.name()).collect();
+            names.sort();
+            ToniBody::text(names.join(","))
+        }
+    }
+
+    #[module(
+        providers: [
+            provide!("NAMED", Named { label: "foo" }, multi(dyn Plugin + Send + Sync)),
+            provide!("NAMED", Named { label: "bar" }, multi(dyn Plugin + Send + Sync)),
+            NamedRegistry,
+        ],
+        controllers: [TestController]
+    )]
+    impl TestModule {}
+
+    let server = TestServer::start(TestModule::module_definition()).await;
+    let resp = server
+        .client()
+        .get(server.url("/named"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let mut parts: Vec<&str> = resp.text().await.unwrap().leak().split(',').collect();
+    parts.sort();
+    assert_eq!(parts, vec!["bar", "foo"]);
+}
+
+// ── Test 6: existing(Type) variant — reuse a registered singleton ────────────
+
+#[serial]
+#[tokio_localset_test::localset_test]
+async fn multi_existing_reuses_registered_singleton() {
+    #[injectable(pub struct Alpha {})]
+    impl Alpha {}
+
+    impl Plugin for Alpha {
+        fn name(&self) -> &'static str {
+            "alpha"
+        }
+    }
+
+    #[injectable(pub struct Beta {})]
+    impl Beta {}
+
+    impl Plugin for Beta {
+        fn name(&self) -> &'static str {
+            "beta"
+        }
+    }
+
+    #[injectable(pub struct ExistingRegistry {
+        #[inject("EX_PLUGINS")]
+        plugins: Vec<Arc<dyn Plugin + Send + Sync>>,
+        #[inject]
+        alpha: Alpha,
+    })]
+    impl ExistingRegistry {}
+
+    #[controller(pub struct TestController {
+        #[inject]
+        registry: ExistingRegistry,
+    })]
+    impl TestController {
+        #[get("/existing")]
+        fn list(&self) -> ToniBody {
+            let mut names: Vec<&str> = self.registry.plugins.iter().map(|p| p.name()).collect();
+            names.sort();
+            ToniBody::text(names.join(","))
+        }
+    }
+
+    #[module(
+        providers: [
+            Alpha,
+            Beta,
+            provide!("EX_PLUGINS", existing(Alpha), multi(dyn Plugin + Send + Sync)),
+            provide!("EX_PLUGINS", existing(Beta), multi(dyn Plugin + Send + Sync)),
+            ExistingRegistry,
+        ],
+        controllers: [TestController]
+    )]
+    impl TestModule {}
+
+    let server = TestServer::start(TestModule::module_definition()).await;
+    let resp = server
+        .client()
+        .get(server.url("/existing"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body = resp.text().await.unwrap();
+    let mut parts: Vec<&str> = body.leak().split(',').collect();
+    parts.sort();
+    assert_eq!(parts, vec!["alpha", "beta"]);
+}

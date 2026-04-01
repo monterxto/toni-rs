@@ -72,11 +72,26 @@ pub fn handle_provide_multi(
             // Factory-closure variant: provide!(TOKEN, || PluginB::new(), multi(dyn Trait))
             Ok(generate_factory_multi(id, base_token_expr, &closure_expr, &trait_ty))
         }
-        ProviderVariant::Alias(_) => Err(syn::Error::new(
-            proc_macro2::Span::call_site(),
-            "`existing(...)` is not yet supported with `multi`. \
-             Register the type directly: provide!(TOKEN, PluginA, multi(dyn Trait))",
-        )),
+        ProviderVariant::Alias(existing_token) => match &existing_token {
+            crate::shared::TokenType::Type(path) => {
+                let concrete_type = Type::Path(syn::TypePath {
+                    qself: None,
+                    path: path.clone(),
+                });
+                Ok(generate_alias_multi(
+                    id,
+                    base_token_expr,
+                    &existing_token,
+                    &concrete_type,
+                    &trait_ty,
+                ))
+            }
+            _ => Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`existing(...)` with `multi` requires a type-path token (e.g. `existing(PluginA)`), \
+                 not a string or const. The concrete type is needed to coerce the instance to the trait.",
+            )),
+        },
         ProviderVariant::TokenProvider(_) => Err(syn::Error::new(
             proc_macro2::Span::call_site(),
             "`provider(...)` cannot be combined with `multi`",
@@ -338,6 +353,89 @@ fn generate_factory_multi(
                         "__toni_multi__{}__{}",
                         #base_token_expr,
                         concat!(file!(), ":", line!(), ":", column!())
+                    );
+                    let base_token = #base_token_expr;
+                    ::std::sync::Arc::new(
+                        ::std::boxed::Box::new(#contrib_name { item: erased, synthetic_token, base_token })
+                            as ::std::boxed::Box<dyn ::toni::traits_helpers::Provider>,
+                    )
+                }
+            }
+
+            #factory_name
+        }
+    }
+}
+
+/// existing(TypeName) case: `provide!(TOKEN, existing(PluginA), multi(dyn Trait))`.
+///
+/// Reuses the already-registered `PluginA` singleton rather than constructing a fresh instance.
+/// This is analogous to NestJS `useExisting` + `multi: true`.
+fn generate_alias_multi(
+    id: u64,
+    base_token_expr: TokenStream,
+    existing_token: &crate::shared::TokenType,
+    concrete_type: &Type,
+    trait_ty: &TypeTraitObject,
+) -> TokenStream {
+    let (contrib_tokens, contrib_name, make_item_name) = contrib_provider_tokens(id, trait_ty);
+    let (_, _, factory_name) = make_names(id);
+    let existing_token_expr = existing_token.to_token_expr();
+
+    quote! {
+        {
+            #contrib_tokens
+
+            struct #factory_name;
+
+            #[::toni::async_trait]
+            impl ::toni::traits_helpers::ProviderFactory for #factory_name {
+                fn get_token(&self) -> ::std::string::String {
+                    format!(
+                        "__toni_multi__{}__{}",
+                        #base_token_expr,
+                        #existing_token_expr
+                    )
+                }
+
+                fn get_multi_base_token(&self) -> ::std::option::Option<::std::string::String> {
+                    ::std::option::Option::Some(#base_token_expr)
+                }
+
+                fn get_dependencies(&self) -> ::std::vec::Vec<::std::string::String> {
+                    vec![#existing_token_expr]
+                }
+
+                async fn build(
+                    &self,
+                    deps: ::toni::FxHashMap<
+                        ::std::string::String,
+                        ::std::sync::Arc<::std::boxed::Box<dyn ::toni::traits_helpers::Provider>>,
+                    >,
+                ) -> ::std::sync::Arc<::std::boxed::Box<dyn ::toni::traits_helpers::Provider>> {
+                    let existing_provider = deps
+                        .get(&#existing_token_expr)
+                        .unwrap_or_else(|| panic!(
+                            "existing provider '{}' not found for multi contribution",
+                            #existing_token_expr
+                        ))
+                        .clone();
+                    let any_box = existing_provider
+                        .execute(vec![], ::toni::ProviderContext::None)
+                        .await;
+                    let concrete = *any_box
+                        .downcast::<#concrete_type>()
+                        .unwrap_or_else(|_| panic!(
+                            "Multi existing: downcast to {} failed",
+                            ::std::any::type_name::<#concrete_type>()
+                        ));
+                    let trait_arc: ::std::sync::Arc<#trait_ty> =
+                        ::std::sync::Arc::new(concrete);
+                    let erased = #make_item_name(trait_arc);
+                    let synthetic_token = format!(
+                        "__toni_multi__{}__{}",
+                        #base_token_expr,
+                        #existing_token_expr
                     );
                     let base_token = #base_token_expr;
                     ::std::sync::Arc::new(
