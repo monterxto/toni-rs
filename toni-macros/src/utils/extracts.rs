@@ -231,6 +231,39 @@ pub fn extract_type_token(ty: &Type) -> Result<TokenStream> {
     ))
 }
 
+/// Normalize a trait-object type to always include `+ Send + Sync`.
+///
+/// Multi-providers store `Arc<dyn Trait + Send + Sync>` internally. When a user writes
+/// `Vec<Arc<dyn Plugin>>` (omitting the bounds), the downcast type must still match.
+pub fn normalize_trait_send_sync(ty: Type) -> Type {
+    let Type::TraitObject(mut tobj) = ty else {
+        return ty;
+    };
+    let has_send = tobj.bounds.iter().any(|b| {
+        matches!(b, syn::TypeParamBound::Trait(t) if t.path.is_ident("Send"))
+    });
+    let has_sync = tobj.bounds.iter().any(|b| {
+        matches!(b, syn::TypeParamBound::Trait(t) if t.path.is_ident("Sync"))
+    });
+    if !has_send {
+        tobj.bounds.push(syn::TypeParamBound::Trait(syn::TraitBound {
+            paren_token: None,
+            modifier: syn::TraitBoundModifier::None,
+            lifetimes: None,
+            path: syn::parse_quote!(Send),
+        }));
+    }
+    if !has_sync {
+        tobj.bounds.push(syn::TypeParamBound::Trait(syn::TraitBound {
+            paren_token: None,
+            modifier: syn::TraitBoundModifier::None,
+            lifetimes: None,
+            path: syn::parse_quote!(Sync),
+        }));
+    }
+    Type::TraitObject(tobj)
+}
+
 /// Returns the inner trait-object type if `ty` is `Vec<Arc<dyn Trait...>>`, otherwise `None`.
 ///
 /// Used by injection codegen to detect multi-provider fields and generate the

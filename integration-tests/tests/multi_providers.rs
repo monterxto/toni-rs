@@ -35,7 +35,7 @@ async fn multi_type_path_collects_all_contributions() {
 
     #[injectable(pub struct PluginRegistry {
         #[inject("PLUGINS")]
-        plugins: Vec<Arc<dyn Plugin + Send + Sync>>,
+        plugins: Vec<Arc<dyn Plugin>>,
     })]
     impl PluginRegistry {}
 
@@ -56,8 +56,8 @@ async fn multi_type_path_collects_all_contributions() {
         providers: [
             PluginA,
             PluginB,
-            provide!("PLUGINS", PluginA, multi(dyn Plugin + Send + Sync)),
-            provide!("PLUGINS", PluginB, multi(dyn Plugin + Send + Sync)),
+            provide!("PLUGINS", PluginA, multi(Plugin)),
+            provide!("PLUGINS", PluginB, multi(Plugin)),
             PluginRegistry,
         ],
         controllers: [TestController]
@@ -95,7 +95,7 @@ async fn multi_factory_closure_collects_contributions() {
 
     #[injectable(pub struct GreeterRegistry {
         #[inject("GREETERS")]
-        greeters: Vec<Arc<dyn Plugin + Send + Sync>>,
+        greeters: Vec<Arc<dyn Plugin>>,
     })]
     impl GreeterRegistry {}
 
@@ -115,8 +115,8 @@ async fn multi_factory_closure_collects_contributions() {
 
     #[module(
         providers: [
-            provide!("GREETERS", || Greeter { greeting: "hello" }, multi(dyn Plugin + Send + Sync)),
-            provide!("GREETERS", || Greeter { greeting: "world" }, multi(dyn Plugin + Send + Sync)),
+            provide!("GREETERS", || Greeter { greeting: "hello" }, multi(Plugin)),
+            provide!("GREETERS", || Greeter { greeting: "world" }, multi(Plugin)),
             GreeterRegistry,
         ],
         controllers: [TestController]
@@ -144,7 +144,7 @@ async fn multi_factory_closure_collects_contributions() {
 async fn multi_empty_when_no_contributions() {
     #[injectable(pub struct EmptyRegistry {
         #[inject("NO_PLUGINS")]
-        plugins: Vec<Arc<dyn Plugin + Send + Sync>>,
+        plugins: Vec<Arc<dyn Plugin>>,
     })]
     impl EmptyRegistry {}
 
@@ -182,7 +182,7 @@ async fn multi_single_contribution_is_vec_of_one() {
 
     #[injectable(pub struct SingleRegistry {
         #[inject("SINGLE")]
-        plugins: Vec<Arc<dyn Plugin + Send + Sync>>,
+        plugins: Vec<Arc<dyn Plugin>>,
     })]
     impl SingleRegistry {}
 
@@ -203,7 +203,7 @@ async fn multi_single_contribution_is_vec_of_one() {
 
     #[module(
         providers: [
-            provide!("SINGLE", || Solo, multi(dyn Plugin + Send + Sync)),
+            provide!("SINGLE", || Solo, multi(Plugin)),
             SingleRegistry,
         ],
         controllers: [TestController]
@@ -237,7 +237,7 @@ async fn multi_raw_value_contributes_to_collection() {
 
     #[injectable(pub struct NamedRegistry {
         #[inject("NAMED")]
-        plugins: Vec<Arc<dyn Plugin + Send + Sync>>,
+        plugins: Vec<Arc<dyn Plugin>>,
     })]
     impl NamedRegistry {}
 
@@ -256,8 +256,8 @@ async fn multi_raw_value_contributes_to_collection() {
 
     #[module(
         providers: [
-            provide!("NAMED", Named { label: "foo" }, multi(dyn Plugin + Send + Sync)),
-            provide!("NAMED", Named { label: "bar" }, multi(dyn Plugin + Send + Sync)),
+            provide!("NAMED", Named { label: "foo" }, multi(Plugin)),
+            provide!("NAMED", Named { label: "bar" }, multi(Plugin)),
             NamedRegistry,
         ],
         controllers: [TestController]
@@ -302,7 +302,7 @@ async fn multi_existing_reuses_registered_singleton() {
 
     #[injectable(pub struct ExistingRegistry {
         #[inject("EX_PLUGINS")]
-        plugins: Vec<Arc<dyn Plugin + Send + Sync>>,
+        plugins: Vec<Arc<dyn Plugin>>,
         #[inject]
         alpha: Alpha,
     })]
@@ -325,8 +325,8 @@ async fn multi_existing_reuses_registered_singleton() {
         providers: [
             Alpha,
             Beta,
-            provide!("EX_PLUGINS", existing(Alpha), multi(dyn Plugin + Send + Sync)),
-            provide!("EX_PLUGINS", existing(Beta), multi(dyn Plugin + Send + Sync)),
+            provide!("EX_PLUGINS", existing(Alpha), multi(Plugin)),
+            provide!("EX_PLUGINS", existing(Beta), multi(Plugin)),
             ExistingRegistry,
         ],
         controllers: [TestController]
@@ -372,7 +372,7 @@ async fn multi_existing_string_token_with_explicit_type() {
 
     #[injectable(pub struct StringTokenRegistry {
         #[inject("STR_PLUGINS")]
-        plugins: Vec<Arc<dyn Plugin + Send + Sync>>,
+        plugins: Vec<Arc<dyn Plugin>>,
     })]
     impl StringTokenRegistry {}
 
@@ -393,8 +393,8 @@ async fn multi_existing_string_token_with_explicit_type() {
         providers: [
             provide!("gamma_provider", provider(Gamma)),
             provide!("delta_provider", provider(Delta)),
-            provide!("STR_PLUGINS", existing("gamma_provider", Gamma), multi(dyn Plugin + Send + Sync)),
-            provide!("STR_PLUGINS", existing("delta_provider", Delta), multi(dyn Plugin + Send + Sync)),
+            provide!("STR_PLUGINS", existing("gamma_provider", Gamma), multi(Plugin)),
+            provide!("STR_PLUGINS", existing("delta_provider", Delta), multi(Plugin)),
             StringTokenRegistry,
         ],
         controllers: [TestController]
@@ -440,7 +440,7 @@ async fn multi_provider_useclass_collects_contributions() {
 
     #[injectable(pub struct UseClassRegistry {
         #[inject("UC_PLUGINS")]
-        plugins: Vec<Arc<dyn Plugin + Send + Sync>>,
+        plugins: Vec<Arc<dyn Plugin>>,
     })]
     impl UseClassRegistry {}
 
@@ -459,8 +459,8 @@ async fn multi_provider_useclass_collects_contributions() {
 
     #[module(
         providers: [
-            provide!("UC_PLUGINS", provider(Echo), multi(dyn Plugin + Send + Sync)),
-            provide!("UC_PLUGINS", provider(Foxtrot), multi(dyn Plugin + Send + Sync)),
+            provide!("UC_PLUGINS", provider(Echo), multi(Plugin)),
+            provide!("UC_PLUGINS", provider(Foxtrot), multi(Plugin)),
             UseClassRegistry,
         ],
         controllers: [TestController]

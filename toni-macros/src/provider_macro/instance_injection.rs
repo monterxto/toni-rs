@@ -17,7 +17,7 @@ use crate::{
         lifecycle_hooks::{LifecycleHooks, detect_lifecycle_hooks, strip_lifecycle_attrs},
         scope_parser::ProviderScope,
     },
-    utils::extracts::extract_vec_arc_dyn_inner,
+    utils::extracts::{extract_vec_arc_dyn_inner, normalize_trait_send_sync},
 };
 
 /// Detected enhancer traits that a struct implements
@@ -609,6 +609,9 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
     // Generate resolutions for multi-provider fields
     for (field_name, full_type, lookup_token_expr) in &multi_deps {
         let inner_trait = extract_vec_arc_dyn_inner(full_type).unwrap();
+        // Downcast must use the normalized type (with + Send + Sync) since that is what
+        // multi-providers store. The closure return type forces coercion back to inner_trait.
+        let downcast_inner = normalize_trait_send_sync(inner_trait.clone());
         let field_name_str = field_name.to_string();
         let resolution = quote! {
             let #field_name: #full_type = {
@@ -628,12 +631,12 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
                     ));
                 erased_items
                     .into_iter()
-                    .map(|item| {
-                        let wrapped = ::std::sync::Arc::downcast::<::std::sync::Arc<#inner_trait>>(item)
+                    .map(|item| -> ::std::sync::Arc<#inner_trait> {
+                        let wrapped = ::std::sync::Arc::downcast::<::std::sync::Arc<#downcast_inner>>(item)
                             .unwrap_or_else(|_| panic!(
                                 "Multi-provider '{}': item downcast to Arc<{}> failed",
                                 __lookup_token,
-                                stringify!(#inner_trait)
+                                stringify!(#downcast_inner)
                             ));
                         (*wrapped).clone()
                     })
@@ -773,6 +776,7 @@ fn generate_factory_field_resolutions(
     // Generate resolutions for multi-provider fields
     for (field_name, full_type, lookup_token_expr) in &multi_deps {
         let inner_trait = extract_vec_arc_dyn_inner(full_type).unwrap();
+        let downcast_inner = normalize_trait_send_sync(inner_trait.clone());
         let field_name_str = field_name.to_string();
         let resolution = quote! {
             let #field_name: #full_type = {
@@ -792,12 +796,12 @@ fn generate_factory_field_resolutions(
                     ));
                 erased_items
                     .into_iter()
-                    .map(|item| {
-                        let wrapped = ::std::sync::Arc::downcast::<::std::sync::Arc<#inner_trait>>(item)
+                    .map(|item| -> ::std::sync::Arc<#inner_trait> {
+                        let wrapped = ::std::sync::Arc::downcast::<::std::sync::Arc<#downcast_inner>>(item)
                             .unwrap_or_else(|_| panic!(
                                 "Multi-provider '{}': item downcast to Arc<{}> failed",
                                 __lookup_token,
-                                stringify!(#inner_trait)
+                                stringify!(#downcast_inner)
                             ));
                         (*wrapped).clone()
                     })

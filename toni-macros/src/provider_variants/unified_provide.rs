@@ -3,6 +3,7 @@ use quote::quote;
 use syn::{
     Expr, ExprCall, ExprClosure, ExprLit, ExprPath, Ident, Result, Token, Type, TypeTraitObject,
     parse::{Parse, ParseStream},
+    punctuated::Punctuated,
 };
 
 use crate::shared::TokenType;
@@ -67,18 +68,20 @@ impl Parse for ProvideInput {
                     let _: Token![,] = input.parse()?;
                     let _multi_kw: Ident = input.parse()?;
 
-                    // Optional `(dyn Trait + Send + Sync)`
+                    // Optional `(dyn Trait + Send + Sync)` or shorthand `(Trait)`
                     let trait_path: Option<TypeTraitObject> = if input.peek(syn::token::Paren) {
                         let content;
                         syn::parenthesized!(content in input);
-                        // Parse `dyn Trait...` as a trait object type
                         let ty: Type = content.parse()?;
                         match ty {
                             Type::TraitObject(tobj) => Some(tobj),
+                            // Shorthand: `multi(Plugin)` → synthesize `dyn Plugin + Send + Sync`
+                            Type::Path(type_path) => Some(synthesize_trait_object(type_path.path)),
                             _ => {
                                 return Err(syn::Error::new_spanned(
                                     &ty,
-                                    "multi(...) expects a trait object type, e.g. `dyn Plugin + Send + Sync`",
+                                    "multi(...) expects a trait name or trait object, \
+                                     e.g. `multi(Plugin)` or `multi(dyn Plugin + Send + Sync)`",
                                 ));
                             }
                         }
@@ -245,6 +248,36 @@ fn is_screaming_snake_case(s: &str) -> bool {
     !s.is_empty()
         && s.chars()
             .all(|c| c.is_uppercase() || c == '_' || c.is_numeric())
+}
+
+/// Synthesize `dyn Trait + Send + Sync` from a plain trait path (the `multi(Plugin)` shorthand).
+fn synthesize_trait_object(path: syn::Path) -> TypeTraitObject {
+    use syn::{TraitBound, TraitBoundModifier, TypeParamBound};
+
+    let mut bounds: Punctuated<TypeParamBound, syn::Token![+]> = Punctuated::new();
+    bounds.push(TypeParamBound::Trait(TraitBound {
+        paren_token: None,
+        modifier: TraitBoundModifier::None,
+        lifetimes: None,
+        path,
+    }));
+    bounds.push(TypeParamBound::Trait(TraitBound {
+        paren_token: None,
+        modifier: TraitBoundModifier::None,
+        lifetimes: None,
+        path: syn::parse_quote!(Send),
+    }));
+    bounds.push(TypeParamBound::Trait(TraitBound {
+        paren_token: None,
+        modifier: TraitBoundModifier::None,
+        lifetimes: None,
+        path: syn::parse_quote!(Sync),
+    }));
+
+    TypeTraitObject {
+        dyn_token: Some(syn::Token![dyn](proc_macro2::Span::call_site())),
+        bounds,
+    }
 }
 
 /// Main handler for the provide! macro
