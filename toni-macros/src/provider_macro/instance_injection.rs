@@ -10,11 +10,14 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{Ident, ItemImpl, ItemStruct, Result, Type};
 
-use crate::shared::{
-    dependency_info::DependencyInfo,
-    enhancer_markers::EnhancerMarkers,
-    lifecycle_hooks::{LifecycleHooks, detect_lifecycle_hooks, strip_lifecycle_attrs},
-    scope_parser::ProviderScope,
+use crate::{
+    shared::{
+        dependency_info::DependencyInfo,
+        enhancer_markers::EnhancerMarkers,
+        lifecycle_hooks::{LifecycleHooks, detect_lifecycle_hooks, strip_lifecycle_attrs},
+        scope_parser::ProviderScope,
+    },
+    utils::extracts::{extract_vec_arc_dyn_inner, normalize_trait_send_sync},
 };
 
 /// Detected enhancer traits that a struct implements
@@ -598,17 +601,62 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
         &dependencies.fields
     };
 
-    // Group by token for deduplication while preserving declaration order
+    // Partition into multi-provider fields (Vec<Arc<dyn T>>) and regular fields
+    let (multi_deps, regular_deps): (Vec<_>, Vec<_>) = deps_to_resolve
+        .iter()
+        .partition(|(_, full_type, _)| extract_vec_arc_dyn_inner(full_type).is_some());
+
+    // Generate resolutions for multi-provider fields
+    for (field_name, full_type, lookup_token_expr) in &multi_deps {
+        let inner_trait = extract_vec_arc_dyn_inner(full_type).unwrap();
+        // Downcast must use the normalized type (with + Send + Sync) since that is what
+        // multi-providers store. The closure return type forces coercion back to inner_trait.
+        let downcast_inner = normalize_trait_send_sync(inner_trait.clone());
+        let field_name_str = field_name.to_string();
+        let resolution = quote! {
+            let #field_name: #full_type = {
+                let __lookup_token = #lookup_token_expr;
+                let provider = self.dependencies
+                    .get(&__lookup_token)
+                    .unwrap_or_else(|| panic!(
+                        "Missing multi-provider '{}' for field '{}'",
+                        __lookup_token, #field_name_str
+                    ));
+                let any_box = provider.execute(vec![], _ctx).await;
+                let erased_items = *any_box
+                    .downcast::<Vec<::std::sync::Arc<dyn ::std::any::Any + Send + Sync>>>()
+                    .unwrap_or_else(|_| panic!(
+                        "Multi-provider '{}' returned unexpected type (expected Vec<Arc<dyn Any+Send+Sync>>)",
+                        __lookup_token
+                    ));
+                erased_items
+                    .into_iter()
+                    .map(|item| -> ::std::sync::Arc<#inner_trait> {
+                        let wrapped = ::std::sync::Arc::downcast::<::std::sync::Arc<#downcast_inner>>(item)
+                            .unwrap_or_else(|_| panic!(
+                                "Multi-provider '{}': item downcast to Arc<{}> failed",
+                                __lookup_token,
+                                stringify!(#downcast_inner)
+                            ));
+                        (*wrapped).clone()
+                    })
+                    .collect()
+            };
+        };
+        resolutions.push(resolution);
+        field_names.push(field_name.clone());
+    }
+
+    // Group regular fields by token for deduplication while preserving declaration order
     use indexmap::IndexMap;
     let mut type_groups: IndexMap<String, Vec<(Ident, Type, TokenStream)>> = IndexMap::new();
 
-    for (field_name, full_type, lookup_token_expr) in deps_to_resolve {
-        // Group by token, not type - same type can map to different providers
+    for (field_name, full_type, lookup_token_expr) in &regular_deps {
         let type_key = quote!(#lookup_token_expr).to_string();
         type_groups.entry(type_key).or_insert_with(Vec::new).push((
-            field_name.clone(),
-            full_type.clone(),
-            lookup_token_expr.clone(),
+            (*field_name).clone(),
+            (*full_type).clone(),
+            (*lookup_token_expr).clone(),
         ));
     }
     for (_type_key, fields_of_type) in type_groups {
@@ -616,7 +664,6 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
         let field_name_str = first_field_name.to_string();
 
         if fields_of_type.len() == 1 {
-            // Only one field of this type
             let field_name = first_field_name;
             let resolution = quote! {
                 let #field_name: #full_type = {
@@ -642,7 +689,6 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
             resolutions.push(resolution);
             field_names.push(field_name.clone());
         } else {
-            // Multiple fields of the same type - deduplicate based on scope
             let temp_var = syn::Ident::new(
                 &format!("__temp_instance_{}", first_field_name),
                 first_field_name.span(),
@@ -722,17 +768,60 @@ fn generate_factory_field_resolutions(
         &dependencies.fields
     };
 
-    // Group by token for deduplication while preserving declaration order
+    // Partition into multi-provider fields (Vec<Arc<dyn T>>) and regular fields
+    let (multi_deps, regular_deps): (Vec<_>, Vec<_>) = deps_to_resolve
+        .iter()
+        .partition(|(_, full_type, _)| extract_vec_arc_dyn_inner(full_type).is_some());
+
+    // Generate resolutions for multi-provider fields
+    for (field_name, full_type, lookup_token_expr) in &multi_deps {
+        let inner_trait = extract_vec_arc_dyn_inner(full_type).unwrap();
+        let downcast_inner = normalize_trait_send_sync(inner_trait.clone());
+        let field_name_str = field_name.to_string();
+        let resolution = quote! {
+            let #field_name: #full_type = {
+                let __lookup_token = #lookup_token_expr;
+                let provider = dependencies
+                    .get(&__lookup_token)
+                    .unwrap_or_else(|| panic!(
+                        "Missing multi-provider '{}' for field '{}'",
+                        __lookup_token, #field_name_str
+                    ));
+                let any_box = provider.execute(vec![], ::toni::ProviderContext::None).await;
+                let erased_items = *any_box
+                    .downcast::<Vec<::std::sync::Arc<dyn ::std::any::Any + Send + Sync>>>()
+                    .unwrap_or_else(|_| panic!(
+                        "Multi-provider '{}' returned unexpected type (expected Vec<Arc<dyn Any+Send+Sync>>)",
+                        __lookup_token
+                    ));
+                erased_items
+                    .into_iter()
+                    .map(|item| -> ::std::sync::Arc<#inner_trait> {
+                        let wrapped = ::std::sync::Arc::downcast::<::std::sync::Arc<#downcast_inner>>(item)
+                            .unwrap_or_else(|_| panic!(
+                                "Multi-provider '{}': item downcast to Arc<{}> failed",
+                                __lookup_token,
+                                stringify!(#downcast_inner)
+                            ));
+                        (*wrapped).clone()
+                    })
+                    .collect()
+            };
+        };
+        resolutions.push(resolution);
+        field_names.push(field_name.clone());
+    }
+
+    // Group regular fields by token for deduplication while preserving declaration order
     use indexmap::IndexMap;
     let mut type_groups: IndexMap<String, Vec<(Ident, Type, TokenStream)>> = IndexMap::new();
 
-    for (field_name, full_type, lookup_token_expr) in deps_to_resolve {
-        // Group by token, not type - same type can map to different providers
+    for (field_name, full_type, lookup_token_expr) in &regular_deps {
         let type_key = quote!(#lookup_token_expr).to_string();
         type_groups.entry(type_key).or_insert_with(Vec::new).push((
-            field_name.clone(),
-            full_type.clone(),
-            lookup_token_expr.clone(),
+            (*field_name).clone(),
+            (*full_type).clone(),
+            (*lookup_token_expr).clone(),
         ));
     }
     for (_type_key, fields_of_type) in type_groups {
@@ -740,7 +829,6 @@ fn generate_factory_field_resolutions(
         let field_name_str = first_field_name.to_string();
 
         if fields_of_type.len() == 1 {
-            // Only one field of this type
             let field_name = first_field_name;
             let resolution = quote! {
                 let #field_name: #full_type = {
@@ -766,7 +854,6 @@ fn generate_factory_field_resolutions(
             resolutions.push(resolution);
             field_names.push(field_name.clone());
         } else {
-            // Multiple fields of the same type - deduplicate based on scope
             let temp_var = syn::Ident::new(
                 &format!("__temp_instance_{}", first_field_name),
                 first_field_name.span(),

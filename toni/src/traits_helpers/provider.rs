@@ -36,6 +36,17 @@ pub trait Provider: Send + Sync {
         None
     }
 
+    // Multi-provider support — overridden by generated multi-contribution providers.
+    // Returns the base token this contribution belongs to (e.g. "PLUGINS").
+    fn get_multi_base_token(&self) -> Option<String> {
+        None
+    }
+    // Returns the type-erased contribution item (double-Arc: Arc<Arc<dyn Trait+Send+Sync>>
+    // stored as Arc<dyn Any+Send+Sync>) so the instance loader can collect them.
+    fn as_multi_item(&self) -> Option<Arc<dyn Any + Send + Sync>> {
+        None
+    }
+
     // Lifecycle hooks — overridden by the macro when the user annotates a method.
     // Default implementations are no-ops so providers without hooks incur no overhead.
     async fn on_module_init(&self) {}
@@ -58,6 +69,12 @@ pub trait ProviderFactory {
     fn get_token(&self) -> String;
     fn get_dependencies(&self) -> Vec<String> {
         vec![]
+    }
+    // For multi-contribution factories: returns the base token under which all contributions
+    // for the same logical multi-provider are grouped (e.g. "PLUGINS"). Returns None for
+    // regular (non-multi) factories.
+    fn get_multi_base_token(&self) -> Option<String> {
+        None
     }
     async fn build(
         &self,

@@ -1,12 +1,13 @@
 use anyhow::{Result, anyhow};
 use rustc_hash::FxHashMap;
 use std::{
+    any::Any,
     cell::{RefCell, RefMut},
     rc::Rc,
     sync::Arc,
 };
 
-use super::{DependencyGraph, ToniContainer};
+use super::{DependencyGraph, ToniContainer, multi_collection_provider::MultiCollectionProvider};
 use crate::{
     structs_helpers::EnhancerMetadata,
     traits_helpers::{Controller, Provider},
@@ -82,6 +83,10 @@ impl ToniInstanceLoader {
             ));
         }
 
+        // PHASE 1.5: Collect multi-provider contributions into Vec collections per base token.
+        // Must run after all individual providers are built so as_multi_item() is available.
+        self.collect_multi_providers()?;
+
         // PHASE 2: Resolve APP_* token providers to global enhancers
         // This happens AFTER all provider instances are created but BEFORE controllers are instantiated
         // This allows APP_* enhancers to have injected dependencies AND be available when controllers are created
@@ -95,6 +100,55 @@ impl ToniInstanceLoader {
         for module_token in &modules_order {
             self.create_instances_of_controllers(module_token.clone())
                 .await?;
+        }
+
+        Ok(())
+    }
+
+    /// Collect multi-provider contributions into MultiCollectionProvider instances.
+    ///
+    /// Iterates all registered multi-provider groups (base_token -> contributions), calls
+    /// as_multi_item() on each built contribution, and stores the resulting collection
+    /// in the container so it can be resolved like any other provider dependency.
+    fn collect_multi_providers(&self) -> Result<()> {
+        let multi_map = self
+            .container
+            .borrow()
+            .get_multi_providers()
+            .clone();
+
+        for (base_token, contributions) in multi_map {
+            let mut items: Vec<Arc<dyn Any + Send + Sync>> = Vec::new();
+
+            for (module_token, provider_token) in &contributions {
+                let container = self.container.borrow();
+                let provider = container
+                    .get_provider_instance_by_token(module_token, provider_token)?
+                    .ok_or_else(|| {
+                        anyhow!(
+                            "Multi-provider contribution '{}' not found in module '{}'",
+                            provider_token,
+                            module_token
+                        )
+                    })?
+                    .clone();
+
+                let item = provider.as_multi_item().ok_or_else(|| {
+                    anyhow!(
+                        "Provider '{}' is registered as multi but does not implement as_multi_item()",
+                        provider_token
+                    )
+                })?;
+                items.push(item);
+            }
+
+            let collection: Arc<Box<dyn Provider>> = Arc::new(Box::new(MultiCollectionProvider {
+                token: base_token.clone(),
+                items,
+            }));
+            self.container
+                .borrow_mut()
+                .add_multi_collection_provider(base_token, collection);
         }
 
         Ok(())
@@ -484,6 +538,40 @@ impl ToniInstanceLoader {
                         module_token
                     ));
                 }
+            }
+            // Step 3.5: Check cached multi-collection providers (assembled in Phase 1.5)
+            else if let Some(multi_instance) =
+                container.get_multi_collection_provider(&dependency)
+            {
+                resolved_dependencies.insert(dependency, multi_instance);
+            }
+            // Step 3.6: Assemble multi-collection on-demand when contributor and consumer
+            // share the same module — contributors are in the in-progress instances map
+            // before Phase 1.5 has had a chance to cache the collection.
+            else if let Some(contribs) =
+                container.get_multi_providers().get(&dependency).cloned()
+            {
+                let mut items: Vec<std::sync::Arc<dyn std::any::Any + Send + Sync>> = Vec::new();
+                for (contrib_module_token, provider_token) in &contribs {
+                    // Prefer in-progress instances (same-module build), fall back to
+                    // already-saved container instances (cross-module contributions).
+                    let item = providers_instances
+                        .and_then(|m| m.get(provider_token))
+                        .and_then(|p| p.as_multi_item());
+                    if let Some(item) = item {
+                        items.push(item);
+                    } else if let Ok(saved) = container.get_providers_instance(contrib_module_token) {
+                        if let Some(item) = saved.get(provider_token).and_then(|p| p.as_multi_item()) {
+                            items.push(item);
+                        }
+                    }
+                }
+                let collection: Arc<Box<dyn Provider>> =
+                    Arc::new(Box::new(MultiCollectionProvider {
+                        token: dependency.clone(),
+                        items,
+                    }));
+                resolved_dependencies.insert(dependency, collection);
             }
             // Step 4: Not found anywhere
             else {

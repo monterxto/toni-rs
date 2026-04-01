@@ -135,6 +135,15 @@ impl ToniDependenciesScanner {
                     _ => {}
                 }
 
+                // Detect multi-provider contributions and record them by base token
+                if let Some(base_token) = provider.get_multi_base_token() {
+                    container.register_multi_provider(
+                        base_token,
+                        module_token.clone(),
+                        provider_token,
+                    );
+                }
+
                 container.add_provider(&module_token, provider)?;
             }
         };

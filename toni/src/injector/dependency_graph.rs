@@ -23,18 +23,34 @@ impl DependencyGraph {
     }
 
     pub fn get_ordered_providers_token(mut self) -> Result<Vec<String>> {
-        let providers = {
+        let (providers, multi_providers) = {
             let container = self.container.borrow();
             let providers_map = container.get_providers_factory(&self.module_token)?;
-            providers_map
+            let providers = providers_map
                 .iter()
                 .map(|(token, provider)| (token.clone(), provider.get_dependencies()))
-                .collect::<Vec<(String, Vec<String>)>>()
+                .collect::<Vec<(String, Vec<String>)>>();
+            // Map from multi-collection base token (e.g. "PLUGINS") to the contributing
+            // provider tokens within this module so the topological sort can treat all
+            // contributors as implicit dependencies of any provider that injects the base token.
+            let multi_providers: FxHashMap<String, Vec<String>> = container
+                .get_multi_providers()
+                .iter()
+                .map(|(base, contribs)| {
+                    let local: Vec<String> = contribs
+                        .iter()
+                        .filter(|(mt, _)| mt == &self.module_token)
+                        .map(|(_, pt)| pt.clone())
+                        .collect();
+                    (base.clone(), local)
+                })
+                .collect();
+            (providers, multi_providers)
         };
         let clone_providers = providers.clone();
         for (token, dependencies) in providers {
             if !self.visited.contains_key(&token) {
-                self.visit_node(token, dependencies, &clone_providers)?;
+                self.visit_node(token, dependencies, &clone_providers, &multi_providers)?;
             }
         }
         Ok(self.ordered)
@@ -45,6 +61,7 @@ impl DependencyGraph {
         token: String,
         dependencies: Vec<String>,
         providers: &Vec<(String, Vec<String>)>,
+        multi_providers: &FxHashMap<String, Vec<String>>,
     ) -> Result<()> {
         if self.temp_mark.contains_key(&token) {
             return Err(anyhow!(
@@ -60,14 +77,22 @@ impl DependencyGraph {
         self.temp_mark.insert(token.clone(), true);
 
         for dep_token in &dependencies {
-            // Find the provider that matches this dependency token
-            // The dep_token is the full type name (e.g., "module_or_crate::TypeName")
-            // and we need to find the provider whose token matches it
             if let Some((provider_token, provider_deps)) = providers
                 .iter()
                 .find(|(token, _)| token.as_str() == dep_token.as_str())
             {
-                self.visit_node(provider_token.clone(), provider_deps.clone(), providers)?;
+                self.visit_node(provider_token.clone(), provider_deps.clone(), providers, multi_providers)?;
+            } else if let Some(contrib_tokens) = multi_providers.get(dep_token) {
+                // dep_token is a multi-collection base token: visit all contributing
+                // factories in this module first so the consumer is ordered after them.
+                for contrib_token in contrib_tokens {
+                    if let Some((_, contrib_deps)) = providers
+                        .iter()
+                        .find(|(t, _)| t == contrib_token)
+                    {
+                        self.visit_node(contrib_token.clone(), contrib_deps.clone(), providers, multi_providers)?;
+                    }
+                }
             }
         }
 

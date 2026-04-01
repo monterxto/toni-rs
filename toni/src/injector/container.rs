@@ -33,6 +33,13 @@ pub struct ToniContainer {
     app_guard_providers: Vec<(String, String)>,
     app_interceptor_providers: Vec<(String, String)>,
     app_pipe_providers: Vec<(String, String)>,
+    /// Multi-provider registry: base_token -> Vec<(module_token, provider_token)>.
+    /// Populated during the scan phase; the instance loader uses this to collect contributions
+    /// into a MultiCollectionProvider after all individual providers are built.
+    multi_providers: FxHashMap<String, Vec<(String, String)>>,
+    /// Fully-collected multi-provider instances, keyed by base token.
+    /// Built by the instance loader after Phase 1 and resolved like regular providers.
+    multi_collection_providers: FxHashMap<String, Arc<Box<dyn Provider>>>,
     /// WebSocket gateways — populated automatically when provider instances are added.
     /// Key is the WS path (e.g. "/chat"), value is the raw gateway ready for wrapping.
     gateways: FxHashMap<String, Arc<Box<dyn GatewayTrait>>>,
@@ -61,6 +68,8 @@ impl ToniContainer {
             app_guard_providers: Vec::new(),
             app_interceptor_providers: Vec::new(),
             app_pipe_providers: Vec::new(),
+            multi_providers: FxHashMap::default(),
+            multi_collection_providers: FxHashMap::default(),
             gateways: FxHashMap::default(),
             rpc_controllers: FxHashMap::default(),
         }
@@ -447,5 +456,37 @@ impl ToniContainer {
     /// Get all APP_PIPE providers (after instances are created)
     pub fn get_app_pipe_providers(&self) -> &[(String, String)] {
         &self.app_pipe_providers
+    }
+
+    /// Register one multi-provider contribution during the scan phase.
+    pub fn register_multi_provider(
+        &mut self,
+        base_token: String,
+        module_token: String,
+        provider_token: String,
+    ) {
+        self.multi_providers
+            .entry(base_token)
+            .or_default()
+            .push((module_token, provider_token));
+    }
+
+    pub fn get_multi_providers(&self) -> &FxHashMap<String, Vec<(String, String)>> {
+        &self.multi_providers
+    }
+
+    pub fn add_multi_collection_provider(
+        &mut self,
+        base_token: String,
+        instance: Arc<Box<dyn Provider>>,
+    ) {
+        self.multi_collection_providers.insert(base_token, instance);
+    }
+
+    pub fn get_multi_collection_provider(
+        &self,
+        base_token: &str,
+    ) -> Option<Arc<Box<dyn Provider>>> {
+        self.multi_collection_providers.get(base_token).cloned()
     }
 }
