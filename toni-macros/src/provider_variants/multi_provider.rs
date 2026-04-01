@@ -88,10 +88,20 @@ pub fn handle_provide_multi(
             }
             _ => Err(syn::Error::new(
                 proc_macro2::Span::call_site(),
-                "`existing(...)` with `multi` requires a type-path token (e.g. `existing(PluginA)`), \
-                 not a string or const. The concrete type is needed to coerce the instance to the trait.",
+                "`existing(\"TOKEN\")` with `multi` requires an explicit concrete type because \
+                 string/const tokens carry no type information at compile time. \
+                 Use `existing(\"TOKEN\", ConcreteType)` instead.",
             )),
         },
+        ProviderVariant::AliasTyped(existing_token, concrete_type) => {
+            Ok(generate_alias_multi(
+                id,
+                base_token_expr,
+                &existing_token,
+                &concrete_type,
+                &trait_ty,
+            ))
+        }
         ProviderVariant::TokenProvider(_) => Err(syn::Error::new(
             proc_macro2::Span::call_site(),
             "`provider(...)` cannot be combined with `multi`",

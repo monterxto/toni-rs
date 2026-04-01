@@ -346,3 +346,71 @@ async fn multi_existing_reuses_registered_singleton() {
     parts.sort();
     assert_eq!(parts, vec!["alpha", "beta"]);
 }
+
+// ── Test 7: existing("STRING", ConcreteType) — string token with explicit type ─
+
+#[serial]
+#[tokio_localset_test::localset_test]
+async fn multi_existing_string_token_with_explicit_type() {
+    #[injectable(pub struct Gamma {})]
+    impl Gamma {}
+
+    impl Plugin for Gamma {
+        fn name(&self) -> &'static str {
+            "gamma"
+        }
+    }
+
+    #[injectable(pub struct Delta {})]
+    impl Delta {}
+
+    impl Plugin for Delta {
+        fn name(&self) -> &'static str {
+            "delta"
+        }
+    }
+
+    #[injectable(pub struct StringTokenRegistry {
+        #[inject("STR_PLUGINS")]
+        plugins: Vec<Arc<dyn Plugin + Send + Sync>>,
+    })]
+    impl StringTokenRegistry {}
+
+    #[controller(pub struct TestController {
+        #[inject]
+        registry: StringTokenRegistry,
+    })]
+    impl TestController {
+        #[get("/str")]
+        fn list(&self) -> ToniBody {
+            let mut names: Vec<&str> = self.registry.plugins.iter().map(|p| p.name()).collect();
+            names.sort();
+            ToniBody::text(names.join(","))
+        }
+    }
+
+    #[module(
+        providers: [
+            provide!("gamma_provider", provider(Gamma)),
+            provide!("delta_provider", provider(Delta)),
+            provide!("STR_PLUGINS", existing("gamma_provider", Gamma), multi(dyn Plugin + Send + Sync)),
+            provide!("STR_PLUGINS", existing("delta_provider", Delta), multi(dyn Plugin + Send + Sync)),
+            StringTokenRegistry,
+        ],
+        controllers: [TestController]
+    )]
+    impl TestModule {}
+
+    let server = TestServer::start(TestModule::module_definition()).await;
+    let resp = server
+        .client()
+        .get(server.url("/str"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 200);
+    let body = resp.text().await.unwrap();
+    let mut parts: Vec<&str> = body.leak().split(',').collect();
+    parts.sort();
+    assert_eq!(parts, vec!["delta", "gamma"]);
+}
