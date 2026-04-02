@@ -1,13 +1,10 @@
-
 use std::sync::{Arc, Mutex, OnceLock};
 use toni::async_trait;
 use toni::di::{APP_GUARD, APP_INTERCEPTOR};
 use toni::enhancer::{guard, interceptor};
 use toni::injector::Context;
 use toni::traits_helpers::{Guard, Interceptor, InterceptorNext};
-use toni::{
-    controller, get, injectable, module, provider_token, provider_value, Body as ToniBody,
-};
+use toni::{controller, get, injectable, module, provider_token, provider_value, Body as ToniBody};
 
 use crate::common::TestServer;
 use serial_test::serial;

@@ -7,7 +7,6 @@
 //   2. A method-level handler runs before the global fallback (chain of responsibility):
 //      the method handler owns 400s; everything else falls through to global.
 
-
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 use std::time::Duration;

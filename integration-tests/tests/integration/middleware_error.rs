@@ -4,7 +4,6 @@
 // Before the fix, Err(e) in the middleware chain was re-boxed as io::Error,
 // losing type information, and always produced 500.
 
-
 use crate::common::TestServer;
 use serial_test::serial;
 use toni::async_trait;

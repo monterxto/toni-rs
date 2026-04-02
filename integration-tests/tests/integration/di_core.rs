@@ -1,4 +1,3 @@
-
 use crate::common::TestServer;
 use serial_test::serial;
 use std::sync::atomic::{AtomicU32, Ordering};

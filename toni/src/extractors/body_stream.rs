@@ -33,7 +33,6 @@ impl BodyStream {
     pub fn into_stream(
         self,
     ) -> impl futures::Stream<Item = Result<Bytes, Box<dyn std::error::Error + Send + Sync>>> {
-        
         futures::stream::unfold(self.0, |mut body| async move {
             match body.frame().await {
                 Some(Ok(frame)) => {

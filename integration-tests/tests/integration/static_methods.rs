@@ -1,4 +1,3 @@
-
 use crate::common::TestServer;
 use serial_test::serial;
 use toni::{controller, get, injectable, module, Body as ToniBody, HttpRequest};

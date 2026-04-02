@@ -4,7 +4,6 @@
 // on thread-id instead of request-id), concurrent requests would see each
 // other's instances and this test would catch it.
 
-
 use crate::common::TestServer;
 use futures_util::future::join_all;
 use serial_test::serial;

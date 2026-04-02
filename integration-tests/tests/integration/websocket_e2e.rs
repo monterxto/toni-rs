@@ -25,7 +25,6 @@
 //! 4. **Separate-port shutdown** — `app.close()` stops the tungstenite server on port 19001.
 //!    Verifies that the WS port refuses new connections after shutdown.
 
-
 use crate::common::TestServer;
 use futures_util::{SinkExt, StreamExt};
 use serial_test::serial;

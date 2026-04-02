@@ -10,9 +10,7 @@ use http_body_util::{BodyExt, Full};
 use tower::{Layer, Service, ServiceExt};
 
 use crate::async_trait;
-use crate::http_helpers::{
-    Body, BoxBody, HttpRequest, HttpResponse, RequestBody, RequestBoxBody,
-};
+use crate::http_helpers::{Body, BoxBody, HttpRequest, HttpResponse, RequestBody, RequestBoxBody};
 use crate::traits_helpers::middleware::{Middleware, MiddlewareResult, NextHandle, NextInternal};
 
 fn to_toni_response<B>(resp: http::Response<B>) -> HttpResponse

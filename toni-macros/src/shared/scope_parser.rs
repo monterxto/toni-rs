@@ -285,7 +285,7 @@ pub fn parse_scope_from_attrs(attrs: &[Attribute]) -> Result<ProviderScope> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     use syn::parse_quote;
 
     #[test]

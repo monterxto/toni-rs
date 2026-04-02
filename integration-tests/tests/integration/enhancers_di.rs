@@ -1,4 +1,3 @@
-
 use std::sync::{Arc, Mutex, OnceLock};
 use toni::async_trait;
 use toni::enhancer::{guard, interceptor, middleware};
