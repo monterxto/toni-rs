@@ -10,7 +10,9 @@ use crate::http_helpers::{HttpMethod, HttpRequest, HttpResponse};
 /// The adapter calls `handle` with the converted `HttpRequest` and gets back an
 /// `HttpResponse` — it never touches controllers, middleware, or guards directly.
 pub struct HttpRequestCallbacks {
-    handle: Arc<dyn Fn(HttpRequest) -> Pin<Box<dyn Future<Output = HttpResponse> + Send>> + Send + Sync>,
+    handle: Arc<
+        dyn Fn(HttpRequest) -> Pin<Box<dyn Future<Output = HttpResponse> + Send>> + Send + Sync,
+    >,
 }
 
 impl HttpRequestCallbacks {

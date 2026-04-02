@@ -106,8 +106,7 @@ async fn multi_factory_closure_collects_contributions() {
     impl TestController {
         #[get("/greeters")]
         fn list(&self) -> ToniBody {
-            let mut names: Vec<&str> =
-                self.registry.greeters.iter().map(|p| p.name()).collect();
+            let mut names: Vec<&str> = self.registry.greeters.iter().map(|p| p.name()).collect();
             names.sort();
             ToniBody::text(names.join(","))
         }
@@ -468,12 +467,7 @@ async fn multi_provider_useclass_collects_contributions() {
     impl TestModule {}
 
     let server = TestServer::start(TestModule::module_definition()).await;
-    let resp = server
-        .client()
-        .get(server.url("/uc"))
-        .send()
-        .await
-        .unwrap();
+    let resp = server.client().get(server.url("/uc")).send().await.unwrap();
     assert_eq!(resp.status(), 200);
     let body = resp.text().await.unwrap();
     let mut parts: Vec<&str> = body.leak().split(',').collect();

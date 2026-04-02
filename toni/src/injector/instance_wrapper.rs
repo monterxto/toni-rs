@@ -5,7 +5,9 @@ use crate::{
     http_helpers::{HttpMethod, HttpRequest, HttpResponse, RouteMetadata},
     middleware::{Middleware, MiddlewareChain},
     structs_helpers::EnhancerMetadata,
-    traits_helpers::{Controller, ErrorHandler, ErrorResponse, Guard, Interceptor, InterceptorNext, Pipe},
+    traits_helpers::{
+        Controller, ErrorHandler, ErrorResponse, Guard, Interceptor, InterceptorNext, Pipe,
+    },
 };
 
 use super::Context;
@@ -154,7 +156,9 @@ impl InstanceWrapper {
                     let error: Box<dyn std::error::Error + Send + Sync> = Box::new(
                         std::io::Error::new(std::io::ErrorKind::Other, error_msg.clone()),
                     );
-                    if let Some(ErrorResponse::Http(response)) = handler.handle_error(error, &error_ctx).await {
+                    if let Some(ErrorResponse::Http(response)) =
+                        handler.handle_error(error, &error_ctx).await
+                    {
                         return response;
                     }
                 }
@@ -197,7 +201,8 @@ impl InstanceWrapper {
                         forbidden
                     });
 
-                return Self::handle_error_response(guard_response, &error_handlers, &context).await;
+                return Self::handle_error_response(guard_response, &error_handlers, &context)
+                    .await;
             }
         }
 
@@ -275,7 +280,12 @@ impl InstanceWrapper {
         pipes: &[Arc<dyn Pipe>],
     ) {
         // Get and validate DTO
-        let dto = instance.get_body_dto(context.switch_to_http().expect("Expected HTTP context").request());
+        let dto = instance.get_body_dto(
+            context
+                .switch_to_http()
+                .expect("Expected HTTP context")
+                .request(),
+        );
         if let Some(dto) = dto {
             match dto.validate_dto() {
                 Ok(()) => {
@@ -291,7 +301,10 @@ impl InstanceWrapper {
                         status: 400,
                         headers: vec![],
                     };
-                    context.switch_to_http_mut().expect("Expected HTTP context").set_response(response);
+                    context
+                        .switch_to_http_mut()
+                        .expect("Expected HTTP context")
+                        .set_response(response);
                     context.abort();
                     return;
                 }
@@ -309,7 +322,10 @@ impl InstanceWrapper {
         let mut http = context.switch_to_http_mut().expect("Expected HTTP context");
         let req = http.take_request();
         let controller_response = instance.execute(req).await;
-        context.switch_to_http_mut().expect("Expected HTTP context").set_response(controller_response);
+        context
+            .switch_to_http_mut()
+            .expect("Expected HTTP context")
+            .set_response(controller_response);
     }
 
     /// Execute handler with error handling support
@@ -337,13 +353,21 @@ impl InstanceWrapper {
 
                 for handler in error_handlers.iter().rev() {
                     let error: Box<dyn std::error::Error + Send> = Box::new(http_error.clone());
-                    if let Some(ErrorResponse::Http(handled_response)) = handler.handle_error(error, context).await {
-                        context.switch_to_http_mut().expect("Expected HTTP context").set_response(handled_response);
+                    if let Some(ErrorResponse::Http(handled_response)) =
+                        handler.handle_error(error, context).await
+                    {
+                        context
+                            .switch_to_http_mut()
+                            .expect("Expected HTTP context")
+                            .set_response(handled_response);
                         return;
                     }
                 }
 
-                context.switch_to_http_mut().expect("Expected HTTP context").set_response(http_response);
+                context
+                    .switch_to_http_mut()
+                    .expect("Expected HTTP context")
+                    .set_response(http_response);
             }
         }
     }

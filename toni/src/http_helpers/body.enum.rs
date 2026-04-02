@@ -67,9 +67,7 @@ impl Body {
     /// JSON body from a [`serde_json::Value`]. Sets `Content-Type: application/json`.
     pub fn json(value: Value) -> Self {
         Self {
-            inner: BodyInner::Buffered(Bytes::from(
-                serde_json::to_vec(&value).unwrap_or_default(),
-            )),
+            inner: BodyInner::Buffered(Bytes::from(serde_json::to_vec(&value).unwrap_or_default())),
             content_type: Some("application/json".to_string()),
         }
     }

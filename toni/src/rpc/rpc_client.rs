@@ -5,7 +5,7 @@ use crate::adapter::RpcClientTransport;
 use crate::async_trait;
 use crate::provider_scope::ProviderScope;
 use crate::rpc::{RpcClientError, RpcData};
-use crate::traits_helpers::{ProviderContext, Provider};
+use crate::traits_helpers::{Provider, ProviderContext};
 
 /// Injectable handle for calling remote RPC services.
 ///

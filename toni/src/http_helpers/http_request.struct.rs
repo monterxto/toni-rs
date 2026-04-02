@@ -42,7 +42,10 @@ impl From<http::Request<RequestBody>> for HttpRequest {
 impl From<http::Request<bytes::Bytes>> for HttpRequest {
     fn from(req: http::Request<bytes::Bytes>) -> Self {
         let (parts, body) = req.into_parts();
-        Self(http::Request::from_parts(parts, RequestBody::Buffered(body)))
+        Self(http::Request::from_parts(
+            parts,
+            RequestBody::Buffered(body),
+        ))
     }
 }
 

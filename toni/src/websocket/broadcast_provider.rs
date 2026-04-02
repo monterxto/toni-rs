@@ -4,7 +4,7 @@ use std::sync::Arc;
 use crate::FxHashMap;
 use crate::async_trait;
 use crate::provider_scope::ProviderScope;
-use crate::traits_helpers::{ProviderContext, Provider, ProviderFactory};
+use crate::traits_helpers::{Provider, ProviderContext, ProviderFactory};
 
 use super::BroadcastService;
 

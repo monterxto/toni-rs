@@ -7,7 +7,7 @@ use juniper::{
 use serde_json::Value;
 use std::fmt;
 use std::sync::Arc;
-use toni::traits_helpers::{ProviderContext, Provider};
+use toni::traits_helpers::{Provider, ProviderContext};
 use toni::RequestPart;
 
 /// Injectable GraphQL service.

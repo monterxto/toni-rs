@@ -3,7 +3,7 @@ use std::{any::Any, sync::Arc};
 use async_trait::async_trait;
 use rustc_hash::FxHashMap;
 
-use super::{ErrorHandler, ProviderContext, Guard, Interceptor, Pipe, middleware::Middleware};
+use super::{ErrorHandler, Guard, Interceptor, Pipe, ProviderContext, middleware::Middleware};
 use crate::ProviderScope;
 
 #[async_trait]

@@ -135,7 +135,12 @@ impl AdminGuard {
 impl Guard for AdminGuard {
     fn can_activate(&self, context: &Context) -> bool {
         self.auth_service.tracker.track("guard:admin_check");
-        self.auth_service.is_admin(context.switch_to_http().expect("Expected HTTP context").request())
+        self.auth_service.is_admin(
+            context
+                .switch_to_http()
+                .expect("Expected HTTP context")
+                .request(),
+        )
     }
 }
 
@@ -152,7 +157,12 @@ impl UserGuard {
 impl Guard for UserGuard {
     fn can_activate(&self, context: &Context) -> bool {
         self.auth_service.tracker.track("guard:user_check");
-        self.auth_service.validate_user(context.switch_to_http().expect("Expected HTTP context").request())
+        self.auth_service.validate_user(
+            context
+                .switch_to_http()
+                .expect("Expected HTTP context")
+                .request(),
+        )
     }
 }
 

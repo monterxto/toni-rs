@@ -16,7 +16,9 @@ mod protocol;
 pub use self::protocol::{Protocol, ProtocolType};
 
 mod protocol_context;
-pub use self::protocol_context::{HttpContext, HttpContextMut, WsContext, WsContextMut, RpcContext, RpcContextMut};
+pub use self::protocol_context::{
+    HttpContext, HttpContextMut, RpcContext, RpcContextMut, WsContext, WsContextMut,
+};
 
 mod context;
 pub use self::context::Context;

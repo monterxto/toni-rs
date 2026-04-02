@@ -81,16 +81,25 @@ impl DependencyGraph {
                 .iter()
                 .find(|(token, _)| token.as_str() == dep_token.as_str())
             {
-                self.visit_node(provider_token.clone(), provider_deps.clone(), providers, multi_providers)?;
+                self.visit_node(
+                    provider_token.clone(),
+                    provider_deps.clone(),
+                    providers,
+                    multi_providers,
+                )?;
             } else if let Some(contrib_tokens) = multi_providers.get(dep_token) {
                 // dep_token is a multi-collection base token: visit all contributing
                 // factories in this module first so the consumer is ordered after them.
                 for contrib_token in contrib_tokens {
-                    if let Some((_, contrib_deps)) = providers
-                        .iter()
-                        .find(|(t, _)| t == contrib_token)
+                    if let Some((_, contrib_deps)) =
+                        providers.iter().find(|(t, _)| t == contrib_token)
                     {
-                        self.visit_node(contrib_token.clone(), contrib_deps.clone(), providers, multi_providers)?;
+                        self.visit_node(
+                            contrib_token.clone(),
+                            contrib_deps.clone(),
+                            providers,
+                            multi_providers,
+                        )?;
                     }
                 }
             }

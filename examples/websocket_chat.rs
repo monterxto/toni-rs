@@ -61,11 +61,10 @@ async fn main() {
     println!(r#"          {{"event": "ping"}}"#);
     println!();
 
-    let mut app = ToniFactory::new()
-        .create_with(AppModule)
-        .await;
+    let mut app = ToniFactory::new().create_with(AppModule).await;
 
-    app.use_http_adapter(toni_axum::AxumAdapter::new(), 8080, "127.0.0.1").unwrap();
+    app.use_http_adapter(toni_axum::AxumAdapter::new(), 8080, "127.0.0.1")
+        .unwrap();
 
     app.start().await;
 }

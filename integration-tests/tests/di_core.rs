@@ -112,8 +112,6 @@ async fn transient_providers_create_unique_instances_per_injection() {
     assert_ne!(parts[0], parts[1]);
 }
 
-
-
 #[serial]
 #[tokio_localset_test::localset_test]
 async fn field_injection_with_inject_attribute() {
@@ -262,4 +260,3 @@ async fn new_attribute_syntax() {
         .unwrap();
     assert_eq!(resp.status(), 200);
 }
-

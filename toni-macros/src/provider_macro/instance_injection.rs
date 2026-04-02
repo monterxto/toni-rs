@@ -458,9 +458,12 @@ fn generate_request_provider(
     let init_call = lifecycle_hooks.on_module_init.as_ref().map(|method| {
         quote! { instance.#method().await; }
     });
-    let bootstrap_call = lifecycle_hooks.on_application_bootstrap.as_ref().map(|method| {
-        quote! { instance.#method().await; }
-    });
+    let bootstrap_call = lifecycle_hooks
+        .on_application_bootstrap
+        .as_ref()
+        .map(|method| {
+            quote! { instance.#method().await; }
+        });
 
     quote! {
         struct #provider_name {
@@ -544,9 +547,12 @@ fn generate_transient_provider(
     let init_call = lifecycle_hooks.on_module_init.as_ref().map(|method| {
         quote! { instance.#method().await; }
     });
-    let bootstrap_call = lifecycle_hooks.on_application_bootstrap.as_ref().map(|method| {
-        quote! { instance.#method().await; }
-    });
+    let bootstrap_call = lifecycle_hooks
+        .on_application_bootstrap
+        .as_ref()
+        .map(|method| {
+            quote! { instance.#method().await; }
+        });
 
     quote! {
         struct #provider_name {

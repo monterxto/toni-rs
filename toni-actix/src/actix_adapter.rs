@@ -48,9 +48,15 @@ impl ActixAdapter {
             .map(|(k, v)| (k.to_string(), v.to_string()))
             .collect();
 
-        let method = req.method().as_str().parse::<http::Method>()
+        let method = req
+            .method()
+            .as_str()
+            .parse::<http::Method>()
             .unwrap_or(http::Method::GET);
-        let uri = req.uri().to_string().parse::<http::Uri>()
+        let uri = req
+            .uri()
+            .to_string()
+            .parse::<http::Uri>()
             .unwrap_or_else(|_| http::Uri::default());
 
         let mut builder = http::Request::builder().method(method).uri(uri);
@@ -64,7 +70,10 @@ impl ActixAdapter {
         let (mut http_parts, _) = builder.body(()).unwrap().into_parts();
         http_parts.extensions.insert(PathParams(path_params));
 
-        Ok(HttpRequest::from_parts(http_parts, RequestBody::Buffered(web::Bytes::from(body.to_vec()))))
+        Ok(HttpRequest::from_parts(
+            http_parts,
+            RequestBody::Buffered(web::Bytes::from(body.to_vec())),
+        ))
     }
 
     async fn adapt_response(response: HttpResponse) -> Result<ActixHttpResponse> {
@@ -142,7 +151,10 @@ impl HttpAdapter for ActixAdapter {
                                 async move {
                                     let http_req = match Self::adapt_request((req, body)).await {
                                         Ok(r) => r,
-                                        Err(_) => return ActixHttpResponse::InternalServerError().finish(),
+                                        Err(_) => {
+                                            return ActixHttpResponse::InternalServerError()
+                                                .finish()
+                                        }
                                     };
                                     let http_res = callbacks.handle(http_req).await;
                                     Self::adapt_response(http_res).await.unwrap_or_else(|_| {
@@ -161,9 +173,15 @@ impl HttpAdapter for ActixAdapter {
                     HttpMethod::DELETE => actix_route!(web::delete()),
                     HttpMethod::PATCH => actix_route!(web::patch()),
                     HttpMethod::HEAD => actix_route!(web::head()),
-                    HttpMethod::OPTIONS => actix_route!(web::route().method(actix_web::http::Method::OPTIONS)),
-                    HttpMethod::TRACE => actix_route!(web::route().method(actix_web::http::Method::TRACE)),
-                    HttpMethod::CONNECT => actix_route!(web::route().method(actix_web::http::Method::CONNECT)),
+                    HttpMethod::OPTIONS => {
+                        actix_route!(web::route().method(actix_web::http::Method::OPTIONS))
+                    }
+                    HttpMethod::TRACE => {
+                        actix_route!(web::route().method(actix_web::http::Method::TRACE))
+                    }
+                    HttpMethod::CONNECT => {
+                        actix_route!(web::route().method(actix_web::http::Method::CONNECT))
+                    }
                 };
             }
 
@@ -174,7 +192,10 @@ impl HttpAdapter for ActixAdapter {
         .run();
 
         Ok(Box::pin(async move {
-            if let Err(e) = server.await.with_context(|| "Actix server encountered an error") {
+            if let Err(e) = server
+                .await
+                .with_context(|| "Actix server encountered an error")
+            {
                 eprintln!("{}", e);
                 std::process::exit(1);
             }

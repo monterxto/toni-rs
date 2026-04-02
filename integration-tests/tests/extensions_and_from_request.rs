@@ -6,8 +6,8 @@
 //! 3. Controllers using request context without manual extraction
 
 use toni::{
-    controller, get, injectable, module, toni_factory::ToniFactory, Body as ToniBody, HttpRequest,
-    http_helpers::RequestPart,
+    controller, get, http_helpers::RequestPart, injectable, module, toni_factory::ToniFactory,
+    Body as ToniBody, HttpRequest,
 };
 
 // ===== 1. Define types to store in extensions =====

@@ -15,7 +15,9 @@ async fn valid_singleton_injects_singleton() {
     impl TestModule {}
 
     let app = ToniFactory::create(TestModule::module_definition()).await;
-    app.get::<ServiceB>().await.expect("ServiceB with ServiceA dep should resolve");
+    app.get::<ServiceB>()
+        .await
+        .expect("ServiceB with ServiceA dep should resolve");
 }
 
 #[tokio::test]
@@ -33,7 +35,9 @@ async fn valid_request_injects_singleton() {
     impl TestModule {}
 
     let app = ToniFactory::create(TestModule::module_definition()).await;
-    app.get::<RequestService>().await.expect("request-scoped service with singleton dep should resolve");
+    app.get::<RequestService>()
+        .await
+        .expect("request-scoped service with singleton dep should resolve");
 }
 
 #[tokio::test]
@@ -56,7 +60,9 @@ async fn valid_transient_injects_any_scope() {
     impl TestModule {}
 
     let app = ToniFactory::create(TestModule::module_definition()).await;
-    app.get::<TransientService>().await.expect("transient with mixed deps should resolve");
+    app.get::<TransientService>()
+        .await
+        .expect("transient with mixed deps should resolve");
 }
 
 #[tokio::test]
@@ -92,7 +98,9 @@ async fn singleton_can_inject_transient() {
     impl TestModule {}
 
     let app = ToniFactory::create(TestModule::module_definition()).await;
-    app.get::<SingletonService>().await.expect("singleton with transient dep should resolve");
+    app.get::<SingletonService>()
+        .await
+        .expect("singleton with transient dep should resolve");
 }
 
 #[tokio::test]
@@ -110,7 +118,9 @@ async fn request_can_inject_transient() {
     impl TestModule {}
 
     let app = ToniFactory::create(TestModule::module_definition()).await;
-    app.get::<RequestService>().await.expect("request-scoped with transient dep should resolve");
+    app.get::<RequestService>()
+        .await
+        .expect("request-scoped with transient dep should resolve");
 }
 
 #[tokio::test]
@@ -136,7 +146,9 @@ async fn complex_valid_hierarchy() {
     impl TestModule {}
 
     let app = ToniFactory::create(TestModule::module_definition()).await;
-    app.get::<TopService>().await.expect("three-level hierarchy should resolve");
+    app.get::<TopService>()
+        .await
+        .expect("three-level hierarchy should resolve");
 }
 
 #[tokio::test]

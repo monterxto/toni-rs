@@ -4,7 +4,7 @@ use crate::Config;
 use std::any::Any;
 use std::sync::Arc;
 use toni::async_trait;
-use toni::traits_helpers::{ProviderContext, Provider, ProviderFactory};
+use toni::traits_helpers::{Provider, ProviderContext, ProviderFactory};
 use toni::FxHashMap;
 
 /// Service that provides access to configuration

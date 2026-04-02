@@ -50,5 +50,9 @@ async fn request_auto_injected_without_providers_entry() {
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
-    assert!(resp.text().await.unwrap().contains("Content-Type: application/json"));
+    assert!(resp
+        .text()
+        .await
+        .unwrap()
+        .contains("Content-Type: application/json"));
 }

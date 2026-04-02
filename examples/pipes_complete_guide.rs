@@ -547,7 +547,8 @@ impl ExamplesModule {}
 async fn main() {
     let mut app = toni::ToniFactory::create(ExamplesModule).await;
 
-    app.use_http_adapter(toni_axum::AxumAdapter::new(), 3000, "127.0.0.1").unwrap();
+    app.use_http_adapter(toni_axum::AxumAdapter::new(), 3000, "127.0.0.1")
+        .unwrap();
 
     println!("🚀 Toni Pipes Examples Server");
     println!("============================");

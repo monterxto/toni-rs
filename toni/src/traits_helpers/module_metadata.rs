@@ -362,12 +362,10 @@ impl MiddlewareConsumer {
             + 'static,
         B: http_body::Body<Data = bytes::Bytes> + Send + Sync + 'static,
         B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
-        <L::Service as tower::Service<
-            http::Request<crate::http_helpers::RequestBoxBody>,
-        >>::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
-        <L::Service as tower::Service<
-            http::Request<crate::http_helpers::RequestBoxBody>,
-        >>::Future: Send + 'static,
+        <L::Service as tower::Service<http::Request<crate::http_helpers::RequestBoxBody>>>::Error:
+            Into<Box<dyn std::error::Error + Send + Sync>>,
+        <L::Service as tower::Service<http::Request<crate::http_helpers::RequestBoxBody>>>::Future:
+            Send + 'static,
     {
         self.apply(crate::tower_compat::TowerLayer::new(layer))
     }
@@ -467,12 +465,10 @@ impl<'a> MiddlewareConfigProxy<'a> {
             + 'static,
         B: http_body::Body<Data = bytes::Bytes> + Send + Sync + 'static,
         B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
-        <L::Service as tower::Service<
-            http::Request<crate::http_helpers::RequestBoxBody>,
-        >>::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
-        <L::Service as tower::Service<
-            http::Request<crate::http_helpers::RequestBoxBody>,
-        >>::Future: Send + 'static,
+        <L::Service as tower::Service<http::Request<crate::http_helpers::RequestBoxBody>>>::Error:
+            Into<Box<dyn std::error::Error + Send + Sync>>,
+        <L::Service as tower::Service<http::Request<crate::http_helpers::RequestBoxBody>>>::Future:
+            Send + 'static,
     {
         self.apply_also(crate::tower_compat::TowerLayer::new(layer))
     }

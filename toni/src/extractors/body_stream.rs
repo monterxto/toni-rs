@@ -76,7 +76,7 @@ impl FromRequest for BodyStream {
         match body {
             RequestBody::Streaming(s) => Ok(BodyStream(s)),
             RequestBody::Buffered(b) => {
-                use http_body_util::{Full, BodyExt as _};
+                use http_body_util::{BodyExt as _, Full};
                 let box_body = Full::new(b)
                     .map_err(|never: std::convert::Infallible| match never {})
                     .boxed_unsync();

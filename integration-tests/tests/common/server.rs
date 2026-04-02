@@ -21,7 +21,8 @@ impl TestServer {
 
         local.spawn_local(async move {
             let mut app = ToniFactory::create(module).await;
-            app.use_http_adapter(AxumAdapter::new(), port, "127.0.0.1").unwrap();
+            app.use_http_adapter(AxumAdapter::new(), port, "127.0.0.1")
+                .unwrap();
             let _ = app.start().await;
         });
 

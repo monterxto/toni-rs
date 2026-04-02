@@ -3,7 +3,11 @@ mod common;
 use common::TestServer;
 use futures_util::stream;
 use serial_test::serial;
-use toni::{controller, extractors::{Bytes, BodyStream}, module, post, Body as ToniBody};
+use toni::{
+    controller,
+    extractors::{BodyStream, Bytes},
+    module, post, Body as ToniBody,
+};
 
 #[controller("/stream", pub struct StreamingController;)]
 impl StreamingController {

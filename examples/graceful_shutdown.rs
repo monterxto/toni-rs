@@ -82,11 +82,10 @@ async fn shutdown_signal() -> String {
 async fn main() -> anyhow::Result<()> {
     println!("🚀 Starting server with graceful shutdown support...\n");
 
-    let mut app = ToniFactory::new()
-        .create_with(AppModule)
-        .await;
+    let mut app = ToniFactory::new().create_with(AppModule).await;
 
-    app.use_http_adapter(toni_axum::AxumAdapter::new(), 3000, "127.0.0.1").unwrap();
+    app.use_http_adapter(toni_axum::AxumAdapter::new(), 3000, "127.0.0.1")
+        .unwrap();
 
     println!("📡 WebSocket server running on ws://localhost:3000/ws");
     println!("📝 Try: wscat -c ws://localhost:3000/ws");

@@ -292,12 +292,10 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
     // a ModuleMetadata override, so keeping it here would produce a dead_code warning.
     let user_impl_block = if let ModuleInput::Impl(impl_block) = &input {
         let mut cleaned = strip_lifecycle_attrs(impl_block);
-        cleaned
-            .items
-            .retain(|item| match item {
-                syn::ImplItem::Fn(method) => method.sig.ident != "configure_middleware",
-                _ => true,
-            });
+        cleaned.items.retain(|item| match item {
+            syn::ImplItem::Fn(method) => method.sig.ident != "configure_middleware",
+            _ => true,
+        });
         quote! { #cleaned }
     } else {
         quote! {}

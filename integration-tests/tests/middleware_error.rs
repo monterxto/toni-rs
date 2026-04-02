@@ -10,8 +10,8 @@ use common::TestServer;
 use serial_test::serial;
 use toni::async_trait;
 use toni::errors::HttpError;
-use toni::traits_helpers::MiddlewareConsumer;
 use toni::traits_helpers::middleware::{Middleware, MiddlewareResult, NextHandle};
+use toni::traits_helpers::MiddlewareConsumer;
 use toni::{controller, get, module, Body as ToniBody};
 
 // ── Test 1: custom status code ────────────────────────────────────────────────
@@ -53,7 +53,11 @@ async fn middleware_http_error_preserves_status() {
         .await
         .unwrap();
 
-    assert_eq!(resp.status(), 429, "HttpError status should be preserved, not collapsed to 500");
+    assert_eq!(
+        resp.status(),
+        429,
+        "HttpError status should be preserved, not collapsed to 500"
+    );
     let body: serde_json::Value = resp.json().await.unwrap();
     assert_eq!(body["statusCode"], 429);
     assert_eq!(body["message"], "rate limit exceeded");

@@ -42,7 +42,9 @@ impl ToniApplicationContext {
             })?
         };
 
-        let instance_any = provider_instance.execute(vec![], crate::traits_helpers::ProviderContext::None).await;
+        let instance_any = provider_instance
+            .execute(vec![], crate::traits_helpers::ProviderContext::None)
+            .await;
 
         instance_any
             .downcast::<T>()
@@ -70,7 +72,9 @@ impl ToniApplicationContext {
                 )
             })?;
 
-        let instance_any = provider_instance.execute(vec![], crate::traits_helpers::ProviderContext::None).await;
+        let instance_any = provider_instance
+            .execute(vec![], crate::traits_helpers::ProviderContext::None)
+            .await;
 
         instance_any
             .downcast::<T>()
@@ -106,7 +110,9 @@ impl ToniApplicationContext {
             })?
         };
 
-        let instance_any = provider_instance.execute(vec![], crate::traits_helpers::ProviderContext::None).await;
+        let instance_any = provider_instance
+            .execute(vec![], crate::traits_helpers::ProviderContext::None)
+            .await;
 
         instance_any
             .downcast::<T>()
@@ -138,7 +144,9 @@ impl ToniApplicationContext {
                 )
             })?;
 
-        let instance_any = provider_instance.execute(vec![], crate::traits_helpers::ProviderContext::None).await;
+        let instance_any = provider_instance
+            .execute(vec![], crate::traits_helpers::ProviderContext::None)
+            .await;
 
         instance_any
             .downcast::<T>()

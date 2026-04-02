@@ -20,8 +20,8 @@ use crate::{
     router::RoutesResolver,
     rpc::{RpcContext, RpcControllerWrapper, RpcData, RpcError},
     websocket::{
-        BroadcastService, DisconnectReason, GatewayWrapper, WsClientMap, WsError,
-        WsMessage, helpers::create_client_from_headers,
+        BroadcastService, DisconnectReason, GatewayWrapper, WsClientMap, WsError, WsMessage,
+        helpers::create_client_from_headers,
     },
 };
 
@@ -234,7 +234,10 @@ impl ToniApplication {
         }
 
         let http_port = self.http_port;
-        let hostname = self.http_hostname.clone().unwrap_or_else(|| "0.0.0.0".to_string());
+        let hostname = self
+            .http_hostname
+            .clone()
+            .unwrap_or_else(|| "0.0.0.0".to_string());
 
         // One shared WsClientMap + ConnectionManager when BroadcastService is in DI;
         // otherwise a fresh WsClientMap per gateway (no CM needed).
@@ -368,7 +371,11 @@ impl ToniApplication {
         if let Some(http_adapter) = &mut self.http_adapter {
             let port = self.http_port.unwrap();
             let has_same_port_ws = !same_port.is_empty();
-            let server_type = if has_same_port_ws { "HTTP + WebSocket" } else { "HTTP" };
+            let server_type = if has_same_port_ws {
+                "HTTP + WebSocket"
+            } else {
+                "HTTP"
+            };
             println!("Starting {} server on {}:{}", server_type, hostname, port);
             match http_adapter.create(port, &hostname) {
                 Ok(fut) => server_futures.push(fut),
@@ -378,7 +385,9 @@ impl ToniApplication {
                 }
             }
         } else if server_futures.is_empty() {
-            eprintln!("No adapters configured. Register at least one adapter before calling start().");
+            eprintln!(
+                "No adapters configured. Register at least one adapter before calling start()."
+            );
             return;
         }
 

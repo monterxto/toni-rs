@@ -239,13 +239,17 @@ impl GatewayWrapper {
             if let Some(Err(e)) = context.switch_to_ws().and_then(|ws| ws.response().cloned()) {
                 let error_msg = e.to_string();
                 for handler in error_handlers.iter().rev() {
-                    let error: Box<dyn std::error::Error + Send> = Box::new(
-                        std::io::Error::new(std::io::ErrorKind::Other, error_msg.clone()),
-                    );
+                    let error: Box<dyn std::error::Error + Send> = Box::new(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        error_msg.clone(),
+                    ));
                     if let Some(crate::traits_helpers::ErrorResponse::Ws(msg)) =
                         handler.handle_error(error, context).await
                     {
-                        context.switch_to_ws_mut().expect("Expected WebSocket context").set_response(Ok(Some(msg)));
+                        context
+                            .switch_to_ws_mut()
+                            .expect("Expected WebSocket context")
+                            .set_response(Ok(Some(msg)));
                         return;
                     }
                 }
@@ -263,7 +267,10 @@ impl GatewayWrapper {
             pipe.process(context);
             if context.should_abort() {
                 let result = Err(WsError::Internal("Request aborted by pipe".into()));
-                context.switch_to_ws_mut().expect("Expected WebSocket context").set_response(result.clone());
+                context
+                    .switch_to_ws_mut()
+                    .expect("Expected WebSocket context")
+                    .set_response(result.clone());
                 return result;
             }
         }
@@ -275,7 +282,10 @@ impl GatewayWrapper {
 
         let result = gateway.handle_event(client, message, event).await;
 
-        context.switch_to_ws_mut().expect("Expected WebSocket context").set_response(result.clone());
+        context
+            .switch_to_ws_mut()
+            .expect("Expected WebSocket context")
+            .set_response(result.clone());
         result
     }
 

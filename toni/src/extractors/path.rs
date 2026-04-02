@@ -52,10 +52,7 @@ impl std::fmt::Display for PathError {
 
 impl std::error::Error for PathError {}
 
-pub fn extract_path_param<T: FromStr>(
-    parts: &RequestPart,
-    name: &str,
-) -> Result<T, PathError>
+pub fn extract_path_param<T: FromStr>(parts: &RequestPart, name: &str) -> Result<T, PathError>
 where
     T::Err: std::fmt::Display,
 {
@@ -77,13 +74,15 @@ impl<T: DeserializeOwned> FromRequestParts for Path<T> {
         // Round-trip through serde_json::Value so any T: DeserializeOwned works,
         // including structs with multiple named fields.
         let json_value = match params {
-            Some(p) => serde_json::to_value(&p.0)
-                .map_err(|e| PathError::ParseError(format!("Failed to serialize path params: {}", e)))?,
+            Some(p) => serde_json::to_value(&p.0).map_err(|e| {
+                PathError::ParseError(format!("Failed to serialize path params: {}", e))
+            })?,
             None => serde_json::Value::Object(Default::default()),
         };
 
-        let deserialized: T = serde_json::from_value(json_value)
-            .map_err(|e| PathError::ParseError(format!("Failed to deserialize path params: {}", e)))?;
+        let deserialized: T = serde_json::from_value(json_value).map_err(|e| {
+            PathError::ParseError(format!("Failed to deserialize path params: {}", e))
+        })?;
 
         Ok(Path(deserialized))
     }

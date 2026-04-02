@@ -100,7 +100,11 @@ impl RpcAdapter for NatsAdapter {
                 .connect(servers.clone())
                 .await
                 .unwrap_or_else(|e| {
-                    panic!("[NatsAdapter] Failed to connect to {} — {}", servers.join(", "), e)
+                    panic!(
+                        "[NatsAdapter] Failed to connect to {} — {}",
+                        servers.join(", "),
+                        e
+                    )
                 });
 
             let mut handles = Vec::new();
@@ -109,12 +113,9 @@ impl RpcAdapter for NatsAdapter {
                 let client = client.clone();
                 let callbacks = callbacks.clone();
 
-                let mut subscriber = client
-                    .subscribe(pattern.clone())
-                    .await
-                    .unwrap_or_else(|e| {
-                        panic!("[NatsAdapter] Failed to subscribe to {} — {}", pattern, e)
-                    });
+                let mut subscriber = client.subscribe(pattern.clone()).await.unwrap_or_else(|e| {
+                    panic!("[NatsAdapter] Failed to subscribe to {} — {}", pattern, e)
+                });
 
                 println!("[NatsAdapter] Subscribed to {}", pattern);
 
@@ -143,18 +144,16 @@ impl RpcAdapter for NatsAdapter {
                             let response_bytes = match outcome {
                                 Ok(Some(reply_data)) => match reply_data {
                                     RpcData::Binary(b) => Bytes::from(b),
-                                    RpcData::Json(v) => {
-                                        Bytes::from(serde_json::json!({ "response": v }).to_string())
-                                    }
+                                    RpcData::Json(v) => Bytes::from(
+                                        serde_json::json!({ "response": v }).to_string(),
+                                    ),
                                     RpcData::Text(s) => Bytes::from(
                                         serde_json::json!({ "response": s }).to_string(),
                                     ),
                                 },
                                 Ok(None) => {
                                     // #[event_pattern] handler but caller set a reply-to — send ack.
-                                    Bytes::from(
-                                        serde_json::json!({ "response": null }).to_string(),
-                                    )
+                                    Bytes::from(serde_json::json!({ "response": null }).to_string())
                                 }
                                 Err(e) => {
                                     let status = error_status(&e);

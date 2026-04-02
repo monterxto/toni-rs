@@ -316,9 +316,7 @@ pub fn handle_provide(input: TokenStream) -> Result<TokenStream> {
         // Multi-provider contribution
         ProviderVariant::Multi { inner, trait_path } => {
             crate::provider_variants::multi_provider::handle_provide_multi(
-                &token,
-                *inner,
-                trait_path,
+                &token, *inner, trait_path,
             )
         }
     }

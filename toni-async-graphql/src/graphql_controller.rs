@@ -126,10 +126,7 @@ where
         format!("GraphQLPostController_{}", self.path)
     }
 
-    async fn execute(
-        &self,
-        req: HttpRequest,
-    ) -> HttpResponse {
+    async fn execute(&self, req: HttpRequest) -> HttpResponse {
         let (parts, body) = req.into_parts();
         let body_bytes = match body.collect().await {
             Ok(b) => b,
@@ -158,7 +155,10 @@ where
             }
         };
 
-        let service_any = self.graphql_service.execute(vec![], toni::ProviderContext::Http(&parts)).await;
+        let service_any = self
+            .graphql_service
+            .execute(vec![], toni::ProviderContext::Http(&parts))
+            .await;
 
         let service = service_any
             .downcast_ref::<GraphQLService<Query, Mutation, Subscription, Ctx>>()
@@ -223,10 +223,7 @@ impl Controller for GraphQLPlaygroundController {
         format!("GraphQLPlaygroundController_{}", self.path)
     }
 
-    async fn execute(
-        &self,
-        _req: HttpRequest,
-    ) -> HttpResponse {
+    async fn execute(&self, _req: HttpRequest) -> HttpResponse {
         HttpResponse {
             status: 200,
             body: Some(Body::text(self.playground_html.clone())),

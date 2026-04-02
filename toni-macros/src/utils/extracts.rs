@@ -7,8 +7,8 @@ use syn::{
     TypePath, TypeReference, spanned::Spanned,
 };
 
-use crate::shared::{attr_is, TokenType};
 use crate::shared::dependency_info::{DependencyInfo, DependencySource};
+use crate::shared::{TokenType, attr_is};
 
 pub fn extract_controller_prefix(impl_block: &ItemImpl) -> Result<String> {
     impl_block
@@ -239,27 +239,31 @@ pub fn normalize_trait_send_sync(ty: Type) -> Type {
     let Type::TraitObject(mut tobj) = ty else {
         return ty;
     };
-    let has_send = tobj.bounds.iter().any(|b| {
-        matches!(b, syn::TypeParamBound::Trait(t) if t.path.is_ident("Send"))
-    });
-    let has_sync = tobj.bounds.iter().any(|b| {
-        matches!(b, syn::TypeParamBound::Trait(t) if t.path.is_ident("Sync"))
-    });
+    let has_send = tobj
+        .bounds
+        .iter()
+        .any(|b| matches!(b, syn::TypeParamBound::Trait(t) if t.path.is_ident("Send")));
+    let has_sync = tobj
+        .bounds
+        .iter()
+        .any(|b| matches!(b, syn::TypeParamBound::Trait(t) if t.path.is_ident("Sync")));
     if !has_send {
-        tobj.bounds.push(syn::TypeParamBound::Trait(syn::TraitBound {
-            paren_token: None,
-            modifier: syn::TraitBoundModifier::None,
-            lifetimes: None,
-            path: syn::parse_quote!(Send),
-        }));
+        tobj.bounds
+            .push(syn::TypeParamBound::Trait(syn::TraitBound {
+                paren_token: None,
+                modifier: syn::TraitBoundModifier::None,
+                lifetimes: None,
+                path: syn::parse_quote!(Send),
+            }));
     }
     if !has_sync {
-        tobj.bounds.push(syn::TypeParamBound::Trait(syn::TraitBound {
-            paren_token: None,
-            modifier: syn::TraitBoundModifier::None,
-            lifetimes: None,
-            path: syn::parse_quote!(Sync),
-        }));
+        tobj.bounds
+            .push(syn::TypeParamBound::Trait(syn::TraitBound {
+                paren_token: None,
+                modifier: syn::TraitBoundModifier::None,
+                lifetimes: None,
+                path: syn::parse_quote!(Sync),
+            }));
     }
     Type::TraitObject(tobj)
 }
@@ -282,10 +286,7 @@ pub fn extract_vec_arc_dyn_inner(ty: &Type) -> Option<Type> {
     let syn::GenericArgument::Type(inner) = args.args.first()? else {
         return None;
     };
-    let Type::Path(syn::TypePath {
-        path: arc_path, ..
-    }) = inner
-    else {
+    let Type::Path(syn::TypePath { path: arc_path, .. }) = inner else {
         return None;
     };
     let arc_seg = arc_path.segments.last()?;

@@ -9,15 +9,15 @@
 
 mod common;
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU16, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use serial_test::serial;
 use toni::{
-    async_trait,
-    controller, get,
+    async_trait, controller,
     errors::HttpError,
+    get,
     injector::Context,
     module,
     toni_factory::ToniFactory,

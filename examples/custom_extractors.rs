@@ -322,11 +322,7 @@ impl FromRequestParts for ClientIp {
         }
 
         // Check X-Real-IP (nginx)
-        if let Some(real_ip) = parts
-            .headers
-            .get("x-real-ip")
-            .and_then(|v| v.to_str().ok())
-        {
+        if let Some(real_ip) = parts.headers.get("x-real-ip").and_then(|v| v.to_str().ok()) {
             return Ok(ClientIp(real_ip.to_string()));
         }
 
@@ -948,6 +944,7 @@ async fn main() {
     use toni_axum::AxumAdapter;
 
     let mut app = ToniFactory::create(AppModule::module_definition()).await;
-    app.use_http_adapter(AxumAdapter::new(), 3000, "127.0.0.1").unwrap();
+    app.use_http_adapter(AxumAdapter::new(), 3000, "127.0.0.1")
+        .unwrap();
     app.start().await;
 }

@@ -198,12 +198,18 @@ async fn test_owned_fields_runtime() {
 
     let mut app = ToniFactory::create(TestModule::module_definition()).await;
 
-    let standalone = app.get::<StandaloneService>().await.expect("StandaloneService should resolve");
+    let standalone = app
+        .get::<StandaloneService>()
+        .await
+        .expect("StandaloneService should resolve");
     assert_eq!(standalone.get_cache_ttl(), Duration::from_secs(300));
     assert_eq!(standalone.get_buffer_size(), 1024);
     assert_eq!(standalone.get_prefix(), "cache:");
 
-    let complex = app.get::<ComplexService>().await.expect("ComplexService should resolve");
+    let complex = app
+        .get::<ComplexService>()
+        .await
+        .expect("ComplexService should resolve");
     assert_eq!(complex.get_default_values(), vec![1, 2, 3]);
     assert_eq!(complex.get_service_version(), "service_v1");
 }

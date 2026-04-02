@@ -26,8 +26,9 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use toni::{
-    controller, extractors::{Json, Query}, get, injectable, module, post, Body as ToniBody,
-    RpcClient, ToniFactory,
+    controller,
+    extractors::{Json, Query},
+    get, injectable, module, post, Body as ToniBody, RpcClient, ToniFactory,
 };
 use toni_macros::{provider_value, rpc_controller};
 
@@ -143,7 +144,6 @@ impl OrdersHttpController {
 
     #[post("/ship")]
     async fn ship_order(&self, Json(payload): Json<serde_json::Value>) -> ToniBody {
-
         let order_id = payload["order_id"].as_u64().unwrap_or(0);
         println!(
             "[HTTP] POST /order/ship → emitting order.shipped for order_id={} via RpcClient",

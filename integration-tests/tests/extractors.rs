@@ -62,7 +62,10 @@ async fn test_query_extractor() {
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
-    assert_eq!(resp.text().await.unwrap(), "Searching for 'rust' with limit 5");
+    assert_eq!(
+        resp.text().await.unwrap(),
+        "Searching for 'rust' with limit 5"
+    );
 
     let resp = server
         .client()
@@ -71,7 +74,10 @@ async fn test_query_extractor() {
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
-    assert_eq!(resp.text().await.unwrap(), "Searching for 'toni' with limit 10");
+    assert_eq!(
+        resp.text().await.unwrap(),
+        "Searching for 'toni' with limit 10"
+    );
 
     // missing required param → 400
     let resp = server
@@ -96,7 +102,10 @@ async fn test_json_extractor() {
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
-    assert_eq!(resp.text().await.unwrap(), "Created user: John Doe <john@example.com>");
+    assert_eq!(
+        resp.text().await.unwrap(),
+        "Created user: John Doe <john@example.com>"
+    );
 
     // echo generic JSON value
     let resp = server
@@ -163,7 +172,10 @@ async fn test_validated_extractor() {
         .await
         .unwrap();
     assert_eq!(resp.status(), 200);
-    assert_eq!(resp.text().await.unwrap(), "Created validated user: John Doe <john@example.com>");
+    assert_eq!(
+        resp.text().await.unwrap(),
+        "Created validated user: John Doe <john@example.com>"
+    );
 
     // name too short
     let resp = server

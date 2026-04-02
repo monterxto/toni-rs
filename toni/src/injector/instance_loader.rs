@@ -111,11 +111,7 @@ impl ToniInstanceLoader {
     /// as_multi_item() on each built contribution, and stores the resulting collection
     /// in the container so it can be resolved like any other provider dependency.
     fn collect_multi_providers(&self) -> Result<()> {
-        let multi_map = self
-            .container
-            .borrow()
-            .get_multi_providers()
-            .clone();
+        let multi_map = self.container.borrow().get_multi_providers().clone();
 
         for (base_token, contributions) in multi_map {
             let mut items: Vec<Arc<dyn Any + Send + Sync>> = Vec::new();
@@ -548,8 +544,7 @@ impl ToniInstanceLoader {
             // Step 3.6: Assemble multi-collection on-demand when contributor and consumer
             // share the same module — contributors are in the in-progress instances map
             // before Phase 1.5 has had a chance to cache the collection.
-            else if let Some(contribs) =
-                container.get_multi_providers().get(&dependency).cloned()
+            else if let Some(contribs) = container.get_multi_providers().get(&dependency).cloned()
             {
                 let mut items: Vec<std::sync::Arc<dyn std::any::Any + Send + Sync>> = Vec::new();
                 for (contrib_module_token, provider_token) in &contribs {
@@ -560,8 +555,11 @@ impl ToniInstanceLoader {
                         .and_then(|p| p.as_multi_item());
                     if let Some(item) = item {
                         items.push(item);
-                    } else if let Ok(saved) = container.get_providers_instance(contrib_module_token) {
-                        if let Some(item) = saved.get(provider_token).and_then(|p| p.as_multi_item()) {
+                    } else if let Ok(saved) = container.get_providers_instance(contrib_module_token)
+                    {
+                        if let Some(item) =
+                            saved.get(provider_token).and_then(|p| p.as_multi_item())
+                        {
                             items.push(item);
                         }
                     }

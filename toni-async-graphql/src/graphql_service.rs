@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use serde_json::Value;
 use std::any::Any;
 use std::sync::Arc;
-use toni::traits_helpers::{ProviderContext, Provider};
+use toni::traits_helpers::{Provider, ProviderContext};
 use toni::{ProviderScope, RequestPart};
 
 /// Injectable GraphQL service that executes GraphQL queries.

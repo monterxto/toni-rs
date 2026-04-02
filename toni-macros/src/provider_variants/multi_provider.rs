@@ -70,7 +70,12 @@ pub fn handle_provide_multi(
         }
         ProviderVariant::Factory(closure_expr) => {
             // Factory-closure variant: provide!(TOKEN, || PluginB::new(), multi(dyn Trait))
-            Ok(generate_factory_multi(id, base_token_expr, &closure_expr, &trait_ty))
+            Ok(generate_factory_multi(
+                id,
+                base_token_expr,
+                &closure_expr,
+                &trait_ty,
+            ))
         }
         ProviderVariant::Alias(existing_token) => match &existing_token {
             crate::shared::TokenType::Type(path) => {
@@ -93,18 +98,19 @@ pub fn handle_provide_multi(
                  Use `existing(\"TOKEN\", ConcreteType)` instead.",
             )),
         },
-        ProviderVariant::AliasTyped(existing_token, concrete_type) => {
-            Ok(generate_alias_multi(
-                id,
-                base_token_expr,
-                &existing_token,
-                &concrete_type,
-                &trait_ty,
-            ))
-        }
-        ProviderVariant::TokenProvider(provider_type) => {
-            Ok(generate_token_provider_multi(id, base_token_expr, &provider_type, &trait_ty))
-        }
+        ProviderVariant::AliasTyped(existing_token, concrete_type) => Ok(generate_alias_multi(
+            id,
+            base_token_expr,
+            &existing_token,
+            &concrete_type,
+            &trait_ty,
+        )),
+        ProviderVariant::TokenProvider(provider_type) => Ok(generate_token_provider_multi(
+            id,
+            base_token_expr,
+            &provider_type,
+            &trait_ty,
+        )),
         ProviderVariant::Multi { .. } => Err(syn::Error::new(
             proc_macro2::Span::call_site(),
             "nested `multi` is not supported",

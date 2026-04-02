@@ -84,10 +84,7 @@ impl TcpClientTransport {
     }
 }
 
-async fn reader_loop(
-    reader: tokio::net::tcp::OwnedReadHalf,
-    inner: Arc<Inner>,
-) {
+async fn reader_loop(reader: tokio::net::tcp::OwnedReadHalf, inner: Arc<Inner>) {
     let mut reader = BufReader::new(reader);
     let mut line = String::new();
 
@@ -117,10 +114,7 @@ async fn reader_loop(
                             .as_str()
                             .unwrap_or("unknown error")
                             .to_string();
-                        let status = err["status"]
-                            .as_str()
-                            .unwrap_or("error")
-                            .to_string();
+                        let status = err["status"].as_str().unwrap_or("error").to_string();
                         Err(RpcClientError::Remote { message, status })
                     } else {
                         Ok(RpcData::Json(msg["response"].clone()))
@@ -177,13 +171,7 @@ impl RpcClientTransport for TcpClientTransport {
         let mut frame = msg.to_string();
         frame.push('\n');
 
-        if let Err(e) = inner
-            .writer
-            .lock()
-            .await
-            .write_all(frame.as_bytes())
-            .await
-        {
+        if let Err(e) = inner.writer.lock().await.write_all(frame.as_bytes()).await {
             inner.pending.lock().await.remove(&id);
             return Err(RpcClientError::Transport(e.to_string()));
         }

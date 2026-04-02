@@ -72,11 +72,7 @@ impl AttributeController {
 
     /// Mix multiple attribute extractors: #[param] + #[body]
     #[post("/users/{id}")]
-    fn update_user(
-        &self,
-        #[param("id")] user_id: i32,
-        #[body] dto: CreateUserDto,
-    ) -> ToniBody {
+    fn update_user(&self, #[param("id")] user_id: i32, #[body] dto: CreateUserDto) -> ToniBody {
         ToniBody::text(format!(
             "Updated user {}: {} <{}>",
             user_id, dto.name, dto.email

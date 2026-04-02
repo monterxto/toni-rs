@@ -176,7 +176,9 @@ async fn provider_alias_creates_alternate_token() {
     })]
     impl ConfigService {
         pub fn new() -> Self {
-            Self { env: "production".to_string() }
+            Self {
+                env: "production".to_string(),
+            }
         }
         pub fn get_env(&self) -> &str {
             &self.env
@@ -237,7 +239,9 @@ async fn provider_token_for_custom_types() {
     })]
     impl DatabaseService {
         pub fn new() -> Self {
-            Self { host: "localhost:5432".to_string() }
+            Self {
+                host: "localhost:5432".to_string(),
+            }
         }
         pub fn get_host(&self) -> &str {
             &self.host
@@ -330,7 +334,11 @@ async fn all_provider_variants_work_together() {
     })]
     impl AliasTokenConsumer {
         pub fn report(&self) -> String {
-            format!("{}|{}", self.config_via_alias.get_env(), self.config_via_token.get_env())
+            format!(
+                "{}|{}",
+                self.config_via_alias.get_env(),
+                self.config_via_token.get_env()
+            )
         }
     }
 

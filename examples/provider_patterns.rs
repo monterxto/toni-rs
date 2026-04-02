@@ -79,8 +79,14 @@ impl AppInfo {
         println!("  port      (provider_value):         {}", self.port);
         println!("  info      (provider_factory + dep): {}", self.info);
         println!("  status    (provider_factory async): {}", self.status);
-        println!("  config    (provider_alias):         env={}", self.config.get_env());
-        println!("  primary   (provider_token):         env={}", self.primary.get_env());
+        println!(
+            "  config    (provider_alias):         env={}",
+            self.config.get_env()
+        );
+        println!(
+            "  primary   (provider_token):         env={}",
+            self.primary.get_env()
+        );
     }
 }
 

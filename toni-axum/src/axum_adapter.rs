@@ -51,8 +51,6 @@ impl Default for AxumAdapter {
     }
 }
 
-
-
 /// Runs the full WebSocket connection lifecycle for one connected client.
 ///
 /// Splits the socket, spawns a writer task, then pumps the read half through
@@ -126,7 +124,10 @@ impl AxumAdapter {
         let box_body = body
             .map_err(|e| Box::new(e) as Box<dyn std::error::Error + Send + Sync>)
             .boxed_unsync();
-        Ok(HttpRequest::from_parts(parts, RequestBody::Streaming(box_body)))
+        Ok(HttpRequest::from_parts(
+            parts,
+            RequestBody::Streaming(box_body),
+        ))
     }
 
     async fn adapt_response(response: HttpResponse) -> Result<Response<Body>> {

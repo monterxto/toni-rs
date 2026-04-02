@@ -6,15 +6,15 @@ use std::task::{Context, Poll};
 
 use common::TestServer;
 use http::header::{HeaderName, HeaderValue};
+use reqwest;
 use serde_json::json;
 use serial_test::serial;
 use toni::async_trait;
 use toni::traits_helpers::middleware::{Middleware, MiddlewareResult, NextHandle};
 use toni::traits_helpers::MiddlewareConsumer;
-use toni::{TowerLayer, controller, get, module, post, Body as ToniBody};
+use toni::{controller, get, module, post, Body as ToniBody, TowerLayer};
 use tower::Layer;
 use tower::ServiceBuilder;
-use reqwest;
 use tower_http::compression::CompressionLayer;
 use tower_http::cors::CorsLayer;
 use tower_http::set_header::SetResponseHeaderLayer;
@@ -101,9 +101,7 @@ async fn tower_layer_cors_permissive() {
 
     assert_eq!(resp.status(), 200);
     assert_eq!(
-        resp.headers()
-            .get("access-control-allow-origin")
-            .unwrap(),
+        resp.headers().get("access-control-allow-origin").unwrap(),
         "*",
         "CorsLayer::permissive should add access-control-allow-origin: *"
     );
@@ -121,7 +119,10 @@ async fn tower_layer_request_body_round_trip() {
     #[controller("/echo", pub struct EchoController {})]
     impl EchoController {
         #[post("/json")]
-        async fn echo_json(&self, toni::extractors::Json(val): toni::extractors::Json<serde_json::Value>) -> ToniBody {
+        async fn echo_json(
+            &self,
+            toni::extractors::Json(val): toni::extractors::Json<serde_json::Value>,
+        ) -> ToniBody {
             ToniBody::json(val)
         }
     }
@@ -157,7 +158,10 @@ async fn tower_layer_request_body_round_trip() {
     );
 
     let body: serde_json::Value = resp.json().await.unwrap();
-    assert_eq!(body, payload, "JSON body should survive the Tower round-trip");
+    assert_eq!(
+        body, payload,
+        "JSON body should survive the Tower round-trip"
+    );
 }
 
 // ── Test 4: extensions visible to Tower ───────────────────────────────────────
@@ -229,7 +233,9 @@ struct StampRequestIdMiddleware;
 #[async_trait]
 impl Middleware for StampRequestIdMiddleware {
     async fn handle(&self, mut next: NextHandle) -> MiddlewareResult {
-        next.request_mut().extensions_mut().insert(RequestId("req-42".to_string()));
+        next.request_mut()
+            .extensions_mut()
+            .insert(RequestId("req-42".to_string()));
         next.run().await
     }
 }
@@ -339,7 +345,8 @@ async fn tower_and_toni_middleware_interleaved() {
     impl Middleware for AddToniHeader {
         async fn handle(&self, next: NextHandle) -> MiddlewareResult {
             let mut resp = next.run().await?;
-            resp.headers.push(("x-toni-mw".to_string(), "ran".to_string()));
+            resp.headers
+                .push(("x-toni-mw".to_string(), "ran".to_string()));
             Ok(resp)
         }
     }
@@ -355,9 +362,7 @@ async fn tower_and_toni_middleware_interleaved() {
     #[module(controllers: [InterleavedController])]
     impl InterleavedModule {
         fn configure_middleware(&self, consumer: &mut MiddlewareConsumer) {
-            consumer
-                .apply(AddToniHeader)
-                .for_routes(vec!["/*"]);
+            consumer.apply(AddToniHeader).for_routes(vec!["/*"]);
             consumer
                 .apply(TowerLayer::new(SetResponseHeaderLayer::overriding(
                     HeaderName::from_static("x-tower-mw"),
@@ -418,10 +423,7 @@ async fn tower_compression_layer_transforms_body() {
     let server = TestServer::start(CompressModule::module_definition()).await;
 
     // Disable auto-decompression so we can inspect Content-Encoding directly.
-    let client = reqwest::Client::builder()
-        .no_gzip()
-        .build()
-        .unwrap();
+    let client = reqwest::Client::builder().no_gzip().build().unwrap();
 
     let resp = client
         .get(server.url("/data"))
@@ -439,5 +441,9 @@ async fn tower_compression_layer_transforms_body() {
     // With compression disabled on the client side, the raw bytes are gzip.
     // Verify they differ from the plaintext — the body was actually transformed.
     let raw = resp.bytes().await.unwrap();
-    assert_ne!(raw.as_ref(), expected.as_bytes(), "body should be gzip-compressed, not plaintext");
+    assert_ne!(
+        raw.as_ref(),
+        expected.as_bytes(),
+        "body should be gzip-compressed, not plaintext"
+    );
 }

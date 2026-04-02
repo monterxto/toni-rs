@@ -8,8 +8,10 @@ use crate::{
 };
 
 use super::{
-    protocol_context::{HttpContext, HttpContextMut, RpcContext, RpcContextMut, WsContext, WsContextMut},
     Protocol, ProtocolType,
+    protocol_context::{
+        HttpContext, HttpContextMut, RpcContext, RpcContextMut, WsContext, WsContextMut,
+    },
 };
 
 /// Execution context for all protocols
@@ -83,21 +85,36 @@ impl Context {
 
     pub fn switch_to_http(&self) -> Option<HttpContext<'_>> {
         match &self.protocol {
-            Protocol::Http { parts, response, .. } => Some(HttpContext { parts, response }),
+            Protocol::Http {
+                parts, response, ..
+            } => Some(HttpContext { parts, response }),
             _ => None,
         }
     }
 
     pub fn switch_to_http_mut(&mut self) -> Option<HttpContextMut<'_>> {
         match &mut self.protocol {
-            Protocol::Http { parts, response, body } => Some(HttpContextMut { parts, response, body }),
+            Protocol::Http {
+                parts,
+                response,
+                body,
+            } => Some(HttpContextMut {
+                parts,
+                response,
+                body,
+            }),
             _ => None,
         }
     }
 
     pub fn switch_to_ws(&self) -> Option<WsContext<'_>> {
         match &self.protocol {
-            Protocol::WebSocket { client, message, event, response } => Some(WsContext {
+            Protocol::WebSocket {
+                client,
+                message,
+                event,
+                response,
+            } => Some(WsContext {
                 client,
                 message,
                 event: event.as_str(),
@@ -109,7 +126,12 @@ impl Context {
 
     pub fn switch_to_ws_mut(&mut self) -> Option<WsContextMut<'_>> {
         match &mut self.protocol {
-            Protocol::WebSocket { client, message, event, response } => Some(WsContextMut {
+            Protocol::WebSocket {
+                client,
+                message,
+                event,
+                response,
+            } => Some(WsContextMut {
                 client,
                 message,
                 event: event.as_str(),
@@ -121,7 +143,11 @@ impl Context {
 
     pub fn switch_to_rpc(&self) -> Option<RpcContext<'_>> {
         match &self.protocol {
-            Protocol::Rpc { data, context, response } => Some(RpcContext {
+            Protocol::Rpc {
+                data,
+                context,
+                response,
+            } => Some(RpcContext {
                 data,
                 call_context: context,
                 response,
@@ -132,7 +158,11 @@ impl Context {
 
     pub fn switch_to_rpc_mut(&mut self) -> Option<RpcContextMut<'_>> {
         match &mut self.protocol {
-            Protocol::Rpc { data, context, response } => Some(RpcContextMut {
+            Protocol::Rpc {
+                data,
+                context,
+                response,
+            } => Some(RpcContextMut {
                 data,
                 call_context: context,
                 response,

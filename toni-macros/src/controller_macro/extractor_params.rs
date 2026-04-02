@@ -200,7 +200,10 @@ pub fn generate_extractor_extractions(
             ExtractorKind::HttpRequest => {}
 
             // Returns None on extraction failure instead of a 400 response.
-            ExtractorKind::Optional { inner_type, inner_kind } => {
+            ExtractorKind::Optional {
+                inner_type,
+                inner_kind,
+            } => {
                 let extraction = match inner_kind.as_ref() {
                     ExtractorKind::Unknown => quote! {
                         let #param_name = <#inner_type as ::toni::FromRequest>::from_request(

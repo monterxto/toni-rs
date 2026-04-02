@@ -5,12 +5,12 @@ use std::sync::Arc;
 use anyhow::Result;
 
 use crate::application_context::ToniApplicationContext;
+use crate::injector::{ToniContainer, ToniInstanceLoader};
 use crate::middleware::Middleware;
 use crate::module_helpers::module_enum::ModuleDefinition;
+use crate::scanner::ToniDependenciesScanner;
 use crate::toni_application::ToniApplication;
 use crate::traits_helpers::{Guard, Interceptor, Pipe};
-use crate::injector::{ToniContainer, ToniInstanceLoader};
-use crate::scanner::ToniDependenciesScanner;
 
 #[derive(Default)]
 pub struct ToniFactory {

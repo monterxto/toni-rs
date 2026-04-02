@@ -59,21 +59,25 @@ impl LoggingInterceptor {
                     "[HTTP]      {} {} (agent: {:?})",
                     req.method,
                     req.uri,
-                    req.headers
-                        .get("user-agent")
-                        .and_then(|v| v.to_str().ok())
+                    req.headers.get("user-agent").and_then(|v| v.to_str().ok())
                 );
             }
             ProtocolType::WebSocket => {
                 let ws = context.switch_to_ws().unwrap();
                 println!(
                     "[WebSocket] event='{}' client={} message={:?}",
-                    ws.event(), ws.client().id, ws.message()
+                    ws.event(),
+                    ws.client().id,
+                    ws.message()
                 );
             }
             ProtocolType::Rpc => {
                 let rpc = context.switch_to_rpc().unwrap();
-                println!("[RPC]       pattern='{}' data={:?}", rpc.call_context().pattern, rpc.data());
+                println!(
+                    "[RPC]       pattern='{}' data={:?}",
+                    rpc.call_context().pattern,
+                    rpc.data()
+                );
             }
         }
     }

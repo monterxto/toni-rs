@@ -43,7 +43,12 @@ impl ErrorHandler for GlobalErrorHandler {
         ctx: &Context,
     ) -> Option<ErrorResponse> {
         let http = ctx.switch_to_http()?;
-        eprintln!("[GlobalErrorHandler] {} {}: {}", http.request().method, http.request().uri, error);
+        eprintln!(
+            "[GlobalErrorHandler] {} {}: {}",
+            http.request().method,
+            http.request().uri,
+            error
+        );
 
         if let Some(http_error) = error.downcast_ref::<HttpError>() {
             return Some(ErrorResponse::Http(http_error.to_response()));
@@ -81,7 +86,8 @@ impl ErrorHandler for ValidationErrorHandler {
             if matches!(status, 400 | 422) {
                 eprintln!(
                     "[ValidationErrorHandler] Handling validation error on {}: {}",
-                    http.request().uri, error
+                    http.request().uri,
+                    error
                 );
                 return Some(ErrorResponse::Http(
                     HttpResponse::builder()
@@ -117,7 +123,8 @@ impl ErrorHandler for DatabaseErrorHandler {
             if http_error.status_code() == 409 {
                 eprintln!(
                     "[DatabaseErrorHandler] Handling conflict error on {}: {}",
-                    http.request().uri, error
+                    http.request().uri,
+                    error
                 );
                 return Some(ErrorResponse::Http(
                     HttpResponse::builder()
@@ -151,7 +158,9 @@ impl ErrorHandler for UserControllerErrorHandler {
         let http = ctx.switch_to_http()?;
         eprintln!(
             "[UserControllerErrorHandler] {} {}: {}",
-            http.request().method, http.request().uri, error
+            http.request().method,
+            http.request().uri,
+            error
         );
 
         if let Some(http_error) = error.downcast_ref::<HttpError>() {
@@ -194,7 +203,8 @@ impl ErrorHandler for NotFoundErrorHandler {
             if http_error.status_code() == 404 {
                 eprintln!(
                     "[NotFoundErrorHandler - DI] Handling 404 on {}: {}",
-                    http.request().uri, error
+                    http.request().uri,
+                    error
                 );
                 return Some(ErrorResponse::Http(
                     HttpResponse::builder()
@@ -219,7 +229,12 @@ pub struct AuthGuard;
 
 impl Guard for AuthGuard {
     fn can_activate(&self, context: &Context) -> bool {
-        context.switch_to_http().expect("Expected HTTP context").request().headers.contains_key("x-auth-token")
+        context
+            .switch_to_http()
+            .expect("Expected HTTP context")
+            .request()
+            .headers
+            .contains_key("x-auth-token")
     }
 }
 
@@ -346,7 +361,10 @@ impl UserController {
 
     #[post("/")]
     #[use_error_handlers(ValidationErrorHandler{}, DatabaseErrorHandler{})]
-    async fn create_user(&self, toni::extractors::Json(body): toni::extractors::Json<serde_json::Value>) -> Result<HttpResponse, HttpError> {
+    async fn create_user(
+        &self,
+        toni::extractors::Json(body): toni::extractors::Json<serde_json::Value>,
+    ) -> Result<HttpResponse, HttpError> {
         let email = body
             .get("email")
             .and_then(|v| v.as_str())
@@ -468,7 +486,8 @@ async fn main() {
 
     let mut app = factory.create_with(AppModule).await;
 
-    app.use_http_adapter(AxumAdapter::new(), 3000, "127.0.0.1").unwrap();
+    app.use_http_adapter(AxumAdapter::new(), 3000, "127.0.0.1")
+        .unwrap();
 
     app.start().await;
 }

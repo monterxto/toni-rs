@@ -1,6 +1,9 @@
 use std::{any::Any, cell::RefCell, rc::Rc};
 
-use crate::{ProviderScope, async_trait, traits_helpers::{ProviderContext, Provider}};
+use crate::{
+    ProviderScope, async_trait,
+    traits_helpers::{Provider, ProviderContext},
+};
 
 use super::{ModuleRef, ToniContainer};
 

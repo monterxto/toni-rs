@@ -4,9 +4,9 @@ use syn::{Attribute, ItemImpl, ItemStruct, LitStr, Result, parse2};
 
 use crate::controller_macro::controller_struct::{extract_constructor_params, has_new_method};
 use crate::provider_macro::instance_injection::generate_instance_provider_system;
+use crate::shared::attr_is;
 use crate::shared::dependency_info::DependencySource;
 use crate::shared::scope_parser::ProviderScope;
-use crate::shared::attr_is;
 use crate::utils::extracts::extract_struct_dependencies;
 
 /// Parse `#[rpc_controller(pub struct Foo { ... })]`

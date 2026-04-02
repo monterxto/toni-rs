@@ -5,12 +5,14 @@ use std::task::{Context, Poll};
 
 use bytes::Bytes;
 use http_body::Body as HttpBody;
-use http_body_util::{BodyExt, Full};
 use http_body_util::combinators::UnsyncBoxBody;
+use http_body_util::{BodyExt, Full};
 use tower::{Layer, Service, ServiceExt};
 
 use crate::async_trait;
-use crate::http_helpers::{Body, BoxBody, HttpRequest, HttpResponse, RequestBody, RequestBoxBody, RequestPart};
+use crate::http_helpers::{
+    Body, BoxBody, HttpRequest, HttpResponse, RequestBody, RequestBoxBody, RequestPart,
+};
 use crate::traits_helpers::middleware::{Middleware, MiddlewareResult, NextHandle, NextInternal};
 
 fn to_toni_response<B>(resp: http::Response<B>) -> HttpResponse
@@ -149,7 +151,8 @@ impl<L> TowerLayer<L> {
 impl<L, B> Middleware for TowerLayer<L>
 where
     L: Layer<ToniNextService> + Send + Sync + 'static,
-    L::Service: Service<http::Request<RequestBoxBody>, Response = http::Response<B>> + Send + 'static,
+    L::Service:
+        Service<http::Request<RequestBoxBody>, Response = http::Response<B>> + Send + 'static,
     B: HttpBody<Data = Bytes> + Send + Sync + 'static,
     B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
     <L::Service as Service<http::Request<RequestBoxBody>>>::Error:
@@ -182,7 +185,13 @@ where
 fn dispatch_call<S, B>(
     svc: &mut S,
     req: http::Request<RequestBoxBody>,
-) -> Pin<Box<dyn Future<Output = Result<http::Response<B>, Box<dyn std::error::Error + Send + Sync>>> + Send + 'static>>
+) -> Pin<
+    Box<
+        dyn Future<Output = Result<http::Response<B>, Box<dyn std::error::Error + Send + Sync>>>
+            + Send
+            + 'static,
+    >,
+>
 where
     S: Service<http::Request<RequestBoxBody>, Response = http::Response<B>>,
     S::Error: Into<Box<dyn std::error::Error + Send + Sync>>,

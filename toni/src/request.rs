@@ -30,7 +30,7 @@ use crate::async_trait;
 use crate::extractors::FromRequestParts;
 use crate::http_helpers::{PathParams, RequestPart};
 use crate::provider_scope::ProviderScope;
-use crate::traits_helpers::{ProviderContext, Provider, ProviderFactory};
+use crate::traits_helpers::{Provider, ProviderContext, ProviderFactory};
 
 /// Built-in request-scoped provider for accessing HTTP request metadata.
 ///
@@ -81,10 +81,7 @@ impl Request {
 
     /// Get a header value by name (case-insensitive).
     pub fn header(&self, name: &str) -> Option<&str> {
-        self.inner
-            .headers
-            .get(name)
-            .and_then(|v| v.to_str().ok())
+        self.inner.headers.get(name).and_then(|v| v.to_str().ok())
     }
 
     pub fn headers(&self) -> &http::HeaderMap {

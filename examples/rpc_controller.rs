@@ -112,11 +112,10 @@ async fn main() {
     println!("HTTP: http://127.0.0.1:8080");
     println!("RPC (TCP): 127.0.0.1:4000\n");
 
-    let mut app = ToniFactory::new()
-        .create_with(OrdersModule)
-        .await;
+    let mut app = ToniFactory::new().create_with(OrdersModule).await;
 
-    app.use_http_adapter(toni_axum::AxumAdapter::new(), 8080, "127.0.0.1").unwrap();
+    app.use_http_adapter(toni_axum::AxumAdapter::new(), 8080, "127.0.0.1")
+        .unwrap();
     app.use_rpc_adapter(toni_tcp::TcpAdapter::new("0.0.0.0", 4000))
         .unwrap();
 

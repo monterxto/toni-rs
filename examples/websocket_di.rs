@@ -132,11 +132,10 @@ async fn main() {
     factory.use_global_guards(Arc::new(WsAuthGuard));
     factory.use_global_interceptors(Arc::new(WsLoggingInterceptor));
 
-    let mut app = factory
-        .create_with(ChatModule)
-        .await;
+    let mut app = factory.create_with(ChatModule).await;
 
-    app.use_http_adapter(toni_axum::AxumAdapter::new(), 8080, "127.0.0.1").unwrap();
+    app.use_http_adapter(toni_axum::AxumAdapter::new(), 8080, "127.0.0.1")
+        .unwrap();
 
     println!("✅ Server ready - guards and interceptors active!\n");
 

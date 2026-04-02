@@ -127,7 +127,9 @@ impl ErrorHandler for DefaultErrorHandler {
                 } else {
                     error.to_string()
                 };
-                Some(ErrorResponse::Rpc(RpcData::json(json!({ "status": "error", "message": message }))))
+                Some(ErrorResponse::Rpc(RpcData::json(
+                    json!({ "status": "error", "message": message }),
+                )))
             }
         }
     }
@@ -178,7 +180,9 @@ mod tests {
         let ctx = create_test_context();
 
         let response = handler.handle_error(Box::new(error), &ctx).await.unwrap();
-        let ErrorResponse::Http(r) = response else { panic!("expected Http") };
+        let ErrorResponse::Http(r) = response else {
+            panic!("expected Http")
+        };
         assert_eq!(r.status, 404);
     }
 
@@ -189,7 +193,9 @@ mod tests {
         let ctx = create_test_context();
 
         let response = handler.handle_error(Box::new(error), &ctx).await.unwrap();
-        let ErrorResponse::Http(r) = response else { panic!("expected Http") };
+        let ErrorResponse::Http(r) = response else {
+            panic!("expected Http")
+        };
         assert_eq!(r.status, 500);
     }
 }

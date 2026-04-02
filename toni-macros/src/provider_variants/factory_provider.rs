@@ -55,7 +55,10 @@ impl Parse for ProviderFactoryInput {
                     }
                     _ => {
                         // Type hint — parsed and discarded; no longer needed for type inference
-                        let mut path_segments: syn::punctuated::Punctuated<syn::PathSegment, syn::token::PathSep> = syn::punctuated::Punctuated::new();
+                        let mut path_segments: syn::punctuated::Punctuated<
+                            syn::PathSegment,
+                            syn::token::PathSep,
+                        > = syn::punctuated::Punctuated::new();
                         path_segments.push(syn::PathSegment::from(ident));
                         while input.peek(Token![::]) {
                             input.parse::<Token![::]>()?;
@@ -224,8 +227,13 @@ pub fn handle_provider_factory(input: TokenStream) -> Result<TokenStream> {
             }) as Box<dyn toni::traits_helpers::Provider>)
         }
     } else {
-        let (type_bounds, struct_init, extra_methods, execute_body) =
-            generate_caching_support(&enhancers, &factory_expr, &dep_resolutions, &param_names, lifecycle)?;
+        let (type_bounds, struct_init, extra_methods, execute_body) = generate_caching_support(
+            &enhancers,
+            &factory_expr,
+            &dep_resolutions,
+            &param_names,
+            lifecycle,
+        )?;
 
         quote! {
             struct FactoryProviderWithDeps<__T> {

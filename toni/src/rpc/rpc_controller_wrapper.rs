@@ -100,7 +100,10 @@ impl RpcControllerWrapper {
         .await;
 
         if context.should_abort() {
-            if let Some(response) = context.switch_to_rpc().and_then(|rpc| rpc.response().cloned()) {
+            if let Some(response) = context
+                .switch_to_rpc()
+                .and_then(|rpc| rpc.response().cloned())
+            {
                 return response.clone();
             }
             return Err(RpcError::Internal(
@@ -108,7 +111,10 @@ impl RpcControllerWrapper {
             ));
         }
 
-        if let Some(response) = context.switch_to_rpc().and_then(|rpc| rpc.response().cloned()) {
+        if let Some(response) = context
+            .switch_to_rpc()
+            .and_then(|rpc| rpc.response().cloned())
+        {
             response.clone()
         } else {
             Err(RpcError::Internal("Handler did not set response".into()))
@@ -126,7 +132,10 @@ impl RpcControllerWrapper {
         if interceptors.is_empty() {
             Self::execute_handler(context, controller, pipes).await;
             if !error_handlers.is_empty() {
-                if let Some(Err(e)) = context.switch_to_rpc().and_then(|rpc| rpc.response().cloned()) {
+                if let Some(Err(e)) = context
+                    .switch_to_rpc()
+                    .and_then(|rpc| rpc.response().cloned())
+                {
                     let error_msg = e.to_string();
                     for handler in error_handlers.iter().rev() {
                         let error: Box<dyn std::error::Error + Send> = Box::new(
@@ -135,7 +144,10 @@ impl RpcControllerWrapper {
                         if let Some(crate::traits_helpers::ErrorResponse::Rpc(data)) =
                             handler.handle_error(error, context).await
                         {
-                            context.switch_to_rpc_mut().expect("Expected RPC context").set_response(Ok(Some(data)));
+                            context
+                                .switch_to_rpc_mut()
+                                .expect("Expected RPC context")
+                                .set_response(Ok(Some(data)));
                             return;
                         }
                     }
@@ -164,19 +176,28 @@ impl RpcControllerWrapper {
         for pipe in pipes {
             pipe.process(context);
             if context.should_abort() {
-                context.switch_to_rpc_mut().expect("Expected RPC context").set_response(Err(RpcError::Internal("Request aborted by pipe".into())));
+                context
+                    .switch_to_rpc_mut()
+                    .expect("Expected RPC context")
+                    .set_response(Err(RpcError::Internal("Request aborted by pipe".into())));
                 return;
             }
         }
 
         let Some(rpc) = context.switch_to_rpc() else {
-            context.switch_to_rpc_mut().expect("Expected RPC context").set_response(Err(RpcError::Internal("Expected RPC context".into())));
+            context
+                .switch_to_rpc_mut()
+                .expect("Expected RPC context")
+                .set_response(Err(RpcError::Internal("Expected RPC context".into())));
             return;
         };
         let (data, call_context) = (rpc.data().clone(), rpc.call_context().clone());
 
         let result = controller.handle_message(data, call_context).await;
 
-        context.switch_to_rpc_mut().expect("Expected RPC context").set_response(result);
+        context
+            .switch_to_rpc_mut()
+            .expect("Expected RPC context")
+            .set_response(result);
     }
 }

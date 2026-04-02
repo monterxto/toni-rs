@@ -60,7 +60,11 @@ impl HeaderCheckMiddleware {
 impl Middleware for HeaderCheckMiddleware {
     async fn handle(&self, next: NextHandle) -> MiddlewareResult {
         self.tracker.track("middleware:header_check");
-        if !next.request().headers().contains_key(self.required_header.as_str()) {
+        if !next
+            .request()
+            .headers()
+            .contains_key(self.required_header.as_str())
+        {
             let mut response = HttpResponse::new();
             response.status = 400;
             response.body = Some(ToniBody::text(format!(
@@ -87,7 +91,10 @@ impl AdminGuard {
 impl Guard for AdminGuard {
     fn can_activate(&self, context: &Context) -> bool {
         self.tracker.track("guard:admin");
-        let req = context.switch_to_http().expect("Expected HTTP context").request();
+        let req = context
+            .switch_to_http()
+            .expect("Expected HTTP context")
+            .request();
         req.headers
             .get("x-admin-token")
             .and_then(|v| v.to_str().ok())
@@ -110,7 +117,10 @@ impl AuthGuard {
 impl Guard for AuthGuard {
     fn can_activate(&self, context: &Context) -> bool {
         self.tracker.track("guard:auth");
-        let req = context.switch_to_http().expect("Expected HTTP context").request();
+        let req = context
+            .switch_to_http()
+            .expect("Expected HTTP context")
+            .request();
         req.headers.contains_key("authorization")
     }
 }
@@ -153,7 +163,10 @@ impl ValidationPipe {
 impl Pipe for ValidationPipe {
     fn process(&self, context: &mut Context) {
         self.tracker.track("pipe:validation");
-        let req = context.switch_to_http().expect("Expected HTTP context").request();
+        let req = context
+            .switch_to_http()
+            .expect("Expected HTTP context")
+            .request();
         let is_invalid = req
             .headers
             .get("x-valid")
@@ -165,7 +178,10 @@ impl Pipe for ValidationPipe {
             let mut response = HttpResponse::new();
             response.status = 400;
             response.body = Some(ToniBody::text("Validation failed".to_string()));
-            context.switch_to_http_mut().expect("Expected HTTP context").set_response(response);
+            context
+                .switch_to_http_mut()
+                .expect("Expected HTTP context")
+                .set_response(response);
             context.abort();
         }
     }
@@ -408,7 +424,10 @@ async fn di_in_enhancers() {
 
     impl Guard for DIGuard {
         fn can_activate(&self, context: &Context) -> bool {
-            let req = context.switch_to_http().expect("Expected HTTP context").request();
+            let req = context
+                .switch_to_http()
+                .expect("Expected HTTP context")
+                .request();
             req.headers
                 .get("x-token")
                 .and_then(|v| v.to_str().ok())

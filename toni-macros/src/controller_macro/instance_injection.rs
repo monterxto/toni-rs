@@ -1056,9 +1056,12 @@ fn generate_request_controller_wrapper(
         None
     };
     let bootstrap_call = if !is_static_method {
-        lifecycle_hooks.on_application_bootstrap.as_ref().map(|method| {
-            quote! { controller.#method().await; }
-        })
+        lifecycle_hooks
+            .on_application_bootstrap
+            .as_ref()
+            .map(|method| {
+                quote! { controller.#method().await; }
+            })
     } else {
         None
     };

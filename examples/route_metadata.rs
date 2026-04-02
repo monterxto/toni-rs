@@ -57,7 +57,10 @@ impl Guard for RolesGuard {
         };
 
         // In production: extract user from JWT/session and check roles
-        let req = context.switch_to_http().expect("Expected HTTP context").request();
+        let req = context
+            .switch_to_http()
+            .expect("Expected HTTP context")
+            .request();
         let user_role = req
             .headers
             .get("x-user-role")
@@ -157,7 +160,8 @@ fn main() {
     let rt = tokio::runtime::Runtime::new().unwrap();
     rt.block_on(async {
         let mut app = ToniFactory::create(AppModule::module_definition()).await;
-        app.use_http_adapter(AxumAdapter::new(), 3000, "127.0.0.1").unwrap();
+        app.use_http_adapter(AxumAdapter::new(), 3000, "127.0.0.1")
+            .unwrap();
         app.start().await;
     });
 }

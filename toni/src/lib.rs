@@ -23,16 +23,16 @@ pub mod traits_helpers;
 pub mod websocket;
 
 // Re-exports for adapter crates
-pub use adapter::{RpcAdapter, RpcClientTransport, RpcMessageCallbacks, WebSocketAdapter, WsConnectionCallbacks};
+pub use adapter::{
+    RpcAdapter, RpcClientTransport, RpcMessageCallbacks, WebSocketAdapter, WsConnectionCallbacks,
+};
 pub use http_adapter::{HttpAdapter, HttpRequestCallbacks};
 pub use http_helpers::{
     Body, BoxBody, HttpMethod, HttpRequest, HttpResponse, HttpResponseBuilder, IntoResponse,
     RequestBody, RequestBoxBody, RequestPart, RouteMetadata,
 };
 pub use injector::{InstanceWrapper, Protocol, ProtocolType};
-pub use rpc::{
-    RpcClient, RpcClientError, RpcContext, RpcControllerTrait, RpcData, RpcError,
-};
+pub use rpc::{RpcClient, RpcClientError, RpcContext, RpcControllerTrait, RpcData, RpcError};
 pub use websocket::{
     BroadcastError, BroadcastModule, BroadcastService, BroadcastTarget, ClientId, DisconnectReason,
     GatewayTrait, GatewayWrapper, RoomId, SendError, TrySendError, WsClient, WsError,
@@ -70,8 +70,8 @@ pub mod enhancer {
     pub use toni_macros::{error_handler, guard, interceptor, middleware, pipe};
 }
 
-pub use toni_factory::ToniFactory;
 pub use toni_application::ToniApplication;
+pub use toni_factory::ToniFactory;
 
 #[cfg(feature = "tower-compat")]
 pub mod tower_compat;
