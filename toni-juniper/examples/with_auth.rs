@@ -1,7 +1,7 @@
 use async_trait::async_trait;
 use juniper::{graphql_object, EmptySubscription, FieldResult, RootNode};
 use std::sync::Arc;
-use toni::{injectable, module, toni_factory::ToniFactory, HttpAdapter, HttpRequest};
+use toni::{injectable, module, toni_factory::ToniFactory, HttpAdapter};
 use toni_axum::AxumAdapter;
 use toni_juniper::{ContextBuilder, GraphQLModule};
 

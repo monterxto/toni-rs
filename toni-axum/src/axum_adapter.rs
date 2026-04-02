@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use std::collections::HashMap; // still needed for ws_ports, path_params
 use std::future::Future;
 use std::pin::Pin;
@@ -20,7 +20,7 @@ use toni::websocket::{WsMessage, WsSink};
 use toni::{
     async_trait,
     http_adapter::HttpRequestCallbacks,
-    http_helpers::{PathParams, RequestBody, RequestPart},
+    http_helpers::{PathParams, RequestBody},
     HttpAdapter, HttpMethod, HttpRequest, HttpResponse, WebSocketAdapter, WsConnectionCallbacks,
 };
 

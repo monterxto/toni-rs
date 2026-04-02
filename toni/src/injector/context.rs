@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::{
     http_helpers::{HttpRequest, HttpResponse, RequestBody, RequestPart, RouteMetadata},
-    rpc::{RpcContext as RpcCallContext, RpcData, RpcError},
+    rpc::{RpcContext as RpcCallContext, RpcData},
     traits_helpers::validate::Validatable,
     websocket::{WsClient, WsMessage},
 };

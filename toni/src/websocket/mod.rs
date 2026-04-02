@@ -14,7 +14,6 @@ mod ws_client_map;
 mod ws_error;
 mod ws_message;
 
-pub(crate) use broadcast::ConnectionManager;
 pub use broadcast::{
     BroadcastError, BroadcastService, BroadcastTarget, ClientId, RoomId, SendError, TrySendError,
     WsSink,

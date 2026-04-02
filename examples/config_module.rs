@@ -13,7 +13,7 @@
 
 use serde_json::json;
 use toni::toni_factory::ToniFactory;
-use toni::{controller, get, injectable, module, Body, HttpRequest};
+use toni::{controller, get, injectable, module, Body};
 use toni_axum::AxumAdapter;
 use toni_config::{Config, ConfigModule, ConfigService};
 

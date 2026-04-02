@@ -11,7 +11,7 @@ use tower::{Layer, Service, ServiceExt};
 
 use crate::async_trait;
 use crate::http_helpers::{
-    Body, BoxBody, HttpRequest, HttpResponse, RequestBody, RequestBoxBody, RequestPart,
+    Body, BoxBody, HttpRequest, HttpResponse, RequestBody, RequestBoxBody,
 };
 use crate::traits_helpers::middleware::{Middleware, MiddlewareResult, NextHandle, NextInternal};
 

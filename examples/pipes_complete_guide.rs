@@ -244,7 +244,7 @@ fn default_limit() -> u32 {
 ///
 /// Toni Version: Custom serde deserializer
 /// WHY: Transformation happens during extraction, not after
-use serde::de::{self, Deserializer};
+use serde::de::Deserializer;
 
 fn trim_string<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
