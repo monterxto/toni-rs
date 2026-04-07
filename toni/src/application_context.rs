@@ -42,6 +42,14 @@ impl ToniApplicationContext {
             })?
         };
 
+        if provider_instance.get_scope() == crate::ProviderScope::Request {
+            return Err(anyhow::anyhow!(
+                "Provider '{}' is request-scoped and cannot be retrieved from ToniApplicationContext. \
+                 Request-scoped providers are only available within an active HTTP request.",
+                provider_token
+            ));
+        }
+
         let instance_any = provider_instance
             .execute(vec![], crate::traits_helpers::ProviderContext::None)
             .await;
@@ -71,6 +79,14 @@ impl ToniApplicationContext {
                     module_token,
                 )
             })?;
+
+        if provider_instance.get_scope() == crate::ProviderScope::Request {
+            return Err(anyhow::anyhow!(
+                "Provider '{}' is request-scoped and cannot be retrieved from ToniApplicationContext. \
+                 Request-scoped providers are only available within an active HTTP request.",
+                provider_token
+            ));
+        }
 
         let instance_any = provider_instance
             .execute(vec![], crate::traits_helpers::ProviderContext::None)
@@ -110,6 +126,14 @@ impl ToniApplicationContext {
             })?
         };
 
+        if provider_instance.get_scope() == crate::ProviderScope::Request {
+            return Err(anyhow::anyhow!(
+                "Provider '{}' is request-scoped and cannot be retrieved from ToniApplicationContext. \
+                 Request-scoped providers are only available within an active HTTP request.",
+                token_str
+            ));
+        }
+
         let instance_any = provider_instance
             .execute(vec![], crate::traits_helpers::ProviderContext::None)
             .await;
@@ -143,6 +167,14 @@ impl ToniApplicationContext {
                     module_token,
                 )
             })?;
+
+        if provider_instance.get_scope() == crate::ProviderScope::Request {
+            return Err(anyhow::anyhow!(
+                "Provider '{}' is request-scoped and cannot be retrieved from ToniApplicationContext. \
+                 Request-scoped providers are only available within an active HTTP request.",
+                token_str
+            ));
+        }
 
         let instance_any = provider_instance
             .execute(vec![], crate::traits_helpers::ProviderContext::None)
