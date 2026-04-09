@@ -1464,20 +1464,25 @@ fn generate_singleton_factory(
         // Case 3: User explicitly set singleton, but we need to elevate
         quote! {
             if needs_elevation {
-                eprintln!("⚠️  WARNING: Controller '{}' explicitly declared as 'singleton'", #struct_token);
-                eprintln!("    but depends on Request-scoped provider(s): {:?}", request_deps);
-                eprintln!("    The controller will be Request-scoped. Change to:");
-                eprintln!("    #[controller_struct(scope = \"request\", pub struct {} {{ ... }})]", #struct_token);
+                ::toni::tracing::warn!(
+                    controller = #struct_token,
+                    request_scoped_deps = ?request_deps,
+                    "Controller declared as singleton but depends on request-scoped providers; \
+                     it will be elevated to request scope. \
+                     Silence this by using #[controller_struct(scope = \"request\", ...)]"
+                );
             }
         }
     } else {
         // Case 1: Default scope (implicit singleton), elevating to request
         quote! {
             if needs_elevation {
-                eprintln!("⚠️  INFO: Controller '{}' automatically elevated to Request scope", #struct_token);
-                eprintln!("    due to Request-scoped provider(s): {:?}", request_deps);
-                eprintln!("    To silence this message, explicitly set:");
-                eprintln!("    #[controller_struct(scope = \"request\", pub struct {} {{ ... }})]", #struct_token);
+                ::toni::tracing::warn!(
+                    controller = #struct_token,
+                    request_scoped_deps = ?request_deps,
+                    "Controller automatically elevated to request scope due to request-scoped providers. \
+                     Silence this by using #[controller_struct(scope = \"request\", ...)]"
+                );
             }
         }
     };

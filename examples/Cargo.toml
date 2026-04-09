@@ -17,6 +17,7 @@ toni-tcp = { path = "../toni-tcp" }
 toni-nats = { path = "../toni-nats" }
 chrono = "0.4"
 anyhow = "1.0"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [[example]]
 name = "hello_world"
@@ -89,3 +90,7 @@ path = "rpc_nats.rs"
 [[example]]
 name = "rpc_nats_client"
 path = "rpc_nats_client.rs"
+
+[[example]]
+name = "logging"
+path = "logging.rs"

@@ -241,12 +241,12 @@ impl ConnectionManager {
         let client_ids: Vec<ClientId> = self.clients.read().keys().cloned().collect();
         let count = client_ids.len();
 
-        println!("Closing {} WebSocket connections...", count);
+        tracing::info!(count, "Closing WebSocket connections");
 
         for client_id in &client_ids {
             if let Some(sink) = self.ws_client_map.get_sink(client_id) {
                 let _ = sink.try_send(WsMessage::Close);
-                println!("  Sent close frame to: {}", client_id);
+                tracing::debug!(client_id = %client_id, "Sent close frame");
             }
         }
 
@@ -254,7 +254,7 @@ impl ConnectionManager {
         self.rooms.write().clear();
         self.namespaces.write().clear();
 
-        println!("  Closed {} connections", count);
+        tracing::debug!(count, "Closed connections");
     }
 }
 

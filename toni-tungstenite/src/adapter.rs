@@ -104,23 +104,23 @@ impl WebSocketAdapter for TungsteniteAdapter {
             let listener = match TcpListener::bind(&addr).await {
                 Ok(l) => l,
                 Err(e) => {
-                    eprintln!("Failed to bind WS port {}: {}", addr, e);
+                    tracing::error!(addr, error = %e, "Failed to bind WebSocket port");
                     return;
                 }
             };
-            println!("WebSocket listening on {}", addr);
+            tracing::info!(addr, "WebSocket listening");
             loop {
                 tokio::select! {
                     result = listener.accept() => {
                         let (stream, _) = match result {
                             Ok(r) => r,
-                            Err(e) => { eprintln!("Accept error: {}", e); continue; }
+                            Err(e) => { tracing::error!(error = %e, "WebSocket accept error"); continue; }
                         };
                         if let Some(callbacks) = bindings.first().cloned() {
                             tokio::spawn(async move {
                                 let ws_stream = match tokio_tungstenite::accept_async(stream).await {
                                     Ok(ws) => ws,
-                                    Err(e) => { eprintln!("WS handshake error: {}", e); return; }
+                                    Err(e) => { tracing::error!(error = %e, "WebSocket handshake error"); return; }
                                 };
                                 run_ws_connection(ws_stream, callbacks).await;
                             });

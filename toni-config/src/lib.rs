@@ -171,13 +171,13 @@ impl<T: Config> ConfigModule<T> {
     pub fn new() -> Self {
         // Load config eagerly
         let config = T::load_from_env().unwrap_or_else(|e| {
-            eprintln!("Failed to load config: {}", e);
+            tracing::error!(error = %e, "Failed to load config");
             std::process::exit(1);
         });
 
         // Validate config
         config.validate().unwrap_or_else(|e| {
-            eprintln!("Config validation failed: {}", e);
+            tracing::error!(error = %e, "Config validation failed");
             std::process::exit(1);
         });
 

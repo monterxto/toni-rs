@@ -196,7 +196,7 @@ impl HttpAdapter for ActixAdapter {
                 .await
                 .with_context(|| "Actix server encountered an error")
             {
-                eprintln!("{}", e);
+                tracing::error!(error = %e, "Actix server error");
                 std::process::exit(1);
             }
         }))

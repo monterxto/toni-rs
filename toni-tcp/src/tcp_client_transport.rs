@@ -76,7 +76,7 @@ impl TcpClientTransport {
 
                 tokio::spawn(reader_loop(reader, inner.clone()));
 
-                println!("[TcpClientTransport] Connected to {}", addr);
+                tracing::info!(addr, "TcpClientTransport connected");
                 Ok(inner)
             })
             .await
@@ -123,7 +123,7 @@ async fn reader_loop(reader: tokio::net::tcp::OwnedReadHalf, inner: Arc<Inner>) 
                 }
             }
             Err(e) => {
-                eprintln!("[TcpClientTransport] Read error: {}", e);
+                tracing::error!(error = %e, "TcpClientTransport read error");
                 break;
             }
         }
@@ -137,7 +137,7 @@ async fn reader_loop(reader: tokio::net::tcp::OwnedReadHalf, inner: Arc<Inner>) 
         )));
     }
 
-    eprintln!("[TcpClientTransport] Connection closed");
+    tracing::debug!("TcpClientTransport connection closed");
 }
 
 fn data_to_json(data: RpcData) -> serde_json::Value {

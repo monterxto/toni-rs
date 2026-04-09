@@ -63,7 +63,7 @@ impl RpcAdapter for TcpAdapter {
                 .await
                 .unwrap_or_else(|e| panic!("TcpAdapter: failed to bind {} — {}", addr, e));
 
-            println!("[TcpAdapter] Listening on {}", addr);
+            tracing::info!(addr, "TcpAdapter listening");
 
             loop {
                 match listener.accept().await {
@@ -71,7 +71,7 @@ impl RpcAdapter for TcpAdapter {
                         let callbacks = callbacks.clone();
                         tokio::spawn(handle_connection(stream, addr, callbacks));
                     }
-                    Err(e) => eprintln!("[TcpAdapter] Accept error: {}", e),
+                    Err(e) => tracing::error!(error = %e, "TcpAdapter accept error"),
                 }
             }
         }))
@@ -110,7 +110,7 @@ async fn handle_connection(
                 let msg: serde_json::Value = match serde_json::from_str(trimmed) {
                     Ok(v) => v,
                     Err(e) => {
-                        eprintln!("[TcpAdapter] {}: JSON parse error: {}", addr, e);
+                        tracing::warn!(addr = %addr, error = %e, "TcpAdapter JSON parse error");
                         continue;
                     }
                 };
@@ -161,12 +161,12 @@ async fn handle_connection(
 
                     let mut w = writer.lock().await;
                     if let Err(e) = w.write_all(line.as_bytes()).await {
-                        eprintln!("[TcpAdapter] Write error: {}", e);
+                        tracing::error!(error = %e, "TcpAdapter write error");
                     }
                 });
             }
             Err(e) => {
-                eprintln!("[TcpAdapter] {}: read error: {}", addr, e);
+                tracing::error!(addr = %addr, error = %e, "TcpAdapter read error");
                 break;
             }
         }

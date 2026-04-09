@@ -151,13 +151,13 @@ impl Provider for RpcClient {
 
     async fn on_application_bootstrap(&self) {
         if let Err(e) = self.connect().await {
-            eprintln!("[RpcClient] connect failed at bootstrap: {e}");
+            tracing::error!(error = %e, "RpcClient connect failed at bootstrap");
         }
     }
 
     async fn on_application_shutdown(&self, _signal: Option<String>) {
         if let Err(e) = self.close().await {
-            eprintln!("[RpcClient] close failed at shutdown: {e}");
+            tracing::error!(error = %e, "RpcClient close failed at shutdown");
         }
     }
 }

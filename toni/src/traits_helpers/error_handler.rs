@@ -155,9 +155,9 @@ impl<H: ErrorHandler> ErrorHandler for LoggingErrorHandler<H> {
     ) -> Option<ErrorResponse> {
         if let Some(http) = ctx.switch_to_http() {
             let req = http.request();
-            eprintln!("[ERROR] {} {} - {}", req.method, req.uri, error);
+            tracing::error!(method = %req.method, uri = %req.uri, error = %error);
         } else {
-            eprintln!("[ERROR] {:?} - {}", ctx.protocol_type(), error);
+            tracing::error!(protocol = ?ctx.protocol_type(), error = %error);
         }
         self.inner.handle_error(error, ctx).await
     }

@@ -63,7 +63,7 @@ impl ToniApplication {
         self.http_adapter = Some(boxed);
         self.http_port = Some(port);
         self.http_hostname = Some(hostname.to_string());
-        println!("✓ HTTP adapter registered");
+        tracing::info!("HTTP adapter registered");
         Ok(self)
     }
 
@@ -73,7 +73,7 @@ impl ToniApplication {
         A: WebSocketAdapter,
     {
         self.ws_adapter = Some(Box::new(adapter) as Box<dyn ErasedWebSocketAdapter>);
-        println!("✓ WebSocket adapter registered");
+        tracing::info!("WebSocket adapter registered");
         Ok(self)
     }
 
@@ -82,7 +82,7 @@ impl ToniApplication {
         A: RpcAdapter,
     {
         self.rpc_adapter = Some(Box::new(adapter) as Box<dyn ErasedRpcAdapter>);
-        println!("✓ RPC adapter registered");
+        tracing::info!("RPC adapter registered");
         Ok(self)
     }
 
@@ -91,9 +91,9 @@ impl ToniApplication {
         self.ws_gateways = resolver.resolve()?;
 
         if !self.ws_gateways.is_empty() {
-            println!(
-                "✓ Discovered {} WebSocket gateway(s)",
-                self.ws_gateways.len()
+            tracing::info!(
+                count = self.ws_gateways.len(),
+                "WebSocket gateways discovered"
             );
         }
 
@@ -105,9 +105,9 @@ impl ToniApplication {
         self.rpc_controllers = resolver.resolve()?;
 
         if !self.rpc_controllers.is_empty() {
-            println!(
-                "✓ Discovered {} RPC controller(s)",
-                self.rpc_controllers.len()
+            tracing::info!(
+                count = self.rpc_controllers.len(),
+                "RPC controllers discovered"
             );
         }
 
@@ -221,16 +221,16 @@ impl ToniApplication {
                 self.routes_resolver.container.clone(),
             );
             if let Err(e) = scanner.call_bootstrap_hooks().await {
-                eprintln!("Error during bootstrap hooks: {}", e);
+                tracing::error!(error = %e, "Bootstrap hooks failed");
             }
         }
 
         if let Err(e) = self.discover_gateways() {
-            eprintln!("Error discovering WebSocket gateways: {}", e);
+            tracing::error!(error = %e, "WebSocket gateway discovery failed");
         }
 
         if let Err(e) = self.discover_rpc_controllers() {
-            eprintln!("Error discovering RPC controllers: {}", e);
+            tracing::error!(error = %e, "RPC controller discovery failed");
         }
 
         let http_port = self.http_port;
@@ -256,10 +256,10 @@ impl ToniApplication {
         if !same_port.is_empty() {
             if self.http_adapter.is_none() {
                 for (path, gw) in &same_port {
-                    eprintln!(
-                        "Gateway at {} requests same-port WebSocket but no HTTP adapter registered. \
-                         Call use_http_adapter() to add one.",
+                    tracing::error!(
                         path,
+                        "Gateway requests same-port WebSocket but no HTTP adapter registered; \
+                         call use_http_adapter() to add one"
                     );
                     let _ = gw;
                 }
@@ -276,7 +276,7 @@ impl ToniApplication {
                     ));
                     if let Some(http) = &mut self.http_adapter {
                         if let Err(e) = http.bind_ws(path, callbacks) {
-                            eprintln!("Failed to add WebSocket route at {}: {}", path, e);
+                            tracing::error!(path, error = %e, "Failed to add WebSocket route");
                         } else {
                             gateway.call_after_init().await;
                         }
@@ -291,11 +291,11 @@ impl ToniApplication {
         if !separate_port.is_empty() {
             if self.ws_adapter.is_none() {
                 for (path, gw) in &separate_port {
-                    eprintln!(
-                        "Gateway at {} requests port {:?} but no WebSocket adapter registered. \
-                         Call use_websocket_adapter() to add one.",
+                    tracing::error!(
                         path,
-                        gw.get_port()
+                        port = ?gw.get_port(),
+                        "Gateway requests separate-port WebSocket but no WebSocket adapter registered; \
+                         call use_websocket_adapter() to add one"
                     );
                 }
             } else {
@@ -313,7 +313,7 @@ impl ToniApplication {
                         ));
                         if let Some(ws) = &mut self.ws_adapter {
                             if let Err(e) = ws.bind(ws_port, path, callbacks) {
-                                eprintln!("Failed to bind gateway at {}: {}", path, e);
+                                tracing::error!(path, error = %e, "Failed to bind gateway");
                             } else {
                                 gateway.call_after_init().await;
                             }
@@ -329,9 +329,10 @@ impl ToniApplication {
                             if let Some(ws) = &mut self.ws_adapter {
                                 match ws.create(ws_port, &hostname) {
                                     Ok(fut) => server_futures.push(fut),
-                                    Err(e) => eprintln!(
-                                        "Failed to create WS server on port {}: {}",
-                                        ws_port, e
+                                    Err(e) => tracing::error!(
+                                        port = ws_port,
+                                        error = %e,
+                                        "Failed to create WebSocket server"
                                     ),
                                 }
                             }
@@ -344,10 +345,10 @@ impl ToniApplication {
         // Wire RPC controllers into the RPC adapter.
         if !self.rpc_controllers.is_empty() {
             if self.rpc_adapter.is_none() {
-                eprintln!(
-                    "{} RPC controller(s) discovered but no RPC adapter registered. \
-                     Call use_rpc_adapter() to add one.",
-                    self.rpc_controllers.len()
+                tracing::error!(
+                    count = self.rpc_controllers.len(),
+                    "RPC controllers discovered but no RPC adapter registered; \
+                     call use_rpc_adapter() to add one"
                 );
             } else {
                 let all_patterns: Vec<String> = self
@@ -360,7 +361,7 @@ impl ToniApplication {
 
                 if let Some(rpc) = &mut self.rpc_adapter {
                     if let Err(e) = rpc.bind(&all_patterns, callbacks) {
-                        eprintln!("Failed to bind RPC controllers: {}", e);
+                        tracing::error!(error = %e, "Failed to bind RPC controllers");
                     } else if let Ok(fut) = rpc.create() {
                         server_futures.push(fut);
                     }
@@ -376,17 +377,17 @@ impl ToniApplication {
             } else {
                 "HTTP"
             };
-            println!("Starting {} server on {}:{}", server_type, hostname, port);
+            tracing::info!(server_type, host = %hostname, port, "Starting server");
             match http_adapter.create(port, &hostname) {
                 Ok(fut) => server_futures.push(fut),
                 Err(e) => {
-                    eprintln!("Failed to create HTTP server: {}", e);
+                    tracing::error!(error = %e, "Failed to create HTTP server");
                     return;
                 }
             }
         } else if server_futures.is_empty() {
-            eprintln!(
-                "No adapters configured. Register at least one adapter before calling start()."
+            tracing::error!(
+                "No adapters configured; register at least one adapter before calling start()"
             );
             return;
         }
