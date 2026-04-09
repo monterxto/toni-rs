@@ -73,7 +73,7 @@ impl ToniFactory {
         match self.initialize(module.into(), container.clone()).await {
             Ok(_) => (),
             Err(e) => {
-                eprintln!("Critical error during module initialization: {}", e);
+                tracing::error!(error = %e, "Critical error during module initialization");
                 std::process::exit(1);
             }
         };
@@ -97,7 +97,7 @@ impl ToniFactory {
         match self.initialize(module.into(), container.clone()).await {
             Ok(_) => (),
             Err(e) => {
-                eprintln!("Critical error during module initialization: {}", e);
+                tracing::error!(error = %e, "Critical error during module initialization");
                 std::process::exit(1);
             }
         };
@@ -106,7 +106,7 @@ impl ToniFactory {
         {
             let mut scanner = crate::scanner::ToniDependenciesScanner::new(container.clone());
             if let Err(e) = scanner.call_bootstrap_hooks().await {
-                eprintln!("⚠️  Error during bootstrap hooks: {}", e);
+                tracing::error!(error = %e, "Bootstrap hooks failed");
             }
         }
 

@@ -22,6 +22,10 @@ pub mod toni_factory;
 pub mod traits_helpers;
 pub mod websocket;
 
+// Re-exported for use in macro-generated code — not part of the public API.
+#[doc(hidden)]
+pub use tracing;
+
 // Re-exports for adapter crates
 pub use adapter::{
     RpcAdapter, RpcClientTransport, RpcMessageCallbacks, WebSocketAdapter, WsConnectionCallbacks,

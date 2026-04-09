@@ -254,7 +254,7 @@ impl HttpAdapter for AxumAdapter {
             let listener = match TcpListener::bind(&addr).await {
                 Ok(l) => l,
                 Err(e) => {
-                    eprintln!("Failed to bind HTTP port {}: {}", addr, e);
+                    tracing::error!(addr, error = %e, "Failed to bind HTTP port");
                     std::process::exit(1);
                 }
             };
@@ -264,7 +264,7 @@ impl HttpAdapter for AxumAdapter {
                 })
                 .await
             {
-                eprintln!("HTTP server error: {}", e);
+                tracing::error!(error = %e, "HTTP server error");
                 std::process::exit(1);
             }
         }))
@@ -302,11 +302,11 @@ impl WebSocketAdapter for AxumAdapter {
             let listener = match TcpListener::bind(&addr).await {
                 Ok(l) => l,
                 Err(e) => {
-                    eprintln!("Failed to bind WS port {}: {}", addr, e);
+                    tracing::error!(addr, error = %e, "Failed to bind WebSocket port");
                     return;
                 }
             };
-            println!("WebSocket listening on {}", addr);
+            tracing::info!(addr, "WebSocket listening");
             axum::serve(listener, router)
                 .with_graceful_shutdown(async move {
                     let _ = shutdown_rx.wait_for(|v| *v).await;

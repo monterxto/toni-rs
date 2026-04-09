@@ -82,16 +82,16 @@ impl RpcAdapter for NatsAdapter {
                     async move {
                         match event {
                             async_nats::Event::Connected => {
-                                println!("[NatsAdapter] Connected to {}", servers)
+                                tracing::info!(servers, "NatsAdapter connected")
                             }
                             async_nats::Event::Disconnected => {
-                                eprintln!("[NatsAdapter] Disconnected from {}", servers)
+                                tracing::warn!(servers, "NatsAdapter disconnected")
                             }
                             async_nats::Event::ServerError(e) => {
-                                eprintln!("[NatsAdapter] Server error: {}", e)
+                                tracing::error!(error = %e, "NatsAdapter server error")
                             }
                             async_nats::Event::ClientError(e) => {
-                                eprintln!("[NatsAdapter] Client error: {}", e)
+                                tracing::error!(error = %e, "NatsAdapter client error")
                             }
                             _ => {}
                         }
@@ -117,7 +117,7 @@ impl RpcAdapter for NatsAdapter {
                     panic!("[NatsAdapter] Failed to subscribe to {} — {}", pattern, e)
                 });
 
-                println!("[NatsAdapter] Subscribed to {}", pattern);
+                tracing::info!(pattern, "NatsAdapter subscribed");
 
                 handles.push(tokio::spawn(async move {
                     while let Some(msg) = subscriber.next().await {
@@ -167,7 +167,7 @@ impl RpcAdapter for NatsAdapter {
                             };
 
                             if let Err(e) = client.publish(inbox, response_bytes).await {
-                                eprintln!("[NatsAdapter] Publish error: {}", e);
+                                tracing::error!(error = %e, "NatsAdapter publish error");
                             }
                         });
                     }
