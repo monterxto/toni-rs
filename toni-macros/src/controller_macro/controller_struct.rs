@@ -147,9 +147,8 @@ pub fn handle_controller_struct(
     // Otherwise keep the source determined by extract_struct_dependencies
     // (Annotations, DefaultFallback, or None)
 
-    // Use new instance injection pattern with scope and explicitness
     let expanded = generate_instance_controller_system(
-        &struct_attrs,
+        Some(&struct_attrs),
         &impl_block,
         &dependencies,
         &prefix_path,

@@ -9,17 +9,17 @@ use crate::shared::dependency_info::DependencySource;
 use crate::shared::scope_parser::ProviderScope;
 use crate::utils::extracts::extract_struct_dependencies;
 
-/// Parse WebSocket gateway arguments
-/// Syntax:
-/// - #[websocket_gateway(pub struct Foo { ... })]
-/// - #[websocket_gateway("/path", pub struct Foo { ... })]
-/// - #[websocket_gateway("/path", namespace = "chat", pub struct Foo { ... })]
-/// - #[websocket_gateway("/path", port = 3001, pub struct Foo { ... })]
+/// Parse WebSocket gateway arguments.
+/// Supports:
+/// - `#[websocket_gateway] impl Foo { ... }` — struct defined separately (preferred)
+/// - `#[websocket_gateway("/path")] impl Foo { ... }` — with path
+/// - `#[websocket_gateway("/path", pub struct Foo { ... })]` — inline struct (legacy)
 struct GatewayArgs {
     path: String,
     namespace: Option<String>,
     port: Option<u16>,
-    struct_def: ItemStruct,
+    /// `None` when the struct is defined above the impl.
+    struct_def: Option<ItemStruct>,
 }
 
 impl syn::parse::Parse for GatewayArgs {
@@ -73,14 +73,8 @@ impl syn::parse::Parse for GatewayArgs {
                 return Err(Error::new(ident.span(), "Unknown argument"));
             }
 
-            return Err(input.error(
-                "Expected path string, namespace argument, port argument, or struct definition",
-            ));
+            return Err(input.error("Expected path string, namespace, port, or struct definition"));
         }
-
-        let struct_def = struct_def.ok_or_else(|| {
-            input.error("Missing struct definition (expected `pub struct Name { ... }`)")
-        })?;
 
         Ok(GatewayArgs {
             path: path.unwrap_or_else(|| "/".to_string()),
@@ -100,23 +94,33 @@ pub fn handle_websocket_gateway(attr: TokenStream, item: TokenStream) -> Result<
     let namespace = args.namespace;
     let port = args.port;
 
-    let mut dependencies = extract_struct_dependencies(&struct_def)?;
+    let mut dependencies = match &struct_def {
+        Some(s) => extract_struct_dependencies(s)?,
+        None => crate::shared::dependency_info::DependencyInfo {
+            fields: vec![],
+            owned_fields: vec![],
+            init_method: None,
+            constructor_params: vec![],
+            unique_types: std::collections::HashSet::new(),
+            source: DependencySource::None,
+        },
+    };
 
-    // DI Priority Order (same as #[injectable]):
-    // 1. new() method (auto-detected) → constructor injection
-    // 2. #[inject] fields → field injection
-    // 3. Default fallback (all fields use Default::default())
     if has_new_method(&impl_block) {
-        // Auto-detect new() method and use constructor injection
         let params = extract_constructor_params(&impl_block, "new")?;
         dependencies.init_method = Some("new".to_string());
         dependencies.constructor_params = params;
         dependencies.source = DependencySource::Constructor("new".to_string());
+    } else if struct_def.is_none() {
+        return Err(syn::Error::new_spanned(
+            &impl_block.self_ty,
+            "add a `fn new(...) -> Self` constructor to declare this gateway's dependencies, \
+             or move the struct definition into the macro attribute",
+        ));
     }
-    // else: source stays as determined by extract_struct_dependencies (#[inject] fields or Default)
 
     generate_gateway_impl(
-        &struct_def,
+        struct_def.as_ref(),
         &impl_block,
         &dependencies,
         &path,
@@ -126,14 +130,18 @@ pub fn handle_websocket_gateway(attr: TokenStream, item: TokenStream) -> Result<
 }
 
 fn generate_gateway_impl(
-    struct_def: &ItemStruct,
+    struct_def: Option<&ItemStruct>,
     impl_block: &ItemImpl,
     dependencies: &crate::shared::dependency_info::DependencyInfo,
     path: &str,
     namespace: Option<&str>,
     port: Option<u16>,
 ) -> Result<TokenStream> {
-    let struct_name = &struct_def.ident;
+    let struct_name = match struct_def {
+        Some(s) => s.ident.clone(),
+        None => crate::utils::extracts::extract_impl_self_ident(impl_block)?,
+    };
+    let struct_name = &struct_name;
     let struct_token = struct_name.to_string();
 
     let mut message_handlers = Vec::new();
@@ -234,11 +242,10 @@ fn generate_gateway_impl(
         }
     }
 
-    // Adds Clone derive and DI wiring, same as #[injectable]; is_gateway=true ensures as_gateway() is included in the Provider impl
     let provider_system = generate_instance_provider_system(
         struct_def,
         &impl_def,
-        &dependencies,
+        dependencies,
         ProviderScope::Singleton,
         true,
         false,

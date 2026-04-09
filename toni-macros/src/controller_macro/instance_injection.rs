@@ -76,18 +76,26 @@ use crate::{
     utils::controller_utils::attr_to_string,
 };
 
+/// `struct_def` is `None` when the struct is defined separately above the impl block.
+/// The macro does not re-emit or modify the struct in that case; the user must derive `Clone`.
 pub fn generate_instance_controller_system(
-    struct_attrs: &ItemStruct,
+    struct_def: Option<&ItemStruct>,
     impl_block: &ItemImpl,
     dependencies: &DependencyInfo,
     route_prefix: &str,
     scope: crate::shared::scope_parser::ControllerScope,
     was_explicit: bool,
 ) -> Result<TokenStream> {
-    let struct_name = &struct_attrs.ident;
+    let struct_name = match struct_def {
+        Some(s) => s.ident.clone(),
+        None => crate::utils::extracts::extract_impl_self_ident(impl_block)?,
+    };
+    let struct_name = &struct_name;
 
-    // Add Clone derive to struct (required for creating instances)
-    let struct_with_clone = add_clone_derive(struct_attrs);
+    let struct_emit = struct_def.map(|s| {
+        let s = add_clone_derive(s);
+        quote! { #[allow(dead_code)] #s }
+    });
 
     // Detect lifecycle hooks before stripping attributes
     let lifecycle_hooks = detect_lifecycle_hooks(impl_block);
@@ -163,16 +171,13 @@ pub fn generate_instance_controller_system(
     let factory_accessor = generate_controller_factory_accessor(struct_name);
 
     Ok(quote! {
-        #[allow(dead_code)]
-        #struct_with_clone
+        #struct_emit
 
         #[allow(dead_code)]
         #impl_def
 
-        // Generate Singleton wrappers (always)
         #(#singleton_wrappers)*
 
-        // Generate Request wrappers (only if controller has dependencies)
         #(#request_wrappers)*
 
         #factory
