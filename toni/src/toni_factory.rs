@@ -118,6 +118,7 @@ impl ToniFactory {
         module: ModuleDefinition,
         container: Rc<RefCell<ToniContainer>>,
     ) -> Result<()> {
+        tracing::debug!("Scanning module graph");
         let mut scanner = ToniDependenciesScanner::new(container.clone());
 
         // Register built-in global module
@@ -155,11 +156,13 @@ impl ToniFactory {
 
         scanner.scan_middleware()?;
 
+        tracing::debug!("Instantiating dependencies");
         // Create instances of all dependencies (providers, controllers)
         ToniInstanceLoader::new(container.clone())
             .create_instances_of_dependencies()
             .await?;
 
+        tracing::debug!("Running module lifecycle hooks");
         // Hooks run after all providers are instantiated, not during scanning
         scanner.call_lifecycle_hooks().await?;
 

@@ -52,6 +52,13 @@ impl RoutesResolver {
                 }
             };
 
+            tracing::debug!(
+                method = %route_method.as_str(),
+                path = %route_path,
+                middleware = route_middleware.len(),
+                "route registered"
+            );
+
             if let Some(wrapper) = std::sync::Arc::get_mut(&mut controller) {
                 wrapper.set_middleware(route_middleware);
             }

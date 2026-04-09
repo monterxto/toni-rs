@@ -29,7 +29,9 @@ impl ToniDependenciesScanner {
         while let Some(current_module_definition) = stack.pop() {
             let ModuleDefinition::DefaultModule(default_module) = current_module_definition;
 
-            ctx_registry.push(default_module.get_name());
+            let module_name = default_module.get_name();
+            tracing::debug!(module = %module_name, "scanning module");
+            ctx_registry.push(module_name);
 
             let modules_imported = default_module.imports().unwrap_or_default();
 
@@ -51,6 +53,8 @@ impl ToniDependenciesScanner {
             self.insert_module(default_module);
             self.insert_imports(default_module_id, modules_imported_tokens)?;
         }
+
+        tracing::debug!(total = ctx_registry.len(), "module graph scan complete");
         Ok(())
     }
 
@@ -91,9 +95,11 @@ impl ToniDependenciesScanner {
         let controllers = resolved_module_ref.get_metadata().controllers();
 
         if let Some(controllers) = controllers {
+            let count = controllers.len();
             for controller in controllers {
                 container.add_controller(&module_token, controller)?;
             }
+            tracing::debug!(module = %module_token, count, "controllers registered");
         };
 
         Ok(())
@@ -110,17 +116,23 @@ impl ToniDependenciesScanner {
         let providers = resolved_module_ref.get_metadata().providers();
 
         if let Some(providers) = providers {
+            let count = providers.len();
+            let mut app_guards: usize = 0;
+            let mut app_interceptors: usize = 0;
+            let mut app_pipes: usize = 0;
             for provider in providers {
                 let provider_token = provider.get_token();
 
                 // Detect APP_* token providers and register them separately
                 match provider_token.as_str() {
                     "__TONI_APP_GUARD__" => {
+                        app_guards += 1;
                         let provider_type_token = provider.get_token();
                         container
                             .register_app_guard_provider(module_token.clone(), provider_type_token);
                     }
                     "__TONI_APP_INTERCEPTOR__" => {
+                        app_interceptors += 1;
                         let provider_type_token = provider.get_token();
                         container.register_app_interceptor_provider(
                             module_token.clone(),
@@ -128,6 +140,7 @@ impl ToniDependenciesScanner {
                         );
                     }
                     "__TONI_APP_PIPE__" => {
+                        app_pipes += 1;
                         let provider_type_token = provider.get_token();
                         container
                             .register_app_pipe_provider(module_token.clone(), provider_type_token);
@@ -146,6 +159,14 @@ impl ToniDependenciesScanner {
 
                 container.add_provider(&module_token, provider)?;
             }
+            tracing::debug!(
+                module = %module_token,
+                count,
+                app_guards,
+                app_interceptors,
+                app_pipes,
+                "providers registered"
+            );
         };
 
         Ok(())
@@ -163,6 +184,8 @@ impl ToniDependenciesScanner {
         let exports = resolved_module_ref.get_metadata().exports();
 
         if let Some(exports) = exports {
+            let count = exports.len();
+            tracing::debug!(module = %module_token, count, is_global, "exports registered");
             for export in exports {
                 container.add_export(&module_token, export.clone())?;
 
@@ -244,6 +267,7 @@ impl ToniDependenciesScanner {
                 .get_module_by_token(&module_token.to_string())
                 .ok_or_else(|| anyhow!("Module not found: {}", module_token))?;
 
+            tracing::debug!(module = %module_token, hook = "on_application_bootstrap", "lifecycle hook");
             module_ref
                 .get_metadata()
                 .on_application_bootstrap(self.container.clone())?;
@@ -257,12 +281,13 @@ impl ToniDependenciesScanner {
             {
                 let container = self.container.borrow();
                 if let Ok(providers) = container.get_providers_instance(module_token) {
-                    for (_token, provider) in providers.iter() {
+                    for (token, provider) in providers.iter() {
                         // Skip request-scoped providers - they require an active HTTP request
                         if provider.get_scope() == crate::ProviderScope::Request {
                             continue;
                         }
 
+                        tracing::debug!(module = %module_token, provider = %token, hook = "on_application_bootstrap", "lifecycle hook");
                         provider.on_application_bootstrap().await;
                     }
                 }
@@ -295,6 +320,7 @@ impl ToniDependenciesScanner {
                 .get_module_by_token(&module_token.to_string())
                 .ok_or_else(|| anyhow!("Module not found: {}", module_token))?;
 
+            tracing::debug!(module = %module_token, hook = "on_module_init", "lifecycle hook");
             module_ref
                 .get_metadata()
                 .on_module_init(self.container.clone())?;
@@ -308,13 +334,14 @@ impl ToniDependenciesScanner {
             {
                 let container = self.container.borrow();
                 if let Ok(providers) = container.get_providers_instance(module_token) {
-                    for (_token, provider) in providers.iter() {
+                    for (token, provider) in providers.iter() {
                         // Skip request-scoped providers - they require an active HTTP request
                         // and cannot be executed during module initialization
                         if provider.get_scope() == crate::ProviderScope::Request {
                             continue;
                         }
 
+                        tracing::debug!(module = %module_token, provider = %token, hook = "on_module_init", "lifecycle hook");
                         provider.on_module_init().await;
                     }
                 }

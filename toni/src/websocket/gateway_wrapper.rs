@@ -79,8 +79,9 @@ impl GatewayWrapper {
             Some(self.route_metadata.clone()),
         );
 
-        for guard in &self.guards {
+        for (i, guard) in self.guards.iter().enumerate() {
             if !guard.can_activate(&context) {
+                tracing::debug!(client_id = %client.id, guard_index = i, "guard rejected WebSocket connection");
                 return Err(WsError::AuthFailed("Guard rejected connection".into()));
             }
             if context.should_abort() {
@@ -88,6 +89,7 @@ impl GatewayWrapper {
             }
         }
 
+        tracing::debug!(client_id = %client.id, "WebSocket client connected");
         self.clients.write().await.insert(client.id.clone(), client);
         Ok(())
     }
@@ -140,6 +142,8 @@ impl GatewayWrapper {
             .ok_or_else(|| WsError::ConnectionClosed("Client not found".into()))?;
 
         let event = self.extract_event(&message)?;
+
+        tracing::trace!(client_id = %client_id, event = %event, "WebSocket message received");
 
         let mut context = Context::from_websocket(
             client.clone(),
@@ -291,6 +295,7 @@ impl GatewayWrapper {
 
     pub async fn handle_disconnect(&self, client_id: String, reason: DisconnectReason) {
         if let Some(client) = self.clients.write().await.remove(&client_id) {
+            tracing::debug!(client_id = %client_id, "WebSocket client disconnected");
             self.gateway.on_disconnect(&client, reason).await;
         }
     }

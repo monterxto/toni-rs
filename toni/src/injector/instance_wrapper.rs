@@ -103,6 +103,10 @@ impl InstanceWrapper {
     }
 
     pub async fn handle_request(&self, req: HttpRequest) -> HttpResponse {
+        let method = self.get_method();
+        let path = self.get_path();
+        tracing::debug!(method = %method.as_str(), path = %path, "incoming request");
+
         let instance = self.instance.clone();
         let guards = self.guards.clone();
         let interceptors = self.interceptors.clone();
@@ -142,7 +146,10 @@ impl InstanceWrapper {
 
         // Handle the result from middleware chain
         match middleware_result {
-            Ok(response) => response,
+            Ok(response) => {
+                tracing::debug!(method = %method.as_str(), path = %path, status = response.status, "request completed");
+                response
+            }
             Err(e) => {
                 // HttpError carries an intended HTTP status — use it directly
                 // rather than collapsing to 500.
@@ -187,8 +194,9 @@ impl InstanceWrapper {
         let mut context = Context::new(req, route_metadata.clone());
 
         // Execute guards
-        for guard in &guards {
+        for (i, guard) in guards.iter().enumerate() {
             if !guard.can_activate(&context) {
+                tracing::debug!(guard_index = i, "guard rejected request");
                 // Get the guard's response (or create default 403 if not set)
                 let guard_response = context
                     .switch_to_http_mut()
@@ -207,6 +215,9 @@ impl InstanceWrapper {
         }
 
         // Execute interceptors wrapping the handler
+        if !interceptors.is_empty() {
+            tracing::trace!(count = interceptors.len(), "entering interceptor chain");
+        }
         Self::execute_with_interceptors(
             &mut context,
             &interceptors,
@@ -319,6 +330,7 @@ impl InstanceWrapper {
             }
         }
 
+        tracing::trace!(pipe_count = pipes.len(), "executing controller handler");
         let mut http = context.switch_to_http_mut().expect("Expected HTTP context");
         let req = http.take_request();
         let controller_response = instance.execute(req).await;

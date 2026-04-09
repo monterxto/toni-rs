@@ -63,7 +63,7 @@ impl ToniApplication {
         self.http_adapter = Some(boxed);
         self.http_port = Some(port);
         self.http_hostname = Some(hostname.to_string());
-        tracing::info!("HTTP adapter registered");
+        tracing::debug!("HTTP adapter registered");
         Ok(self)
     }
 
@@ -73,7 +73,7 @@ impl ToniApplication {
         A: WebSocketAdapter,
     {
         self.ws_adapter = Some(Box::new(adapter) as Box<dyn ErasedWebSocketAdapter>);
-        tracing::info!("WebSocket adapter registered");
+        tracing::debug!("WebSocket adapter registered");
         Ok(self)
     }
 
@@ -82,7 +82,7 @@ impl ToniApplication {
         A: RpcAdapter,
     {
         self.rpc_adapter = Some(Box::new(adapter) as Box<dyn ErasedRpcAdapter>);
-        tracing::info!("RPC adapter registered");
+        tracing::debug!("RPC adapter registered");
         Ok(self)
     }
 
@@ -91,7 +91,7 @@ impl ToniApplication {
         self.ws_gateways = resolver.resolve()?;
 
         if !self.ws_gateways.is_empty() {
-            tracing::info!(
+            tracing::debug!(
                 count = self.ws_gateways.len(),
                 "WebSocket gateways discovered"
             );
@@ -105,7 +105,7 @@ impl ToniApplication {
         self.rpc_controllers = resolver.resolve()?;
 
         if !self.rpc_controllers.is_empty() {
-            tracing::info!(
+            tracing::debug!(
                 count = self.rpc_controllers.len(),
                 "RPC controllers discovered"
             );
@@ -142,6 +142,7 @@ impl ToniApplication {
     }
 
     pub async fn close(&mut self) -> Result<()> {
+        tracing::info!("Application shutting down");
         self.call_module_destroy_hooks().await;
         self.call_before_shutdown_hooks(None).await;
         self.call_shutdown_hooks(None).await;
@@ -162,6 +163,7 @@ impl ToniApplication {
             let _ = rpc.close().await;
         }
 
+        tracing::info!("Application shutdown complete");
         Ok(())
     }
 
@@ -278,6 +280,7 @@ impl ToniApplication {
                         if let Err(e) = http.bind_ws(path, callbacks) {
                             tracing::error!(path, error = %e, "Failed to add WebSocket route");
                         } else {
+                            tracing::debug!(path, "WebSocket gateway bound");
                             gateway.call_after_init().await;
                         }
                     }
@@ -315,6 +318,7 @@ impl ToniApplication {
                             if let Err(e) = ws.bind(ws_port, path, callbacks) {
                                 tracing::error!(path, error = %e, "Failed to bind gateway");
                             } else {
+                                tracing::debug!(port = ws_port, path, "WebSocket gateway bound");
                                 gateway.call_after_init().await;
                             }
                         }
@@ -356,6 +360,10 @@ impl ToniApplication {
                     .iter()
                     .flat_map(|w| w.get_patterns())
                     .collect();
+
+                for pattern in &all_patterns {
+                    tracing::debug!(pattern = %pattern, "RPC pattern registered");
+                }
 
                 let callbacks = Arc::new(make_rpc_callbacks(self.rpc_controllers.clone()));
 

@@ -29,6 +29,10 @@ impl ToniInstanceLoader {
         let modules_order = self.container.borrow().get_ordered_modules_token();
 
         // PHASE 1: Create provider instances for all modules (with deferred retry logic)
+        tracing::debug!(
+            total_modules = modules_order.len(),
+            "DI phase 1: creating provider instances"
+        );
         // Track which modules are pending (deferred due to unready global providers)
         let mut pending_modules: Vec<String> = modules_order.clone();
         let total_modules = pending_modules.len();
@@ -85,18 +89,22 @@ impl ToniInstanceLoader {
 
         // PHASE 1.5: Collect multi-provider contributions into Vec collections per base token.
         // Must run after all individual providers are built so as_multi_item() is available.
+        tracing::debug!("DI phase 1.5: collecting multi-providers");
         self.collect_multi_providers()?;
 
         // PHASE 2: Resolve APP_* token providers to global enhancers
         // This happens AFTER all provider instances are created but BEFORE controllers are instantiated
         // This allows APP_* enhancers to have injected dependencies AND be available when controllers are created
+        tracing::debug!("DI phase 2: resolving APP_* enhancers");
         self.resolve_app_token_enhancers()?;
 
         // PHASE 3: Resolve middleware tokens from DI container
         // This happens AFTER DI container is built, allowing middleware to have injected dependencies
+        tracing::debug!("DI phase 3: resolving middleware tokens");
         self.resolve_middleware_tokens(&modules_order)?;
 
         // PHASE 4: Create controller instances now that global enhancers are registered
+        tracing::debug!("DI phase 4: creating controller instances");
         for module_token in &modules_order {
             self.create_instances_of_controllers(module_token.clone())
                 .await?;
@@ -278,6 +286,7 @@ impl ToniInstanceLoader {
                     self.resolve_dependencies(&module_token, dependencies, Some(&instances))?;
 
                 let provider = provider_factory.build(resolved_dependencies).await;
+                tracing::debug!(module = %module_token, provider = %provider.get_token(), "provider instantiated");
                 instances.insert(provider.get_token(), provider);
             }
             instances
@@ -518,13 +527,14 @@ impl ToniInstanceLoader {
             else if let Some(exported_instance) =
                 self.resolve_from_imported_modules(module_token, &dependency)?
             {
+                tracing::debug!(module = %module_token, dependency = %dependency, source = "imported_module", "dependency resolved");
                 resolved_dependencies.insert(dependency, exported_instance.clone());
             }
             // Step 3: Check if it's a registered global provider token
             else if container.is_global_provider_token(&dependency) {
                 // Token is registered as global, try to get the instance
                 if let Some(global_instance) = container.get_global_provider(&dependency) {
-                    // Instance exists - use it
+                    tracing::debug!(module = %module_token, dependency = %dependency, source = "global", "dependency resolved");
                     resolved_dependencies.insert(dependency, global_instance.clone());
                 } else {
                     // Token registered but instance not created yet - DEFER

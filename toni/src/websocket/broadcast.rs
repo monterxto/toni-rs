@@ -241,7 +241,7 @@ impl ConnectionManager {
         let client_ids: Vec<ClientId> = self.clients.read().keys().cloned().collect();
         let count = client_ids.len();
 
-        tracing::info!(count, "Closing WebSocket connections");
+        tracing::debug!(count, "Closing WebSocket connections");
 
         for client_id in &client_ids {
             if let Some(sink) = self.ws_client_map.get_sink(client_id) {

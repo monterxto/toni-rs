@@ -81,6 +81,8 @@ async fn run_ws_connection(
         Err(_) => return,
     };
 
+    tracing::debug!(client_id = %client_id, "WebSocket connection established");
+
     let mut read = read;
     while let Some(result) = read.next().await {
         match result {
@@ -96,6 +98,7 @@ async fn run_ws_connection(
         }
     }
 
+    tracing::debug!(client_id = %client_id, "WebSocket connection closed");
     callbacks.disconnect(client_id).await;
 }
 
@@ -258,6 +261,7 @@ impl HttpAdapter for AxumAdapter {
                     std::process::exit(1);
                 }
             };
+            tracing::info!(addr, "HTTP listening");
             if let Err(e) = axum::serve(listener, router)
                 .with_graceful_shutdown(async move {
                     let _ = shutdown_rx.wait_for(|v| *v).await;

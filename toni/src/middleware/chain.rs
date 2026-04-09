@@ -86,6 +86,12 @@ impl MiddlewareChain {
             + Sync
             + 'static,
     {
+        if !self.middleware_stack.is_empty() {
+            tracing::trace!(
+                count = self.middleware_stack.len(),
+                "executing middleware chain"
+            );
+        }
         let mut inner: Box<dyn NextInternal> = Box::new(FinalHandler::new(final_handler));
 
         for middleware in self.middleware_stack.iter().rev() {
