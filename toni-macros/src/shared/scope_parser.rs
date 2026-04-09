@@ -48,17 +48,19 @@ pub struct ControllerStructArgs {
     pub struct_def: ItemStruct,
 }
 
-/// Parse new consolidated controller attribute
+/// Parse new consolidated controller attribute.
 /// Supports:
-/// - #[controller(pub struct Foo { ... })]
-/// - #[controller("/path", pub struct Foo { ... })]
-/// - #[controller("/path", scope = "request", pub struct Foo { ... })]
+/// - `#[controller] impl Foo { ... }` — struct defined separately (preferred)
+/// - `#[controller("/path")] impl Foo { ... }` — with route prefix
+/// - `#[controller("/path", pub struct Foo { ... })]` — inline struct (legacy)
 pub struct ControllerArgs {
-    pub path: String, // Controller path prefix (empty string if not specified)
+    pub path: String,
     pub scope: ControllerScope,
-    pub was_explicit: bool,     // Did user explicitly write scope = "..."?
-    pub init: Option<String>,   // Optional custom constructor method name
-    pub struct_def: ItemStruct, // The struct definition
+    pub was_explicit: bool,
+    pub init: Option<String>,
+    /// `None` when the struct is defined above the impl (preferred style).
+    /// `Some` for the legacy inline syntax.
+    pub struct_def: Option<ItemStruct>,
 }
 
 impl Parse for ProviderStructArgs {
@@ -189,18 +191,15 @@ impl Parse for ControllerArgs {
         let mut was_explicit = false;
         let mut init: Option<String> = None;
 
-        // Check if first token is a string literal (path)
         if input.peek(LitStr) {
             let path_lit: LitStr = input.parse()?;
             path = path_lit.value();
 
-            // Consume comma if present
             if input.peek(Token![,]) {
                 let _: Token![,] = input.parse()?;
             }
         }
 
-        // Parse optional named arguments: scope = "...", init = "..."
         while input.peek(syn::Ident) && !input.peek(Token![pub]) && !input.peek(Token![struct]) {
             let ident: syn::Ident = input.parse()?;
 
@@ -233,14 +232,17 @@ impl Parse for ControllerArgs {
                 ));
             }
 
-            // Consume comma if present
             if input.peek(Token![,]) {
                 let _: Token![,] = input.parse()?;
             }
         }
 
-        // Parse the struct definition
-        let struct_def: ItemStruct = input.parse()?;
+        // Inline struct is optional — absent means struct is defined separately above the impl.
+        let struct_def = if !input.is_empty() {
+            Some(input.parse::<ItemStruct>()?)
+        } else {
+            None
+        };
 
         Ok(ControllerArgs {
             path,

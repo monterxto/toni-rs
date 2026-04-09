@@ -1,5 +1,6 @@
 use proc_macro2::TokenStream;
 use quote::quote;
+use std::collections::HashSet;
 use syn::{Attribute, ItemImpl, ItemStruct, LitStr, Result, parse2};
 
 use crate::controller_macro::controller_struct::{extract_constructor_params, has_new_method};
@@ -9,14 +10,19 @@ use crate::shared::dependency_info::DependencySource;
 use crate::shared::scope_parser::ProviderScope;
 use crate::utils::extracts::extract_struct_dependencies;
 
-/// Parse `#[rpc_controller(pub struct Foo { ... })]`
+/// Parse `#[rpc_controller]` or `#[rpc_controller(pub struct Foo { ... })]`.
 struct RpcControllerArgs {
-    struct_def: ItemStruct,
+    /// `None` when the struct is defined above the impl.
+    struct_def: Option<ItemStruct>,
 }
 
 impl syn::parse::Parse for RpcControllerArgs {
     fn parse(input: syn::parse::ParseStream) -> Result<Self> {
-        let struct_def = input.parse::<ItemStruct>()?;
+        let struct_def = if !input.is_empty() {
+            Some(input.parse::<ItemStruct>()?)
+        } else {
+            None
+        };
         Ok(RpcControllerArgs { struct_def })
     }
 }
@@ -27,24 +33,44 @@ pub fn handle_rpc_controller(attr: TokenStream, item: TokenStream) -> Result<Tok
 
     let struct_def = args.struct_def;
 
-    let mut dependencies = extract_struct_dependencies(&struct_def)?;
+    let mut dependencies = match &struct_def {
+        Some(s) => extract_struct_dependencies(s)?,
+        None => crate::shared::dependency_info::DependencyInfo {
+            fields: vec![],
+            owned_fields: vec![],
+            init_method: None,
+            constructor_params: vec![],
+            unique_types: HashSet::new(),
+            source: DependencySource::None,
+        },
+    };
 
     if has_new_method(&impl_block) {
         let params = extract_constructor_params(&impl_block, "new")?;
         dependencies.init_method = Some("new".to_string());
         dependencies.constructor_params = params;
         dependencies.source = DependencySource::Constructor("new".to_string());
+    } else if struct_def.is_none() {
+        return Err(syn::Error::new_spanned(
+            &impl_block.self_ty,
+            "add a `fn new(...) -> Self` constructor to declare this RPC controller's dependencies, \
+             or move the struct definition into the macro attribute",
+        ));
     }
 
-    generate_rpc_controller_impl(&struct_def, &impl_block, &dependencies)
+    generate_rpc_controller_impl(struct_def.as_ref(), &impl_block, &dependencies)
 }
 
 fn generate_rpc_controller_impl(
-    struct_def: &ItemStruct,
+    struct_def: Option<&ItemStruct>,
     impl_block: &ItemImpl,
     dependencies: &crate::shared::dependency_info::DependencyInfo,
 ) -> Result<TokenStream> {
-    let struct_name = &struct_def.ident;
+    let struct_name = match struct_def {
+        Some(s) => s.ident.clone(),
+        None => crate::utils::extracts::extract_impl_self_ident(impl_block)?,
+    };
+    let struct_name = &struct_name;
     let struct_token = struct_name.to_string();
 
     let mut message_handlers: Vec<(String, syn::ImplItemFn)> = Vec::new();
@@ -119,7 +145,7 @@ fn generate_rpc_controller_impl(
         dependencies,
         ProviderScope::Singleton,
         false,
-        true,
+        true, // is_rpc_controller
     )?;
 
     let rpc_trait_impl = quote! {

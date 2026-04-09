@@ -302,6 +302,18 @@ pub fn extract_vec_arc_dyn_inner(ty: &Type) -> Option<Type> {
     matches!(dyn_ty, Type::TraitObject(_)).then(|| dyn_ty.clone())
 }
 
+pub fn extract_impl_self_ident(impl_block: &ItemImpl) -> Result<Ident> {
+    if let syn::Type::Path(type_path) = &*impl_block.self_ty {
+        if let Some(ident) = type_path.path.get_ident() {
+            return Ok(ident.clone());
+        }
+    }
+    Err(syn::Error::new_spanned(
+        &impl_block.self_ty,
+        "expected a simple struct name (no generic parameters or path segments)",
+    ))
+}
+
 pub fn extract_params_from_impl_fn(func: &ImplItemFn) -> Vec<(Ident, Type)> {
     let mut params = Vec::new();
 

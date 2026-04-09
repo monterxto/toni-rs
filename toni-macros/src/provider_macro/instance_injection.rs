@@ -36,10 +36,13 @@ pub struct EnhancerTraits {
 ///
 /// Checks marker attributes on the struct (`#[guard]`, `#[interceptor]`, etc.) and on the
 /// impl block, as well as trait impl blocks for backwards compatibility.
-fn detect_enhancer_traits(struct_attrs: &ItemStruct, impl_block: &ItemImpl) -> EnhancerTraits {
+fn detect_enhancer_traits(
+    struct_def: Option<&ItemStruct>,
+    impl_block: &ItemImpl,
+) -> EnhancerTraits {
     let mut traits = EnhancerTraits::default();
 
-    let markers = EnhancerMarkers::detect(struct_attrs);
+    let markers = struct_def.map(EnhancerMarkers::detect).unwrap_or_default();
     traits.is_guard = markers.is_guard;
     traits.is_interceptor = markers.is_interceptor;
     traits.is_middleware = markers.is_middleware;
@@ -81,19 +84,27 @@ fn detect_enhancer_traits(struct_attrs: &ItemStruct, impl_block: &ItemImpl) -> E
 
 /// Detect lifecycle hooks by scanning for method-level attributes in the impl block.
 ///
+/// `struct_def` is `None` when the struct is defined separately above the impl block.
+/// In that case the macro does not re-emit or modify the struct; the user owns it entirely
+/// and must derive `Clone` themselves.
 pub fn generate_instance_provider_system(
-    struct_attrs: &ItemStruct,
+    struct_def: Option<&ItemStruct>,
     impl_block: &ItemImpl,
     dependencies: &DependencyInfo,
     scope: ProviderScope,
     is_gateway: bool,
     is_rpc_controller: bool,
 ) -> Result<TokenStream> {
-    let struct_name = &struct_attrs.ident;
+    let struct_name = match struct_def {
+        Some(s) => s.ident.clone(),
+        None => crate::utils::extracts::extract_impl_self_ident(impl_block)?,
+    };
 
-    let struct_with_clone = add_clone_derive(struct_attrs);
+    let struct_emit = struct_def.map(|s| {
+        let s = add_clone_derive(s);
+        quote! { #[allow(dead_code)] #s }
+    });
 
-    // Remove #[inject] from constructor parameters, then strip lifecycle attributes
     let mut impl_def = impl_block.clone();
     for item in impl_def.items.iter_mut() {
         if let syn::ImplItem::Fn(method) = item {
@@ -104,25 +115,24 @@ pub fn generate_instance_provider_system(
     }
     let impl_def = strip_lifecycle_attrs(&impl_def);
 
-    let mut enhancer_traits = detect_enhancer_traits(struct_attrs, impl_block);
+    let mut enhancer_traits = detect_enhancer_traits(struct_def, impl_block);
     let lifecycle_hooks = detect_lifecycle_hooks(impl_block);
     enhancer_traits.is_gateway = is_gateway;
     enhancer_traits.is_rpc_controller = is_rpc_controller;
 
     let provider_wrapper = generate_provider_wrapper(
-        struct_name,
+        &struct_name,
         dependencies,
         scope,
         &enhancer_traits,
         &lifecycle_hooks,
     );
 
-    let factory = generate_factory(struct_name, dependencies, scope);
-    let factory_accessor = generate_provider_factory_accessor(struct_name);
+    let factory = generate_factory(&struct_name, dependencies, scope);
+    let factory_accessor = generate_provider_factory_accessor(&struct_name);
 
     Ok(quote! {
-        #[allow(dead_code)]
-        #struct_with_clone
+        #struct_emit
 
         #[allow(dead_code)]
         #impl_def

@@ -1,4 +1,5 @@
 use proc_macro2::TokenStream;
+use std::collections::HashSet;
 use syn::{FnArg, Ident, ImplItem, ItemImpl, ItemStruct, Pat, Result, Type, parse2};
 
 use crate::{
@@ -113,60 +114,68 @@ pub fn handle_provider_struct(
     item: TokenStream,
     _trait_name: Ident,
 ) -> Result<TokenStream> {
-    // Parse attributes: scope = "request", init = "new", etc.
     let args = parse2::<ProviderStructArgs>(attr)?;
-
     let scope = args.scope;
     let init_method = args.init;
 
-    // Get struct definition from either args (inline syntax) or item (attribute syntax)
-    let (struct_attrs, impl_block) = if let Some(struct_def) = args.struct_def {
-        // Inline syntax: #[injectable(pub struct Foo { ... })]
-        // In this case, item should be impl block
+    if let Some(struct_def) = args.struct_def {
+        // Inline: #[injectable(pub struct Foo { ... })] impl Foo { ... }
         let impl_block = parse2::<ItemImpl>(item)?;
-        (struct_def, impl_block)
+        resolve_provider(Some(struct_def), impl_block, scope, init_method)
+    } else if let Ok(impl_block) = parse2::<ItemImpl>(item.clone()) {
+        // Separate: #[injectable] impl Foo { ... }  (struct defined above)
+        resolve_provider(None, impl_block, scope, init_method)
     } else {
-        // Attribute syntax: #[injectable] pub struct Foo { ... }
-        // Parse struct from item, create empty impl block
-        let struct_attrs = parse2::<ItemStruct>(item)?;
-        let struct_name = &struct_attrs.ident;
-        let empty_impl: ItemImpl = syn::parse_quote! {
-            impl #struct_name {}
-        };
-        (struct_attrs, empty_impl)
+        // Legacy: #[injectable] pub struct Foo { ... }
+        let struct_def = parse2::<ItemStruct>(item)?;
+        let struct_name = &struct_def.ident;
+        let empty_impl: ItemImpl = syn::parse_quote! { impl #struct_name {} };
+        resolve_provider(Some(struct_def), empty_impl, scope, init_method)
+    }
+}
+
+fn resolve_provider(
+    struct_def: Option<ItemStruct>,
+    impl_block: ItemImpl,
+    scope: crate::shared::scope_parser::ProviderScope,
+    init_method: Option<String>,
+) -> Result<TokenStream> {
+    let mut dependencies = match &struct_def {
+        Some(s) => extract_struct_dependencies(s)?,
+        None => crate::shared::dependency_info::DependencyInfo {
+            fields: vec![],
+            owned_fields: vec![],
+            init_method: None,
+            constructor_params: vec![],
+            unique_types: std::collections::HashSet::new(),
+            source: DependencySource::None,
+        },
     };
 
-    let mut dependencies = extract_struct_dependencies(&struct_attrs)?;
-
-    // DI Priority Order: init override → new() → #[inject] → Default fallback
-    // 1. If init is explicitly specified in attributes, use it (highest priority)
-    // 2. Otherwise, if new() method exists in impl block, use it automatically
-    // 3. Otherwise, use the detected source (Annotations or DefaultFallback)
-
     if let Some(method_name) = init_method {
-        // Explicit init attribute - highest priority
         let params = extract_constructor_params(&impl_block, &method_name)?;
         dependencies.init_method = Some(method_name.clone());
         dependencies.constructor_params = params;
         dependencies.source = DependencySource::Constructor(method_name);
     } else if has_new_method(&impl_block) {
-        // Auto-detect new() method - second priority
         let params = extract_constructor_params(&impl_block, "new")?;
         dependencies.init_method = Some("new".to_string());
         dependencies.constructor_params = params;
         dependencies.source = DependencySource::Constructor("new".to_string());
+    } else if struct_def.is_none() {
+        return Err(syn::Error::new_spanned(
+            &impl_block.self_ty,
+            "add a `fn new(...) -> Self` constructor to declare this provider's dependencies, \
+             or move the struct definition into the macro attribute",
+        ));
     }
-    // Otherwise keep the source determined by extract_struct_dependencies
-    // (Annotations, DefaultFallback, or None)
 
-    let expanded = generate_instance_provider_system(
-        &struct_attrs,
+    generate_instance_provider_system(
+        struct_def.as_ref(),
         &impl_block,
         &dependencies,
         scope,
         false,
         false,
-    )?;
-
-    Ok(expanded)
+    )
 }

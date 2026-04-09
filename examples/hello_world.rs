@@ -11,8 +11,15 @@ use serde_json::json;
 use toni::*;
 use toni_axum::AxumAdapter;
 
-#[controller("/hello", pub struct HelloController;)]
+#[derive(Clone)]
+pub struct HelloController;
+
+#[controller("/hello")]
 impl HelloController {
+    pub fn new() -> Self {
+        Self
+    }
+
     #[get("/")]
     fn hello(&self) -> Body {
         Body::text("Hello, World!".to_string())
