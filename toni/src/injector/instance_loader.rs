@@ -4,7 +4,7 @@ use std::{
     any::Any,
     cell::{RefCell, RefMut},
     rc::Rc,
-    sync::Arc,
+    sync::{Arc, RwLock},
 };
 
 use super::{DependencyGraph, ToniContainer, multi_collection_provider::MultiCollectionProvider};
@@ -23,9 +23,6 @@ impl ToniInstanceLoader {
     }
 
     pub async fn create_instances_of_dependencies(&self) -> Result<()> {
-        // Set the container context for ModuleRef to access
-        super::module_ref_provider::set_container_context(self.container.clone());
-
         let modules_order = self.container.borrow().get_ordered_modules_token();
 
         // PHASE 1: Create provider instances for all modules (with deferred retry logic)
@@ -92,6 +89,11 @@ impl ToniInstanceLoader {
         tracing::debug!("DI phase 1.5: collecting multi-providers");
         self.collect_multi_providers()?;
 
+        // PHASE 1.6: Inject the provider store into all ModuleRefProviders so that
+        // ModuleRef::get() works from any thread (not just the initialization thread).
+        // Must run after Phase 1.5 so multi-collection providers are included.
+        self.inject_provider_store()?;
+
         // PHASE 2: Resolve APP_* token providers to global enhancers
         // This happens AFTER all provider instances are created but BEFORE controllers are instantiated
         // This allows APP_* enhancers to have injected dependencies AND be available when controllers are created
@@ -108,6 +110,31 @@ impl ToniInstanceLoader {
         for module_token in &modules_order {
             self.create_instances_of_controllers(module_token.clone())
                 .await?;
+        }
+
+        Ok(())
+    }
+
+    /// Build the provider store and inject it into all ModuleRefProvider instances.
+    fn inject_provider_store(&self) -> Result<()> {
+        let container = self.container.borrow();
+        let module_tokens = container.get_modules_token();
+
+        let mut store = super::module_ref::ProviderStore::default();
+        for module_token in &module_tokens {
+            if let Ok(instances) = container.get_providers_instance(module_token) {
+                store.insert(module_token.clone(), instances.clone());
+            }
+        }
+
+        let store_arc = Arc::new(RwLock::new(store));
+
+        for module_token in &module_tokens {
+            if let Ok(instances) = container.get_providers_instance(module_token) {
+                for provider in instances.values() {
+                    provider.inject_provider_store(store_arc.clone());
+                }
+            }
         }
 
         Ok(())

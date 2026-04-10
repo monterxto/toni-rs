@@ -27,7 +27,7 @@ pub mod token;
 pub use self::token::IntoToken;
 
 mod module_ref;
-pub use self::module_ref::ModuleRef;
+pub use self::module_ref::{ModuleRef, ProviderStore};
 
 mod module_ref_provider;
 pub use self::module_ref_provider::ModuleRefProvider;
