@@ -55,10 +55,15 @@ impl Provider for Request {
         _params: Vec<Box<dyn Any + Send>>,
         ctx: ProviderContext<'_>,
     ) -> Box<dyn Any + Send> {
-        let ProviderContext::Http(parts) = ctx else {
+        let ProviderContext::Http(http_ctx) = ctx else {
             panic!("Request provider requires an HTTP execution context");
         };
-        Box::new(Request::from_request_parts(parts).expect("infallible"))
+        if let Some(cached) = http_ctx.cache.get::<Request>() {
+            return Box::new(cached);
+        }
+        let instance = Request::from_request_parts(http_ctx.parts).expect("infallible");
+        http_ctx.cache.insert(instance.clone());
+        Box::new(instance)
     }
 
     fn get_token_factory(&self) -> String {

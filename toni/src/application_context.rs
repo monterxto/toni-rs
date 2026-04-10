@@ -7,7 +7,10 @@ use std::{cell::RefCell, rc::Rc};
 
 use anyhow::Result;
 
-use crate::injector::{IntoToken, ToniContainer};
+use crate::{
+    injector::{IntoToken, ToniContainer},
+    traits_helpers::{HttpContext, RequestCache},
+};
 
 /// Full DI container without an HTTP server
 pub struct ToniApplicationContext {
@@ -178,6 +181,111 @@ impl ToniApplicationContext {
 
         let instance_any = provider_instance
             .execute(vec![], crate::traits_helpers::ProviderContext::None)
+            .await;
+
+        instance_any
+            .downcast::<T>()
+            .map(|boxed| *boxed)
+            .map_err(|_| {
+                anyhow::anyhow!(
+                    "Failed to downcast provider '{}' to requested type",
+                    token_str
+                )
+            })
+    }
+
+    /// Resolves a request-scoped or transient provider `T` using a synthetic request context.
+    ///
+    /// Use this when you need a request-scoped provider outside of an HTTP handler — for
+    /// testing, CLI tools, or health checks that need to exercise the full provider tree.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let parts = http::Request::builder().body(()).unwrap().into_parts().0;
+    /// let service = ctx.resolve::<RequestService>(&parts).await?;
+    /// ```
+    pub async fn resolve<T: 'static>(&self, parts: &crate::http_helpers::RequestPart) -> Result<T> {
+        let provider_token = std::any::type_name::<T>().to_string();
+
+        let provider_instance = {
+            let container = self.container.borrow();
+            let modules = container.get_modules_token();
+
+            let mut found = None;
+            for module_token in modules {
+                if let Ok(Some(instance)) =
+                    container.get_provider_instance_by_token(&module_token, &provider_token)
+                {
+                    found = Some(instance.clone());
+                    break;
+                }
+            }
+
+            found.ok_or_else(|| {
+                anyhow::anyhow!("Provider '{}' not found in any module", provider_token)
+            })?
+        };
+
+        let cache = RequestCache::new();
+        let http_ctx = HttpContext {
+            parts,
+            cache: &cache,
+        };
+        let instance_any = provider_instance
+            .execute(
+                vec![],
+                crate::traits_helpers::ProviderContext::Http(http_ctx),
+            )
+            .await;
+
+        instance_any
+            .downcast::<T>()
+            .map(|boxed| *boxed)
+            .map_err(|_| {
+                anyhow::anyhow!(
+                    "Failed to downcast provider '{}' to requested type",
+                    provider_token
+                )
+            })
+    }
+
+    /// Resolves a request-scoped or transient provider by token using a synthetic request context.
+    pub async fn resolve_by_token<T: 'static>(
+        &self,
+        token: impl IntoToken,
+        parts: &crate::http_helpers::RequestPart,
+    ) -> Result<T> {
+        let token_str = token.into_token();
+
+        let provider_instance = {
+            let container = self.container.borrow();
+            let modules = container.get_modules_token();
+
+            let mut found = None;
+            for module_token in modules {
+                if let Ok(Some(instance)) =
+                    container.get_provider_instance_by_token(&module_token, &token_str)
+                {
+                    found = Some(instance.clone());
+                    break;
+                }
+            }
+
+            found.ok_or_else(|| {
+                anyhow::anyhow!("Provider '{}' not found in any module", token_str)
+            })?
+        };
+
+        let cache = RequestCache::new();
+        let http_ctx = HttpContext {
+            parts,
+            cache: &cache,
+        };
+        let instance_any = provider_instance
+            .execute(
+                vec![],
+                crate::traits_helpers::ProviderContext::Http(http_ctx),
+            )
             .await;
 
         instance_any

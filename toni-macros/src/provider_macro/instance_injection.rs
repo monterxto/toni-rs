@@ -421,21 +421,17 @@ fn generate_request_provider(
         let init_ident = syn::Ident::new(init_fn, struct_name.span());
 
         if is_from_request {
-            // Special case: from_request gets HttpRequest as first parameter
+            // Special case: from_request gets HttpRequest as first parameter.
+            // __http_ctx is extracted at the top of the generated execute body.
             if field_names.is_empty() {
-                // No dependencies, just HttpRequest
+                // No dependencies, just the request parts
                 quote! {
-                    #struct_name::#init_ident(
-                        match &_ctx { ::toni::ProviderContext::Http(req) => *req, _ => panic!("from_request requires an HTTP execution context") }
-                    )
+                    #struct_name::#init_ident(__http_ctx.parts)
                 }
             } else {
-                // Has dependencies + HttpRequest
+                // Has dependencies + request parts
                 quote! {
-                    #struct_name::#init_ident(
-                        match &_ctx { ::toni::ProviderContext::Http(req) => *req, _ => panic!("from_request requires an HTTP execution context") },
-                        #(#field_names),*
-                    )
+                    #struct_name::#init_ident(__http_ctx.parts, #(#field_names),*)
                 }
             }
         } else {
@@ -475,6 +471,27 @@ fn generate_request_provider(
             quote! { instance.#method().await; }
         });
 
+    // Request-scoped providers require an active HTTP context. Constructing them
+    // outside of a request would silently violate the declared scope contract.
+    let execute_body = quote! {
+        let ::toni::ProviderContext::Http(__http_ctx) = _ctx else {
+            panic!(
+                "Request-scoped provider '{}' requires an HTTP execution context. \
+                 Request-scoped providers cannot be resolved outside of an active HTTP request.",
+                ::std::any::type_name::<#struct_name>()
+            );
+        };
+        if let Some(__cached) = __http_ctx.cache.get::<#struct_name>() {
+            return Box::new(__cached);
+        }
+        #(#field_resolutions)*
+        let instance = #struct_instantiation;
+        #init_call
+        #bootstrap_call
+        __http_ctx.cache.insert(instance.clone());
+        Box::new(instance)
+    };
+
     quote! {
         struct #provider_name {
             dependencies: ::toni::FxHashMap<
@@ -490,13 +507,7 @@ fn generate_request_provider(
                 _params: Vec<Box<dyn ::std::any::Any + Send>>,
                 _ctx: ::toni::ProviderContext<'_>,
             ) -> Box<dyn ::std::any::Any + Send> {
-                #(#field_resolutions)*
-
-                let instance = #struct_instantiation;
-                #init_call
-                #bootstrap_call
-
-                Box::new(instance)
+                #execute_body
             }
 
             fn get_token(&self) -> String {
