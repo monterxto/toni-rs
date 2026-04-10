@@ -203,3 +203,32 @@ async fn test_module_ref_singleton_behavior() {
 
     assert_eq!(db1.connection_string, db2.connection_string);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_module_ref_works_from_any_thread() {
+    let app = ToniFactory::create(AppModule::module_definition()).await;
+
+    let plugin_loader = app
+        .get::<PluginLoader>()
+        .await
+        .expect("PluginLoader should be available");
+
+    // Spawn onto a fresh OS thread that never had set_container_context called on it.
+    // This exposes the thread-local bug: the container is stored in thread_local! and
+    // is only set on the initialization thread, so ModuleRef::get() silently returns
+    // None on any other thread instead of resolving the provider.
+    let result = std::thread::spawn(move || {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(plugin_loader.load_service_strict())
+    })
+    .join()
+    .expect("thread should not panic");
+
+    assert!(
+        result.is_some(),
+        "ModuleRef::get should work from any thread, not just the initialization thread"
+    );
+}
