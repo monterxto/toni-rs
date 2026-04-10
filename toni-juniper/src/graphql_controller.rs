@@ -243,9 +243,10 @@ where
             }
         };
 
+        let __req_cache = toni::RequestCache::new();
         let service_any = self
             .graphql_service
-            .execute(vec![], toni::ProviderContext::Http(&parts))
+            .execute(vec![], toni::ProviderContext::Http(toni::HttpContext { parts: &parts, cache: &__req_cache }))
             .await;
 
         let service = service_any

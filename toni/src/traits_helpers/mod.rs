@@ -2,8 +2,11 @@ pub mod middleware;
 mod module_metadata;
 pub use self::module_metadata::{MiddlewareConsumer, ModuleMetadata};
 
+pub mod request_cache;
+pub use self::request_cache::RequestCache;
+
 mod provider_context;
-pub use self::provider_context::ProviderContext;
+pub use self::provider_context::{HttpContext, ProviderContext};
 
 mod provider;
 pub use self::provider::{Provider, ProviderFactory};

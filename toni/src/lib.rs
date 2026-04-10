@@ -59,7 +59,7 @@ pub use rustc_hash::FxHashMap;
 // Re-export provider scope
 pub use provider_scope::ProviderScope;
 
-pub use traits_helpers::ProviderContext;
+pub use traits_helpers::{HttpContext, ProviderContext, RequestCache};
 
 pub use errors::HttpError;
 

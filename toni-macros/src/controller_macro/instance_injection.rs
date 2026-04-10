@@ -486,7 +486,7 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
                         .get(&__lookup_token)
                         .unwrap_or_else(|| panic!("Missing dependency '{}'", __lookup_token));
 
-                    let any_box = provider.execute(vec![], ::toni::ProviderContext::Http(&_req_parts)).await;
+                    let any_box = provider.execute(vec![], ::toni::ProviderContext::Http(::toni::HttpContext { parts: &_req_parts, cache: &_req_cache })).await;
 
                     *any_box.downcast::<#full_type>()
                         .unwrap_or_else(|_| panic!(
@@ -530,7 +530,7 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
                     // Transient: fresh instance per field
                     #(
                         #field_idents = {
-                            let any_box = provider.execute(vec![], ::toni::ProviderContext::Http(&_req_parts)).await;
+                            let any_box = provider.execute(vec![], ::toni::ProviderContext::Http(::toni::HttpContext { parts: &_req_parts, cache: &_req_cache })).await;
                             *any_box.downcast::<#full_type>()
                                 .unwrap_or_else(|_| panic!(
                                     "Failed to downcast '{}' to {}",
@@ -542,7 +542,7 @@ fn generate_field_resolutions(dependencies: &DependencyInfo) -> (Vec<TokenStream
                 } else {
                     // Singleton/Request: shared instance cloned to all fields
                     let #temp_var: #full_type = {
-                        let any_box = provider.execute(vec![], ::toni::ProviderContext::Http(&_req_parts)).await;
+                        let any_box = provider.execute(vec![], ::toni::ProviderContext::Http(::toni::HttpContext { parts: &_req_parts, cache: &_req_cache })).await;
                         *any_box.downcast::<#full_type>()
                             .unwrap_or_else(|_| panic!(
                                 "Failed to downcast '{}' to {}",
@@ -1097,6 +1097,7 @@ fn generate_request_controller_wrapper(
                 __req: ::toni::http_helpers::HttpRequest,
             ) -> ::toni::http_helpers::HttpResponse {
                 let (_req_parts, _req_body) = __req.0.into_parts();
+                let _req_cache = ::toni::RequestCache::new();
 
                 #(#field_resolutions)*
                 #(#marker_params_extraction)*
