@@ -3,6 +3,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+
 use crate::{
     ProviderScope, async_trait,
     traits_helpers::{Provider, ProviderContext},
@@ -24,6 +25,16 @@ impl ModuleRefProvider {
             module_token,
             store: Arc::new(RwLock::new(ProviderStore::default())),
         }
+    }
+
+    pub(crate) fn populate_store(&self, store: Arc<RwLock<ProviderStore>>) {
+        // Write the full store into our shared Arc so every ModuleRef that
+        // already cloned it (during Phase 1 dependency resolution) sees the data.
+        *self
+            .store
+            .write()
+            .expect("ModuleRefProvider store lock poisoned") =
+            store.read().expect("provider store lock poisoned").clone();
     }
 }
 
@@ -47,15 +58,5 @@ impl Provider for ModuleRefProvider {
 
     fn get_scope(&self) -> ProviderScope {
         ProviderScope::Singleton
-    }
-
-    fn inject_provider_store(&self, store: Arc<RwLock<ProviderStore>>) {
-        // Write the full store into our shared Arc so every ModuleRef that
-        // already cloned it (during Phase 1 dependency resolution) sees the data.
-        *self
-            .store
-            .write()
-            .expect("ModuleRefProvider store lock poisoned") =
-            store.read().expect("provider store lock poisoned").clone();
     }
 }

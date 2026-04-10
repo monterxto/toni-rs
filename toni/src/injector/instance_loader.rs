@@ -117,6 +117,9 @@ impl ToniInstanceLoader {
 
     /// Build the provider store and inject it into all ModuleRefProvider instances.
     fn inject_provider_store(&self) -> Result<()> {
+        use super::module_ref_provider::ModuleRefProvider;
+        use crate::traits_helpers::AsAny;
+
         let container = self.container.borrow();
         let module_tokens = container.get_modules_token();
 
@@ -132,7 +135,10 @@ impl ToniInstanceLoader {
         for module_token in &module_tokens {
             if let Ok(instances) = container.get_providers_instance(module_token) {
                 for provider in instances.values() {
-                    provider.inject_provider_store(store_arc.clone());
+                    let inner: &dyn crate::traits_helpers::Provider = &***provider;
+                    if let Some(mrp) = inner.as_any().downcast_ref::<ModuleRefProvider>() {
+                        mrp.populate_store(store_arc.clone());
+                    }
                 }
             }
         }

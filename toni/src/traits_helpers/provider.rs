@@ -1,16 +1,23 @@
-use std::{
-    any::Any,
-    sync::{Arc, RwLock},
-};
+use std::{any::Any, sync::Arc};
 
 use async_trait::async_trait;
 use rustc_hash::FxHashMap;
 
 use super::{ErrorHandler, Guard, Interceptor, Pipe, ProviderContext, middleware::Middleware};
-use crate::{ProviderScope, injector::ProviderStore};
+use crate::ProviderScope;
+
+pub(crate) trait AsAny {
+    fn as_any(&self) -> &dyn Any;
+}
+
+impl<T: 'static> AsAny for T {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
 
 #[async_trait]
-pub trait Provider: Send + Sync {
+pub trait Provider: AsAny + Send + Sync {
     fn get_token(&self) -> String;
     async fn execute(
         &self,
@@ -65,8 +72,6 @@ pub trait Provider: Send + Sync {
     fn as_rpc_controller(&self) -> Option<Arc<Box<dyn crate::rpc::RpcControllerTrait>>> {
         None
     }
-
-    fn inject_provider_store(&self, _store: Arc<RwLock<ProviderStore>>) {}
 }
 
 #[async_trait]
