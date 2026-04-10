@@ -145,10 +145,7 @@ impl ToniApplication {
     ///
     /// Use this when you need a request-scoped provider outside of an HTTP handler — for
     /// testing, CLI tools, or health checks that need to exercise the full provider tree.
-    pub async fn resolve<T: 'static>(
-        &self,
-        parts: &crate::http_helpers::RequestPart,
-    ) -> Result<T> {
+    pub async fn resolve<T: 'static>(&self, parts: &crate::http_helpers::RequestPart) -> Result<T> {
         self.context.resolve::<T>(parts).await
     }
 

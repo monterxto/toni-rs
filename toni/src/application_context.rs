@@ -232,7 +232,10 @@ impl ToniApplicationContext {
             cache: &cache,
         };
         let instance_any = provider_instance
-            .execute(vec![], crate::traits_helpers::ProviderContext::Http(http_ctx))
+            .execute(
+                vec![],
+                crate::traits_helpers::ProviderContext::Http(http_ctx),
+            )
             .await;
 
         instance_any
@@ -279,7 +282,10 @@ impl ToniApplicationContext {
             cache: &cache,
         };
         let instance_any = provider_instance
-            .execute(vec![], crate::traits_helpers::ProviderContext::Http(http_ctx))
+            .execute(
+                vec![],
+                crate::traits_helpers::ProviderContext::Http(http_ctx),
+            )
             .await;
 
         instance_any
