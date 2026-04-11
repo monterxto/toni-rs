@@ -213,10 +213,8 @@ async fn test_module_ref_works_from_any_thread() {
         .await
         .expect("PluginLoader should be available");
 
-    // Spawn onto a fresh OS thread that never had set_container_context called on it.
-    // This exposes the thread-local bug: the container is stored in thread_local! and
-    // is only set on the initialization thread, so ModuleRef::get() silently returns
-    // None on any other thread instead of resolving the provider.
+    // Spawn onto a fresh OS thread — tokio's multi-threaded runtime can poll futures
+    // on any worker, so ModuleRef::get() must work regardless of which thread calls it.
     let result = std::thread::spawn(move || {
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
