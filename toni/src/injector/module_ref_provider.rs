@@ -17,7 +17,10 @@ pub struct ModuleRefProvider {
 
 impl ModuleRefProvider {
     pub fn new(module_token: String, store: Arc<RwLock<ProviderStore>>) -> Self {
-        Self { module_token, store }
+        Self {
+            module_token,
+            store,
+        }
     }
 }
 
@@ -28,7 +31,10 @@ impl Provider for ModuleRefProvider {
         _params: Vec<Box<dyn Any + Send>>,
         _ctx: ProviderContext<'_>,
     ) -> Box<dyn Any + Send> {
-        Box::new(ModuleRef::new(self.module_token.clone(), self.store.clone()))
+        Box::new(ModuleRef::new(
+            self.module_token.clone(),
+            self.store.clone(),
+        ))
     }
 
     fn get_token(&self) -> String {
