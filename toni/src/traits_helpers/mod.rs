@@ -10,7 +10,6 @@ pub use self::provider_context::{HttpContext, ProviderContext};
 
 mod provider;
 pub use self::provider::{Provider, ProviderFactory};
-pub(crate) use self::provider::AsAny;
 
 mod controller;
 pub use self::controller::{Controller, ControllerFactory};

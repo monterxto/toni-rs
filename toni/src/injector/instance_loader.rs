@@ -25,6 +25,22 @@ impl ToniInstanceLoader {
     pub async fn create_instances_of_dependencies(&self) -> Result<()> {
         let modules_order = self.container.borrow().get_ordered_modules_token();
 
+        // PRE-PHASE 1: Register one ModuleRefProvider per module, all sharing the same
+        // store Arc. The store is empty now; it gets written after Phase 1 completes.
+        let store_arc: Arc<RwLock<super::module_ref::ProviderStore>> =
+            Arc::new(RwLock::new(super::module_ref::ProviderStore::default()));
+        for module_token in &modules_order {
+            let provider: Arc<Box<dyn Provider>> = Arc::new(Box::new(
+                super::module_ref_provider::ModuleRefProvider::new(
+                    module_token.clone(),
+                    store_arc.clone(),
+                ),
+            ));
+            self.container
+                .borrow_mut()
+                .add_provider_instance(module_token, provider)?;
+        }
+
         // PHASE 1: Create provider instances for all modules (with deferred retry logic)
         tracing::debug!(
             total_modules = modules_order.len(),
@@ -89,10 +105,19 @@ impl ToniInstanceLoader {
         tracing::debug!("DI phase 1.5: collecting multi-providers");
         self.collect_multi_providers()?;
 
-        // PHASE 1.6: Inject the provider store into all ModuleRefProviders so that
-        // ModuleRef::get() works from any thread (not just the initialization thread).
-        // Must run after Phase 1.5 so multi-collection providers are included.
-        self.inject_provider_store()?;
+        // PHASE 1.6: Populate the shared store now that all providers exist.
+        // One write into store_arc; every ModuleRef in the app sees it immediately.
+        {
+            let container = self.container.borrow();
+            let mut store = store_arc
+                .write()
+                .expect("provider store lock poisoned");
+            for module_token in &modules_order {
+                if let Ok(instances) = container.get_providers_instance(module_token) {
+                    store.insert(module_token.clone(), instances.clone());
+                }
+            }
+        }
 
         // PHASE 2: Resolve APP_* token providers to global enhancers
         // This happens AFTER all provider instances are created but BEFORE controllers are instantiated
@@ -110,37 +135,6 @@ impl ToniInstanceLoader {
         for module_token in &modules_order {
             self.create_instances_of_controllers(module_token.clone())
                 .await?;
-        }
-
-        Ok(())
-    }
-
-    /// Build the provider store and inject it into all ModuleRefProvider instances.
-    fn inject_provider_store(&self) -> Result<()> {
-        use super::module_ref_provider::ModuleRefProvider;
-        use crate::traits_helpers::AsAny;
-
-        let container = self.container.borrow();
-        let module_tokens = container.get_modules_token();
-
-        let mut store = super::module_ref::ProviderStore::default();
-        for module_token in &module_tokens {
-            if let Ok(instances) = container.get_providers_instance(module_token) {
-                store.insert(module_token.clone(), instances.clone());
-            }
-        }
-
-        let store_arc = Arc::new(RwLock::new(store));
-
-        for module_token in &module_tokens {
-            if let Ok(instances) = container.get_providers_instance(module_token) {
-                for provider in instances.values() {
-                    let inner: &dyn crate::traits_helpers::Provider = &***provider;
-                    if let Some(mrp) = inner.as_any().downcast_ref::<ModuleRefProvider>() {
-                        mrp.populate_store(store_arc.clone());
-                    }
-                }
-            }
         }
 
         Ok(())
@@ -552,8 +546,15 @@ impl ToniInstanceLoader {
                 Some(providers_instances) => providers_instances,
                 None => container.get_providers_instance(module_token)?,
             };
-            // Step 1: Check local providers
+            // Step 1: Check local providers (in-progress build map)
             if let Some(instance) = instances.get(&dependency) {
+                resolved_dependencies.insert(dependency, instance.clone());
+            }
+            // Step 1b: Check pre-registered container instances not yet in the build map
+            // (e.g. ModuleRefProvider registered before Phase 1)
+            else if let Ok(Some(instance)) =
+                container.get_provider_instance_by_token(module_token, &dependency)
+            {
                 resolved_dependencies.insert(dependency, instance.clone());
             }
             // Step 2: Check imported modules

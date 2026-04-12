@@ -6,18 +6,8 @@ use rustc_hash::FxHashMap;
 use super::{ErrorHandler, Guard, Interceptor, Pipe, ProviderContext, middleware::Middleware};
 use crate::ProviderScope;
 
-pub(crate) trait AsAny {
-    fn as_any(&self) -> &dyn Any;
-}
-
-impl<T: 'static> AsAny for T {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
-
 #[async_trait]
-pub trait Provider: AsAny + Send + Sync {
+pub trait Provider: Send + Sync {
     fn get_token(&self) -> String;
     async fn execute(
         &self,
