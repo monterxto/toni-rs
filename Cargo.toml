@@ -10,6 +10,7 @@ members = [
     "toni-tungstenite",
     "toni-actix",
     "toni-config",
+    "toni-seaorm",
     "toni-async-graphql",
     "toni-juniper",
     "integration-tests",
