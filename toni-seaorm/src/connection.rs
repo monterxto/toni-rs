@@ -1,6 +1,7 @@
 use std::{any::Any, sync::Arc};
 
 use async_trait::async_trait;
+use parking_lot::Mutex;
 use sea_orm::{Database, DatabaseConnection};
 use toni::{
     FxHashMap,
@@ -25,12 +26,15 @@ impl ProviderFactory for SeaOrmConnectionFactory {
             .await
             .unwrap_or_else(|e| panic!("SeaORM: failed to connect to '{}': {e}", self.database_url));
 
-        Arc::new(Box::new(SeaOrmConnectionProvider { db }))
+        Arc::new(Box::new(SeaOrmConnectionProvider {
+            db: Mutex::new(Some(db)),
+        }))
     }
 }
 
 struct SeaOrmConnectionProvider {
-    db: DatabaseConnection,
+    // Option so close() can take ownership on shutdown; Mutex for &self access.
+    db: Mutex<Option<DatabaseConnection>>,
 }
 
 #[async_trait]
@@ -49,6 +53,16 @@ impl Provider for SeaOrmConnectionProvider {
         _ctx: ProviderContext<'_>,
     ) -> Box<dyn Any + Send> {
         // DatabaseConnection is Clone — it wraps a connection pool internally.
-        Box::new(self.db.clone())
+        let db = self.db.lock().as_ref().expect("database already closed").clone();
+        Box::new(db)
+    }
+
+    async fn on_application_shutdown(&self, _signal: Option<String>) {
+        let db = self.db.lock().take();
+        if let Some(db) = db {
+            if let Err(e) = db.close().await {
+                tracing::error!(error = %e, "SeaORM: error closing database connection");
+            }
+        }
     }
 }

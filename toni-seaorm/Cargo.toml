@@ -19,3 +19,5 @@ runtime-tokio-native-tls = ["sea-orm/runtime-tokio-native-tls"]
 toni = { path = "../toni" }
 sea-orm = { version = "1", default-features = false }
 async-trait = "0.1"
+parking_lot = "0.12"
+tracing = "0.1"
