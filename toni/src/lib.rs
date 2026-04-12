@@ -76,6 +76,7 @@ pub mod enhancer {
 
 pub use toni_application::ToniApplication;
 pub use toni_factory::ToniFactory;
+pub use module_helpers::DynamicModule;
 
 #[cfg(feature = "tower-compat")]
 pub mod tower_compat;

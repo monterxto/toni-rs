@@ -1,2 +1,3 @@
+pub mod dynamic_module;
 pub mod module_enum;
-// pub use self::module_definition::ModuleDefinition;
+pub use dynamic_module::DynamicModule;
