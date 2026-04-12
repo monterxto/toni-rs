@@ -1,6 +1,12 @@
+use std::sync::{Arc, RwLock};
+
 use anyhow::Result;
+use rustc_hash::FxHashMap;
 
 use super::token::IntoToken;
+use crate::traits_helpers::Provider;
+
+pub type ProviderStore = FxHashMap<String, FxHashMap<String, Arc<Box<dyn Provider>>>>;
 
 /// Provides runtime dependency resolution within a module context
 ///
@@ -28,11 +34,15 @@ use super::token::IntoToken;
 #[derive(Clone)]
 pub struct ModuleRef {
     module_token: String,
+    store: Arc<RwLock<ProviderStore>>,
 }
 
 impl ModuleRef {
-    pub(crate) fn new(module_token: String) -> Self {
-        Self { module_token }
+    pub(crate) fn new(module_token: String, store: Arc<RwLock<ProviderStore>>) -> Self {
+        Self {
+            module_token,
+            store,
+        }
     }
 
     /// Get a provider instance by its type
@@ -113,15 +123,17 @@ impl<'a, T: 'static> ModuleRefQuery<'a, T> {
     where
         T: Send,
     {
-        use super::module_ref_provider::with_container;
+        let provider_instance = {
+            let store = self
+                .module_ref
+                .store
+                .read()
+                .map_err(|_| anyhow::anyhow!("Provider store lock poisoned"))?;
 
-        let provider_instance = with_container(|container| {
-            let container_ref = container.borrow();
-
-            let provider_instance = if self.strict {
-                // Strict mode: only search current module
-                container_ref
-                    .get_provider_instance_by_token(&self.module_ref.module_token, &self.token)?
+            if self.strict {
+                store
+                    .get(&self.module_ref.module_token)
+                    .and_then(|m| m.get(&self.token))
                     .cloned()
                     .ok_or_else(|| {
                         anyhow::anyhow!(
@@ -131,36 +143,25 @@ impl<'a, T: 'static> ModuleRefQuery<'a, T> {
                         )
                     })?
             } else {
-                // Non-strict mode: search current module first, then global
-                // Try current module first
-                if let Ok(Some(instance)) = container_ref
-                    .get_provider_instance_by_token(&self.module_ref.module_token, &self.token)
-                {
-                    instance.clone()
+                // Try current module first, then any module
+                let local = store
+                    .get(&self.module_ref.module_token)
+                    .and_then(|m| m.get(&self.token))
+                    .cloned();
+
+                if let Some(instance) = local {
+                    instance
                 } else {
-                    // Fallback to global search
-                    let modules = container_ref.get_modules_token();
-                    let mut found_instance = None;
-
-                    for module_token in modules {
-                        if let Ok(Some(instance)) =
-                            container_ref.get_provider_instance_by_token(&module_token, &self.token)
-                        {
-                            found_instance = Some(instance.clone());
-                            break;
-                        }
-                    }
-
-                    found_instance.ok_or_else(|| {
-                        anyhow::anyhow!("Provider '{}' not found in any module", self.token)
-                    })?
+                    store
+                        .values()
+                        .find_map(|providers| providers.get(&self.token).cloned())
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("Provider '{}' not found in any module", self.token)
+                        })?
                 }
-            };
+            }
+        };
 
-            Ok(provider_instance)
-        })?;
-
-        // Execute the provider to get the instance
         provider_instance
             .execute(vec![], crate::traits_helpers::ProviderContext::None)
             .await

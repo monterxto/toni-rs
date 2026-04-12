@@ -301,51 +301,10 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! {}
     };
 
-    let module_ref_factory_name = Ident::new(
-        &format!("__ToniModuleRefProviderFactory_{}", input_name),
-        Span::call_site(),
-    );
-
     let generated = quote! {
         #visibility struct #input_ident;
 
         #user_impl_block
-
-        // Generate unique ModuleRef ProviderFactory for this module
-        pub struct #module_ref_factory_name {
-            module_token: String,
-        }
-
-        impl #module_ref_factory_name {
-            fn new() -> Self {
-                Self {
-                    module_token: #input_name.to_string(),
-                }
-            }
-        }
-
-        #[::toni::async_trait]
-        impl ::toni::traits_helpers::ProviderFactory for #module_ref_factory_name {
-            fn get_token(&self) -> String {
-                ::std::any::type_name::<::toni::ModuleRef>().to_string()
-            }
-
-            async fn build(
-                &self,
-                _deps: ::toni::FxHashMap<
-                    String,
-                    ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>>
-                >,
-            ) -> ::std::sync::Arc<Box<dyn ::toni::traits_helpers::Provider>> {
-                ::std::sync::Arc::new(Box::new(
-                    ::toni::injector::ModuleRefProvider::new(self.module_token.clone())
-                ) as Box<dyn ::toni::traits_helpers::Provider>)
-            }
-
-            fn get_dependencies(&self) -> Vec<String> {
-                vec![]
-            }
-        }
 
         impl #input_ident {
             pub fn module_definition() -> ::toni::module_helpers::module_enum::ModuleDefinition {
@@ -381,12 +340,7 @@ pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
                 Some(vec![#(Box::new(#controllers)),*])
             }
             fn providers(&self) -> Option<Vec<Box<dyn ::toni::traits_helpers::ProviderFactory>>> {
-                let mut providers_vec: Vec<Box<dyn ::toni::traits_helpers::ProviderFactory>> = vec![
-                    #(Box::new(#providers)),*
-                ];
-                // Auto-inject ModuleRef ProviderFactory for this module
-                providers_vec.push(Box::new(#module_ref_factory_name::new()));
-                Some(providers_vec)
+                Some(vec![#(Box::new(#providers)),*])
             }
             fn exports(&self) -> Option<Vec<String>> {
                 Some(vec![#(::std::any::type_name::<#exports>().to_string()),*])
